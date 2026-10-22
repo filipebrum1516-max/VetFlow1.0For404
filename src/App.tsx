@@ -1032,7 +1032,9 @@ function Login() {
           </button>
           <div className="login-dev-hint" aria-label="Acesso de desenvolvimento">
             <i />
-            Acesso dev · usuário <b>admin</b> · senha <b>admin123</b>
+            <span>Acesso dev</span>
+            <span>usuário <b>admin</b></span>
+            <span>senha <b>admin123</b></span>
           </div>
           <button type="button" className="text-link" onClick={() => navigate("/site")}>
             ← Voltar ao site
