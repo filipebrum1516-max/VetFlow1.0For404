@@ -540,7 +540,7 @@ export default function Caixa() {
       )}
       {fechando && (
         <Layer className="op-modal-layer" onMouseDown={() => setFechando(false)}>
-          <div className="op-modal" style={{ width: "min(520px,100%)" }} onMouseDown={(e) => e.stopPropagation()}>
+          <div className="op-modal op-fechar" style={{ width: "min(420px,100%)" }} onMouseDown={(e) => e.stopPropagation()}>
             <div className="op-ch"><h2><Lock /> Fechamento do caixa {caixa.name}</h2></div>
             <div className="op-cb">
               <p className="muted" style={{ margin: 0, fontSize: 12.5 }}>Conte o dinheiro da gaveta e confira Pix e cartões no extrato do banco e na maquininha.</p>

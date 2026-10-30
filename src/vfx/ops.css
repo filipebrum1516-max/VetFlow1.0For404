@@ -379,3 +379,17 @@ a.op-btn { text-decoration: none; color: inherit; }
 .op-portal > .op-toast { z-index: 2100; }
 .op-client small { display: block; }
 .op.op-vx.op-portal { position: relative; z-index: 2000; min-height: 0; }
+/* card de fechamento de caixa mais compacto */
+.op-modal.op-fechar { max-height: 85vh; overflow-y: auto; }
+.op-modal.op-fechar .op-ch { padding: 10px 14px; }
+.op-modal.op-fechar .op-cb { gap: 8px; padding: 10px 14px; }
+.op-modal.op-fechar .op-tr { min-height: 32px; padding: 3px 10px; font-size: 12.5px; gap: 8px; grid-template-columns: minmax(0,1fr) 84px 96px 78px !important; }
+.op-modal.op-fechar .op-in { height: 28px !important; font-size: 12.5px; }
+.op-modal.op-fechar .op-note { padding: 6px 10px; font-size: 12px; }
+.op-modal.op-fechar .op-big { font-size: 16px !important; }
+.op-modal.op-fechar .foot { padding: 10px 14px; }
+.op-modal.op-fechar .foot .op-btn { height: 34px; }
+@media (max-width: 520px) {
+  .op-modal.op-fechar .op-tr { grid-template-columns: minmax(0,1fr) 70px 78px 58px !important; padding: 3px 8px; gap: 6px; font-size: 11.5px; }
+  .op-modal.op-fechar .op-in { padding: 0 6px; font-size: 11.5px; }
+}
