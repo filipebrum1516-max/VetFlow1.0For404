@@ -6,6 +6,7 @@ import { brl, fmtDate, itemDate, parseMoney, todayISO, Page } from "../ui"
 import { A_PRAZO, addMonths, FORMAS, PARCELADAS, LIMITE_FIADO, lineTotal, minutesSince, nowTime, printHtml, stamp, type Entrega, type Line, type Pay } from "../vendasShared"
 import { PrintBar } from "../PrintMenu"
 import "../ops.css"
+import Layer from "../OpLayer"
 
 type Mov = { tipo: string; valor: number; motivo: string; hora: string; forma?: string; venda?: string; por?: string }
 const LIMITE_GAVETA = 1000
@@ -70,7 +71,8 @@ export default function Caixa() {
     return v
   }, [client, sales])
   const typed = parseMoney(valor) || rest
-  const fiadoBlock = forma === "Fiado" && (!client ? "Fiado exige cliente identificado." : fiadoAberto + typed > LIMITE_FIADO ? `Limite de fiado excedido (em aberto ${brl(fiadoAberto)}, limite ${brl(LIMITE_FIADO)}).` : "")
+  const limiteCli = (client?.extra?.limiteCredito ?? LIMITE_FIADO) as number
+  const fiadoBlock = forma === "Fiado" && (!client ? "Fiado exige cliente identificado." : client.extra?.bloqueadoFiado ? "Vendas anotadas bloqueadas no cadastro deste cliente." : fiadoAberto + typed > limiteCli ? `Limite de fiado excedido (em aberto ${brl(fiadoAberto)}, limite ${brl(limiteCli)}).` : "")
   const parcelasDup = useMemo(() => Array.from({ length: PARCELADAS.includes(forma) ? parcelas : 0 }, (_, i) => addMonths(venc1, 0, i * intervalo)), [forma, parcelas, venc1, intervalo])
 
   const [cheque, setCheque] = useState({ numero: "", banco: "", bomPara: todayISO() })
@@ -304,7 +306,7 @@ export default function Caixa() {
           </div>
         </div>
         {historicoCard}
-        {toast && <div className="op-toast"><Check /> {toast}</div>}
+        {toast && <Layer className="op-toast"><Check /> {toast}</Layer>}
       </div>
       </Page>
     )
@@ -459,7 +461,7 @@ export default function Caixa() {
                     <button className="op-btn lg" onClick={addPay} disabled={!rest}>Adicionar <kbd>Enter</kbd></button>
                   </div>
                   {PARCELADAS.includes(forma) && rest > 0 && <div className="op-sum" style={{ fontSize: 12.5 }}>{parcelasDup.map((d, i) => <div key={d + i}><span className="mono">{forma === "Boleto" ? "BOL" : "DUP"} {sale.name.slice(4)}-{i + 1}/{parcelas}</span><span>venc. {fmtDate(d)}</span><b>{brl(typed / parcelas)}</b></div>)}</div>}
-                  {forma === "Fiado" && client && <div className={`op-note ${fiadoBlock ? "bad" : "info"}`}>{fiadoBlock ? <AlertTriangle /> : <Check />} {fiadoBlock || `${client.name}: em aberto ${brl(fiadoAberto)} de ${brl(LIMITE_FIADO)}. Vence em ${fmtDate(addMonths(todayISO(), 1))}.`}</div>}
+                  {forma === "Fiado" && client && <div className={`op-note ${fiadoBlock ? "bad" : "info"}`}>{fiadoBlock ? <AlertTriangle /> : <Check />} {fiadoBlock || `${client.name}: em aberto ${brl(fiadoAberto)} de ${brl(limiteCli)}. Vence em ${fmtDate(addMonths(todayISO(), 1))}.`}</div>}
                   {forma === "Fiado" && !client && <div className="op-note bad"><AlertTriangle /> Venda sem cliente identificado não pode ser anotada.</div>}
                   {forma === "Pix" && <div className="op-note info"><Check /> Confirme o Pix no aplicativo do banco antes de adicionar.</div>}
 
@@ -513,16 +515,16 @@ export default function Caixa() {
       </div>}
 
       {returning && sale && (
-        <div className="op-modal-layer" onMouseDown={() => setReturning(false)}>
+        <Layer className="op-modal-layer" onMouseDown={() => setReturning(false)}>
           <div className="op-modal" onMouseDown={(e) => e.stopPropagation()}>
             <div className="op-ch"><h2>Devolver {sale.name} ao vendedor</h2></div>
             <div className="op-cb"><p style={{ margin: 0 }}>A venda sai da fila e volta para {sale.professional} corrigir.</p><label className="op-f"><span>Motivo</span><input className="op-in" autoFocus value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Ex.: cliente desistiu de um item" /></label></div>
             <div className="foot"><button className="op-btn" onClick={() => setReturning(false)}>Voltar</button><button className="op-btn pri" onClick={devolver}>Devolver</button></div>
           </div>
-        </div>
+        </Layer>
       )}
       {mov && (
-        <div className="op-modal-layer" onMouseDown={() => setMov(null)}>
+        <Layer className="op-modal-layer" onMouseDown={() => setMov(null)}>
           <div className="op-modal" onMouseDown={(e) => e.stopPropagation()}>
             <div className="op-ch"><h2>{mov.tipo}</h2></div>
             <div className="op-cb">
@@ -534,10 +536,10 @@ export default function Caixa() {
             </div>
             <div className="foot"><button className="op-btn" onClick={() => setMov(null)}>Cancelar</button><button className="op-btn pri" onClick={salvarMov}>Registrar</button></div>
           </div>
-        </div>
+        </Layer>
       )}
       {fechando && (
-        <div className="op-modal-layer" onMouseDown={() => setFechando(false)}>
+        <Layer className="op-modal-layer" onMouseDown={() => setFechando(false)}>
           <div className="op-modal" style={{ width: "min(520px,100%)" }} onMouseDown={(e) => e.stopPropagation()}>
             <div className="op-ch"><h2><Lock /> Fechamento do caixa {caixa.name}</h2></div>
             <div className="op-cb">
@@ -558,10 +560,10 @@ export default function Caixa() {
             </div>
             <div className="foot"><button className="op-btn" onClick={() => printHtml("Prévia", relatorioHtml(parseMoney(contado)))}><Printer /> Prévia</button><button className="op-btn pri" disabled={!contado} onClick={fechar}><Lock /> Fechar e imprimir</button></div>
           </div>
-        </div>
+        </Layer>
       )}
       {done && (
-        <div className="op-modal-layer">
+        <Layer className="op-modal-layer">
           <div className="op-modal">
             <div className="op-cb" style={{ alignItems: "center", textAlign: "center", padding: "26px 22px" }}>
               <span className="op-av" style={{ width: 52, height: 52, background: "var(--green-soft)", color: "var(--green)" }}><Check size={24} /></span>
@@ -576,10 +578,10 @@ export default function Caixa() {
               <button className="op-btn pri" autoFocus onClick={() => { setDone(null); scanRef.current?.focus() }}>Próxima <kbd>Enter</kbd></button>
             </div>
           </div>
-        </div>
+        </Layer>
       )}
       {estorno && (
-        <div className="op-modal-layer" onMouseDown={() => setEstorno(null)}>
+        <Layer className="op-modal-layer" onMouseDown={() => setEstorno(null)}>
           <div className="op-modal" onMouseDown={(e) => e.stopPropagation()}>
             <div className="op-ch"><h2><RotateCcw /> Estornar recebimento de {estorno.name}</h2></div>
             <div className="op-cb">
@@ -589,9 +591,9 @@ export default function Caixa() {
             </div>
             <div className="foot"><button className="op-btn" onClick={() => setEstorno(null)}>Voltar</button><button className="op-btn pri" style={{ background: "var(--red)", borderColor: "var(--red)" }} onClick={estornar}>Estornar</button></div>
           </div>
-        </div>
+        </Layer>
       )}
-      {toast && <div className="op-toast"><Check /> {toast}</div>}
+      {toast && <Layer className="op-toast"><Check /> {toast}</Layer>}
       </div>
     </Page>
   )

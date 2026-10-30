@@ -4,6 +4,7 @@ import { useVetFlow, type Item } from "../../store"
 import { brl, fmtDate, normalizeText, todayISO, Page } from "../ui"
 import { ENTREGADORES, lineTotal, printHtml, saleSlipHtml, saleTone, stamp, type Entrega, type Line } from "../vendasShared"
 import "../ops.css"
+import Layer from "../OpLayer"
 import { PrintBar } from "../PrintMenu"
 
 const KPIS: [string, string, string][] = [
@@ -314,7 +315,7 @@ export default function Entregas() {
 
       {/* detalhe */}
       {detail && (() => { const s = deliveries.find((d) => d.id === detail.id) || detail; const e = s.extra.entrega as Entrega; return (
-        <div className="op-drawer-layer" onMouseDown={() => setDetail(null)}>
+        <Layer className="op-drawer-layer" onMouseDown={() => setDetail(null)}>
           <aside className="op-drawer" onMouseDown={(ev) => ev.stopPropagation()}>
             <div className="op-ch"><h2 style={{ fontSize: 14, textTransform: "none", letterSpacing: 0 }}><span className="op-num">{s.name}</span> <Tag s={e.status} /></h2><button className="op-x" onClick={() => setDetail(null)} aria-label="Fechar"><X /></button></div>
             <div className="body">
@@ -353,11 +354,11 @@ export default function Entregas() {
               {(e.status === "Em rota" || e.status === "Pronta para sair") && <button className="op-btn ok" onClick={() => openConfirm(s)}><Check /> Confirmar entrega</button>}
             </div>
           </aside>
-        </div>
+        </Layer>
       ) })()}
 
       {reag && (
-        <div className="op-modal-layer" onMouseDown={() => setReag(null)}>
+        <Layer className="op-modal-layer" onMouseDown={() => setReag(null)}>
           <div className="op-modal" onMouseDown={(e) => e.stopPropagation()}>
             <div className="op-ch"><h2>Reagendar {reag.name}</h2></div>
             <div className="op-cb">
@@ -367,10 +368,10 @@ export default function Entregas() {
             </div>
             <div className="foot"><button className="op-btn" onClick={() => setReag(null)}>Cancelar</button><button className="op-btn pri" onClick={reagendar}>Reagendar</button></div>
           </div>
-        </div>
+        </Layer>
       )}
       {confirm && (() => { const e = confirm.extra.entrega as Entrega; return (
-        <div className="op-modal-layer">
+        <Layer className="op-modal-layer">
           <div className="op-modal">
             <div className="op-ch"><h2>Confirmar entrega {confirm.name}</h2><button className="op-x" onClick={() => setConfirm(null)} aria-label="Fechar"><X /></button></div>
             <div className="op-cb">
@@ -388,18 +389,18 @@ export default function Entregas() {
             </div>
             <div className="foot"><button className="op-btn" onClick={() => setConfirm(null)}>Voltar</button><button className="op-btn ok" onClick={confirmar}><Check /> Confirmar entrega</button></div>
           </div>
-        </div>
+        </Layer>
       ) })()}
       {fail && (
-        <div className="op-modal-layer" onMouseDown={() => setFail(null)}>
+        <Layer className="op-modal-layer" onMouseDown={() => setFail(null)}>
           <div className="op-modal" onMouseDown={(e) => e.stopPropagation()}>
             <div className="op-ch"><h2>Não entregue · {fail.name}</h2></div>
             <div className="op-cb"><div className="op-chips" style={{ gridTemplateColumns: "1fr 1fr" }}>{MOTIVOS.map((m) => <button key={m} className={`op-chip ${failMotivo === m ? "on" : ""}`} onClick={() => setFailMotivo(m)}>{m}</button>)}</div><p className="muted" style={{ margin: 0, fontSize: 12.5 }}>A entrega volta para a expedição reagendar.</p></div>
             <div className="foot"><button className="op-btn" onClick={() => setFail(null)}>Voltar</button><button className="op-btn pri" onClick={naoEntregue}>Registrar</button></div>
           </div>
-        </div>
+        </Layer>
       )}
-      {toast && <div className="op-toast"><Check /> {toast}</div>}
+      {toast && <Layer className="op-toast"><Check /> {toast}</Layer>}
       </div>
     </Page>
   )

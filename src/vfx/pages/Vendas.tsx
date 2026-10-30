@@ -6,6 +6,8 @@ import { brl, fmtDate, initials, itemDate, normalizeText, parseMoney, todayISO, 
 import { codeOf, editInfo, LIMITE_DESCONTO, LIMITE_FIADO, lineTotal, minutesSince, mmss, nextNumber, nowTime, priceOf, saleTone, shortCode, stamp, type Entrega, type Line } from "../vendasShared"
 import { PrintBar } from "../PrintMenu"
 import "../ops.css"
+import Layer from "../OpLayer"
+import ClienteForm, { fromItem, toItem, type ClienteData } from "../ClienteForm"
 
 type Tipo = "Balcão" | "Retirada" | "Entrega"
 const TIPOS: Tipo[] = ["Balcão", "Retirada", "Entrega"]
@@ -58,41 +60,73 @@ export default function Vendas() {
   /* ---------------- cliente ---------------- */
   const [cq, setCq] = useState("")
   const [cIdx, setCIdx] = useState(0)
-  const [quick, setQuick] = useState(false)
-  const [quickForm, setQuickForm] = useState({ nome: "", cpf: "", telefone: "" })
+  const [cadastro, setCadastro] = useState<{ initial: ClienteData; existing: Item | null } | null>(null)
+  const [cFilter, setCFilter] = useState<"todos" | "debito" | "pj">("todos")
   const clientRef = useRef<HTMLInputElement>(null)
   const client = clientId === "cf" ? null : data.tutores.find((item) => item.id === clientId) || null
+  const petsByOwner = useMemo(() => {
+    const m = new Map<string, string[]>()
+    for (const a of data.animais) if (a.ownerId) m.set(a.ownerId, [...(m.get(a.ownerId) || []), a.name])
+    return m
+  }, [data.animais])
+  /* busca: nome, apelido, CPF/CNPJ, telefone/WhatsApp, e-mail, animal, bairro, cidade ou código */
   const clientHits = useMemo(() => {
-    const q = normalizeText(cq.trim())
-    if (q.length < 2) return [] as { tutor: Item; pets: string }[]
-    const digits = cq.replace(/\D/g, "")
-    const out: { tutor: Item; pets: string }[] = []
+    const raw = cq.trim()
+    const q = normalizeText(raw)
+    const digits = raw.replace(/\D/g, "")
+    if (q.length < 2 && digits.length < 2) return [] as { tutor: Item; pets: string[]; why: string; score: number }[]
+    const words = q.split(/\s+/).filter(Boolean)
+    const out: { tutor: Item; pets: string[]; why: string; score: number }[] = []
     for (const tutor of data.tutores) {
-      const pets = data.animais.filter((a) => a.ownerId === tutor.id).map((a) => a.name)
-      const hay = normalizeText(`${tutor.name} ${pets.join(" ")}`)
-      const phone = (tutor.phone || "").replace(/\D/g, "")
-      const cpf = (tutor.cpf || "").replace(/\D/g, "")
-      if (hay.includes(q) || (digits.length >= 4 && (phone.includes(digits) || cpf.includes(digits)))) out.push({ tutor, pets: pets.slice(0, 3).join(", ") })
-      if (out.length >= 7) break
+      if (cFilter === "debito" && !((tutor.amountValue || 0) > 0)) continue
+      if (cFilter === "pj" && tutor.personType !== "Jurídica") continue
+      const pets = petsByOwner.get(tutor.id) || []
+      const c = tutor.extra?.cadastro || {}
+      const name = normalizeText(`${tutor.name} ${c.fantasia || ""}`)
+      const docD = (tutor.cpf || "").replace(/\D/g, "")
+      const phD = `${tutor.phone || ""} ${c.whatsapp || ""}`.replace(/\D/g, "")
+      const code = tutor.id.replace(/\D/g, "").slice(-5)
+      let score = 0, why = ""
+      if (digits.length >= 3 && docD.startsWith(digits)) { score = 100; why = tutor.personType === "Jurídica" ? "CNPJ" : "CPF" }
+      else if (digits.length >= 4 && phD.includes(digits)) { score = 90; why = "Telefone" }
+      else if (digits.length >= 2 && digits === raw && code.endsWith(digits)) { score = 70; why = "Código" }
+      else if (words.length && name.startsWith(q)) { score = 80; why = "Nome" }
+      else if (words.length && words.every((w) => name.includes(w))) { score = 60; why = "Nome" }
+      else if (words.length && pets.some((p) => normalizeText(p).includes(q))) { score = 50; why = `Animal: ${pets.find((p) => normalizeText(p).includes(q))}` }
+      else if (q.includes("@") && normalizeText(tutor.email || "").includes(q)) { score = 50; why = "E-mail" }
+      else if (words.length && normalizeText(`${tutor.address || ""} ${c.bairro || ""} ${c.cidade || ""}`).includes(q)) { score = 30; why = "Endereço" }
+      if (score) out.push({ tutor, pets, why, score })
     }
-    return out
-  }, [cq, data.tutores, data.animais])
+    return out.sort((x, y) => y.score - x.score || x.tutor.name.localeCompare(y.tutor.name)).slice(0, 8)
+  }, [cq, cFilter, data.tutores, petsByOwner])
+  const limiteDe = (t?: Item | null) => (t?.extra?.limiteCredito ?? LIMITE_FIADO) as number
   const fiado = useMemo(() => {
-    if (!client) return { aberto: 0, limite: LIMITE_FIADO }
+    if (!client) return { aberto: 0, limite: LIMITE_FIADO, bloqueado: false }
     let aberto = client.amountValue || 0
     for (const sale of sales) if (sale.ownerId === client.id && sale.status !== "Cancelada") for (const p of sale.extra?.pagamentos || []) if (p.forma === "Fiado") aberto += p.valor
-    return { aberto, limite: LIMITE_FIADO }
+    return { aberto, limite: limiteDe(client), bloqueado: !!client.extra?.bloqueadoFiado }
   }, [client, sales])
+  const openCadastro = (existing: Item | null, prefill = "") => setCadastro({ initial: fromItem(existing, prefill), existing })
+  const saveCadastro = (d: ClienteData) => {
+    const patch = toItem(d, activeUnit.city || "")
+    if (cadastro?.existing) {
+      const ex = cadastro.existing
+      updateItem("tutores", ex.id, { ...patch, status: ex.status === "Inadimplente" ? ex.status : "Ativo", extra: { ...(ex.extra || {}), ...(patch.extra || {}) } })
+      setClientId(ex.id)
+      showToast(`Cadastro de ${patch.name} atualizado.`)
+    } else {
+      const t = addItem("tutores", { id: `${activeUnit.id}-tutores-${Date.now()}`, ...patch })
+      setClientId(t.id)
+      showToast(`Cliente ${t.name} cadastrado e selecionado.`)
+    }
+    setCadastro(null); setCq("")
+    window.setTimeout(() => prodRef.current?.focus(), 0)
+  }
   const pickClient = (tutor: Item) => {
     setClientId(tutor.id); setCq(""); setCIdx(0)
     window.setTimeout(() => prodRef.current?.focus(), 0)
   }
-  const saveQuick = () => {
-    if (!quickForm.nome.trim()) return
-    const t = addItem("tutores", { id: `${activeUnit.id}-tutores-${Date.now()}`, name: quickForm.nome.trim(), cpf: quickForm.cpf, phone: quickForm.telefone, subtitle: "Cadastro rápido no balcão", status: "Ativo" })
-    setClientId(t.id); setQuick(false); setQuickForm({ nome: "", cpf: "", telefone: "" })
-    showToast(`Cliente ${t.name} cadastrado.`)
-  }
+
 
   /* endereço do cadastro */
   useEffect(() => {
@@ -187,6 +221,7 @@ export default function Vendas() {
     const errs: string[] = []
     if (!cart.length) errs.push("Adicione pelo menos um produto.")
     if (sugerida === "Fiado" && !client) errs.push("Venda anotada (fiado) precisa de um cliente identificado.")
+    if (sugerida === "Fiado" && fiado.bloqueado) errs.push("Este cliente está com vendas anotadas bloqueadas no cadastro.")
     if (sugerida === "Fiado" && client && fiado.aberto + total > fiado.limite) errs.push(`Limite de fiado excedido: em aberto ${brl(fiado.aberto)} + esta venda passa de ${brl(fiado.limite)}.`)
     if (tipo === "Entrega") {
       if (!addr.rua || !addr.numero || !addr.bairro || !addr.cidade) errs.push("Preencha rua, número, bairro e cidade da entrega.")
@@ -357,15 +392,15 @@ export default function Vendas() {
             {/* cliente */}
             <div className="op-card">
               <div className="op-ch"><h2><User /> Cliente <kbd>F3</kbd></h2>
-                {!client && clientId !== "cf" && <div style={{ display: "flex", gap: 6 }}><button className="op-btn sm" onClick={() => setQuick(!quick)}><UserPlus /> Cadastro rápido</button><button className="op-btn sm" onClick={() => setClientId("cf")}>Consumidor final</button></div>}
-                {(client || clientId === "cf") && <button className="op-link" onClick={() => { setClientId(""); window.setTimeout(() => clientRef.current?.focus(), 0) }}>Trocar cliente</button>}
+                {!client && clientId !== "cf" && <div style={{ display: "flex", gap: 6 }}><button className="op-btn sm" onClick={() => openCadastro(null, cq)}><UserPlus /> Novo cliente</button><button className="op-btn sm" onClick={() => setClientId("cf")}>Consumidor final</button></div>}
+                {(client || clientId === "cf") && <span style={{ display: "flex", gap: 14 }}>{client && <button className="op-link" onClick={() => openCadastro(client)}>Editar cadastro</button>}<button className="op-link" onClick={() => { setClientId(""); window.setTimeout(() => clientRef.current?.focus(), 0) }}>Trocar cliente</button></span>}
               </div>
               <div className="op-cb">
                 {client ? (
                   <>
                     <div className="op-client">
                       <span className="op-av">{initials(client.name)}</span>
-                      <div><strong>{client.name}</strong><small>{client.cpf ? `CPF ${client.cpf} · ` : ""}{client.phone} · {(client.address || "").split(" • ")[0] || "sem endereço"}</small></div>
+                      <div><strong>{client.name}{client.extra?.cadastro?.fantasia ? <span className="muted" style={{ fontWeight: 500 }}> · {client.extra.cadastro.fantasia}</span> : null}</strong><small>{client.cpf ? `${client.personType === "Jurídica" ? "CNPJ" : "CPF"} ${client.cpf} · ` : ""}{client.phone}{client.email ? ` · ${client.email}` : ""}</small><small>{(client.address || "").replace(" • ", " · ") || "Sem endereço cadastrado"}{client.extra?.cadastro?.bairro ? ` · ${client.extra.cadastro.bairro}` : ""}</small></div>
                       {client.status === "Inadimplente" ? <span className="op-tag red">Inadimplente</span> : <span className="op-tag green">Ativo</span>}
                     </div>
                     <div className="op-credit">
@@ -375,31 +410,32 @@ export default function Vendas() {
                         <span className="op-meter"><i className={fiado.aberto / fiado.limite > 0.9 ? "bad" : fiado.aberto / fiado.limite > 0.6 ? "warn" : ""} style={{ width: `${Math.min(100, (fiado.aberto / fiado.limite) * 100)}%` }} /></span></div>
                     </div>
                     {client.status === "Inadimplente" && <div className="op-note bad" style={{ marginTop: 10 }}><AlertTriangle /> Cliente com pagamento em atraso. Venda anotada (fiado) não recomendada.</div>}
+                    {fiado.bloqueado && <div className="op-note bad" style={{ marginTop: 10 }}><AlertTriangle /> Vendas anotadas (fiado) bloqueadas no cadastro deste cliente.</div>}
+                    {(!client.cpf || !client.address) && <div className="op-note info" style={{ marginTop: 10 }}><AlertTriangle /> Cadastro incompleto: {[!client.cpf && "CPF/CNPJ", !client.address && "endereço"].filter(Boolean).join(" e ")}. <button className="op-link" onClick={() => openCadastro(client)}>Completar agora</button></div>}
                   </>
                 ) : clientId === "cf" ? (
                   <div className="op-client"><span className="op-av">CF</span><div><strong>Consumidor final</strong><small>Venda sem identificação do cliente.</small></div><span /></div>
-                ) : quick ? (
-                  <div className="op-fields" style={{ gridTemplateColumns: "2fr 1fr 1fr auto", alignItems: "end" }}>
-                    <label className="op-f"><span>Nome</span><input className="op-in" autoFocus value={quickForm.nome} onChange={(e) => setQuickForm({ ...quickForm, nome: e.target.value })} /></label>
-                    <label className="op-f"><span>CPF</span><input className="op-in" value={quickForm.cpf} onChange={(e) => setQuickForm({ ...quickForm, cpf: e.target.value })} /></label>
-                    <label className="op-f"><span>Telefone</span><input className="op-in" value={quickForm.telefone} onChange={(e) => setQuickForm({ ...quickForm, telefone: e.target.value })} /></label>
-                    <button className="op-btn pri" onClick={saveQuick}><Check /> Salvar</button>
-                  </div>
                 ) : (
-                  <div className="op-search">
+                  <><div className="op-search">
                     <Search />
-                    <input ref={clientRef} className="op-in lg" autoFocus placeholder="Buscar cliente por nome, CPF, telefone ou nome do animal" value={cq} onChange={(e) => { setCq(e.target.value); setCIdx(0) }}
-                      onKeyDown={(e) => { if (e.key === "ArrowDown") { e.preventDefault(); setCIdx((i) => Math.min(clientHits.length - 1, i + 1)) } if (e.key === "ArrowUp") { e.preventDefault(); setCIdx((i) => Math.max(0, i - 1)) } if (e.key === "Enter" && clientHits[cIdx]) pickClient(clientHits[cIdx].tutor) }} />
-                    {clientHits.length > 0 && (
+                    <input ref={clientRef} className="op-in lg" autoFocus placeholder="Nome, CPF/CNPJ, telefone, e-mail, animal, bairro ou código" value={cq} onChange={(e) => { setCq(e.target.value); setCIdx(0) }}
+                      onKeyDown={(e) => { if (e.key === "ArrowDown") { e.preventDefault(); setCIdx((i) => Math.min(clientHits.length, i + 1)) } if (e.key === "ArrowUp") { e.preventDefault(); setCIdx((i) => Math.max(0, i - 1)) } if (e.key === "Enter") { e.preventDefault(); if (clientHits[cIdx]) pickClient(clientHits[cIdx].tutor); else if (cq.trim().length >= 2) openCadastro(null, cq) } if (e.key === "Escape") setCq("") }} />
+                    {cq.trim().length >= 2 && (
                       <div className="op-drop">
-                        {clientHits.map(({ tutor, pets }, i) => (
-                          <div key={tutor.id} className={`op-tr click ${i === cIdx ? "act" : ""}`} style={{ gridTemplateColumns: "minmax(0,1.3fr) 140px minmax(0,1fr) 110px" }} onMouseDown={() => pickClient(tutor)}>
-                            <strong>{tutor.name}</strong><span className="mono">{tutor.phone}</span><span className="muted">{pets || "—"}</span><span>{(tutor.amountValue || 0) > 0 ? <span className="op-tag amber">{brl(tutor.amountValue || 0)}</span> : <span className="muted">sem débito</span>}</span>
+                        {clientHits.map(({ tutor, pets, why }, i) => (
+                          <div key={tutor.id} className={`op-tr click ${i === cIdx ? "act" : ""}`} style={{ gridTemplateColumns: "minmax(0,1.5fr) 150px minmax(0,1fr) 120px" }} onMouseDown={(e) => { e.preventDefault(); pickClient(tutor) }}>
+                            <span className="op-hit-main"><strong>{tutor.name}</strong><small>{tutor.cpf ? `${tutor.personType === "Jurídica" ? "CNPJ" : "CPF"} ${tutor.cpf}` : "sem documento"} · {(tutor.address || "").split(" • ")[1] || (tutor.address || "").split(" • ")[0] || "sem endereço"}</small></span>
+                            <span><span className="mono">{tutor.phone}</span><small>encontrado por {why.toLowerCase()}</small></span>
+                            <span className="muted">{pets.length ? `🐾 ${pets.slice(0, 3).join(", ")}${pets.length > 3 ? ` +${pets.length - 3}` : ""}` : "sem animais"}</span>
+                            <span className="r">{(tutor.amountValue || 0) > 0 ? <span className="op-tag amber">deve {brl(tutor.amountValue || 0)}</span> : <span className="muted">sem débito</span>}</span>
                           </div>
                         ))}
+                        {!clientHits.length && <div className="op-empty">Nenhum cliente encontrado para “{cq.trim()}”.</div>}
+                        <div className={`op-tr click new ${cIdx === clientHits.length ? "act" : ""}`} style={{ gridTemplateColumns: "1fr" }} onMouseDown={(e) => { e.preventDefault(); openCadastro(null, cq) }}><span><UserPlus size={14} /> Cadastrar novo cliente {/\d/.test(cq) ? "com este documento/telefone" : `“${cq.trim()}”`}</span></div>
                       </div>
                     )}
                   </div>
+                  <div className="op-tabs" style={{ marginTop: 8 }}>{([["todos", "Todos"], ["debito", "Com débito"], ["pj", "Empresas"]] as const).map(([k, l]) => <button key={k} className={cFilter === k ? "on" : ""} onClick={() => setCFilter(k)}>{l}</button>)}</div></>
                 )}
               </div>
             </div>
@@ -595,7 +631,7 @@ export default function Vendas() {
         const steps = ["Venda finalizada", "Pago no caixa", ...(e ? ["Entregue"] : []), "Concluída"]
         const stage = /cancel/i.test(d.status) ? -1 : /conclu/i.test(d.status) ? steps.length - 1 : e && /entregue/i.test(e.status) ? 2 : /paga|em entrega|a cobrar/i.test(d.status) ? 1 : 0
         return (
-        <div className="op-drawer-layer" onMouseDown={() => setDetail(null)}>
+        <Layer className="op-drawer-layer" onMouseDown={() => setDetail(null)}>
           <aside className="op-drawer" onMouseDown={(ev) => ev.stopPropagation()}>
             <div className="op-ch"><h2 style={{ fontSize: 14, textTransform: "none", letterSpacing: 0 }}><span className="op-num">{d.name}</span> <Tag s={d.status} /></h2><button className="op-x" onClick={() => setDetail(null)} aria-label="Fechar"><X /></button></div>
             <div className="body">
@@ -631,12 +667,13 @@ export default function Vendas() {
               {d.status !== "Cancelada" && d.status !== "Concluída" && <button className="op-btn dan" onClick={() => setCancelSale(d)}>Cancelar venda</button>}
             </div>
           </aside>
-        </div>
+        </Layer>
         )
       })()}
 
+      {cadastro && <ClienteForm initial={cadastro.initial} existing={cadastro.existing} tutores={data.tutores} unitCity={activeUnit.city || ""} onClose={() => setCadastro(null)} onSave={saveCadastro} />}
       {cancelSale && (
-        <div className="op-modal-layer" onMouseDown={() => setCancelSale(null)}>
+        <Layer className="op-modal-layer" onMouseDown={() => setCancelSale(null)}>
           <div className="op-modal" onMouseDown={(e) => e.stopPropagation()}>
             <div className="op-ch"><h2>Cancelar {cancelSale.name}</h2></div>
             <div className="op-cb">
@@ -645,11 +682,11 @@ export default function Vendas() {
             </div>
             <div className="foot"><button className="op-btn" onClick={() => setCancelSale(null)}>Voltar</button><button className="op-btn pri" style={{ background: "var(--red)", borderColor: "var(--red)" }} onClick={doCancel}>Cancelar venda</button></div>
           </div>
-        </div>
+        </Layer>
       )}
 
       {askApproval && (
-        <div className="op-modal-layer" onMouseDown={() => setAskApproval(false)}>
+        <Layer className="op-modal-layer" onMouseDown={() => setAskApproval(false)}>
           <div className="op-modal" onMouseDown={(e) => e.stopPropagation()}>
             <div className="op-ch"><h2>Liberação de desconto</h2></div>
             <div className="op-cb">
@@ -658,11 +695,11 @@ export default function Vendas() {
             </div>
             <div className="foot"><button className="op-btn" onClick={() => setAskApproval(false)}>Voltar</button><button className="op-btn pri" onClick={() => { setApproved(true); setAskApproval(false) }}>Liberar desconto</button></div>
           </div>
-        </div>
+        </Layer>
       )}
 
       {sent && (
-        <div className="op-modal-layer">
+        <Layer className="op-modal-layer">
           <div className="op-modal">
             <div className="op-cb" style={{ alignItems: "center", textAlign: "center", padding: "26px 22px" }}>
               <span className="op-av" style={{ width: 52, height: 52, background: "var(--green-soft)", color: "var(--green)" }}><Send size={22} /></span>
@@ -676,9 +713,9 @@ export default function Vendas() {
               <button className="op-btn pri" autoFocus onClick={() => setSent(null)}>Nova venda <kbd>Enter</kbd></button>
             </div>
           </div>
-        </div>
+        </Layer>
       )}
-      {toast && <div className="op-toast"><Check /> {toast}</div>}
+      {toast && <Layer className="op-toast"><Check /> {toast}</Layer>}
       </div>
     </Page>
   )
