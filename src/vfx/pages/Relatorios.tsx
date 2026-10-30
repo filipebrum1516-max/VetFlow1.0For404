@@ -71,14 +71,9 @@ export default function Relatorios() {
   const despesa = data.financeiro.filter((item) => item.category === "Despesa" && itemDate(item) >= start30).reduce((sum, item) => sum + (item.amountValue || 0), 0)
   const consultas = data.consultas.filter((item) => itemDate(item) >= start30)
   const faltas = consultas.filter((item) => /falt|cancel/i.test(item.status)).length
-  const finEnd = data.financeiro.map((item) => itemDate(item)).filter((date) => date && date <= new Date().toISOString().slice(0, 10)).sort().pop() || end
-  const finStart = (() => { const d = new Date(`${finEnd}T12:00:00`); d.setDate(d.getDate() - 30); return d.toISOString().slice(0, 10) })()
-  const inFin30 = (item: { date?: string; createdAt: string }) => { const d = itemDate(item as never); return d > finStart && d <= finEnd }
-  const receita30 = data.financeiro.filter((item) => item.category !== "Despesa" && inFin30(item)).reduce((sum, item) => sum + (item.amountValue || 0), 0)
-  const despesa30 = data.financeiro.filter((item) => item.category === "Despesa" && inFin30(item)).reduce((sum, item) => sum + (item.amountValue || 0), 0)
   const kpis: [string, string, string][] = [
-    ["Receita · 30 dias", brl(receita30), `${brl(despesa30)} em despesas`],
-    ["Resultado · 30 dias", brl(receita30 - despesa30), receita30 ? `${Math.round(((receita30 - despesa30) / receita30) * 100)}% de margem` : "—"],
+    ["Receita · 30 dias", brl(receita), `${brl(despesa)} em despesas`],
+    ["Resultado · 30 dias", brl(receita - despesa), receita ? `${Math.round(((receita - despesa) / receita) * 100)}% de margem` : "—"],
     ["Atendimentos · 30 dias", String(consultas.length), `${faltas} faltas ou cancelamentos`],
     ["Vacinas em atraso", String(data.vacinas.filter((item) => /atras/i.test(item.status)).length), "tutores a contatar"],
     ["Estoque abaixo do mínimo", String(data.estoque.filter((item) => (item.quantity || 0) <= (item.minimum || 0)).length), "itens para repor"],

@@ -223,7 +223,7 @@ export default function Landing() {
 
       <section className="lp-strip">
         <div className="lp-wrap lp-strip-in">
-          {[["25+", "módulos integrados"], ["30+", "unidades em uma só conta"], ["24 h", "acesso de qualquer lugar"], ["100%", "na nuvem"]].map(([value, label]) => (
+          {[["25+", "módulos integrados"], ["20+", "unidades em uma só conta"], ["24 h", "acesso de qualquer lugar"], ["100%", "na nuvem"]].map(([value, label]) => (
             <div key={label}><strong>{value}</strong><span>{label}</span></div>
           ))}
         </div>

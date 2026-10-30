@@ -1002,3 +1002,18 @@ textarea.vx-in { height: auto; min-height: 84px; padding: 10px 12px; line-height
 .vx-ctrl.end { background: #d93025 !important; color: #fff !important; min-width: 88px; }
 .vx-ctrl.end small { color: #fff; }
 @media (max-width: 640px) { .vx-ctrl { min-width: 52px; height: 50px !important; } .vx-ctrl small { display: none; } .vx-tele-face { width: 84px; height: 84px; font-size: 30px; } }
+/* logo do VetFlow no topo, antes do título da página */
+.bc-brand { gap: 10px !important; }
+.bc-logo { display: inline-flex; align-items: center; gap: 6px; padding: 0; border: 0; background: none; cursor: pointer; }
+.bc-cat { height: 24px; width: auto; display: block; }
+.bc-word { height: 17px; width: auto; display: block; }
+.bc-word-dark { display: none; }
+[data-theme="dark"] .bc-word-light { display: none; }
+[data-theme="dark"] .bc-word-dark { display: block; }
+.bc-brand strong { font-size: 14px; }
+@media (max-width: 900px) {
+  .vx-header .breadcrumb.bc-brand { display: flex !important; }
+  .bc-brand .bc-word, .bc-brand > svg { display: none !important; }
+  .bc-brand strong { font-size: 13px; }
+}
+@media (max-width: 520px) { .bc-brand strong { display: none; } }

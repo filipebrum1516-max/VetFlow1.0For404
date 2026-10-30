@@ -60,6 +60,9 @@ import {
   Settings2,
   ShieldCheck,
   ShoppingBag,
+  ShoppingCart,
+  Truck,
+  Wallet,
   Stethoscope,
   Sun,
   Syringe,
@@ -112,6 +115,9 @@ const VxProcedimentos = lazy(() => import("./vfx/pages/Procedimentos"))
 const VxCirurgias = lazy(() => import("./vfx/pages/Cirurgias"))
 const VxInternacoes = lazy(() => import("./vfx/pages/Internacoes"))
 const VxProtocolos = lazy(() => import("./vfx/pages/Protocolos"))
+const VxVendas = lazy(() => import("./vfx/pages/Vendas"))
+const VxCaixa = lazy(() => import("./vfx/pages/Caixa"))
+const VxEntregas = lazy(() => import("./vfx/pages/Entregas"))
 const VxServicos = lazy(() => import("./vfx/pages/Servicos"))
 const VxEstoque = lazy(() => import("./vfx/pages/Estoque"))
 const VxFinanceiro = lazy(() => import("./vfx/pages/Financeiro"))
@@ -155,6 +161,9 @@ const moduleIcons: Record<ModuleSlug, LucideIcon> = {
   internacoes: Building2,
   protocolos: BookOpen,
   servicos: ShoppingBag,
+  vendas: ShoppingCart,
+  caixa: Wallet,
+  entregas: Truck,
   estoque: Boxes,
   financeiro: CircleDollarSign,
   convenios: ShieldCheck,
@@ -169,6 +178,7 @@ const moduleIcons: Record<ModuleSlug, LucideIcon> = {
 }
 
 const navGroups: [string, ModuleSlug[]][] = [
+  ["Vendas", ["vendas", "caixa", "entregas"]],
   [
     "Clínica",
     [
@@ -410,6 +420,8 @@ function Sidebar({
   const openAgendaCount = data.agendas.filter(
     (item) => item.status !== "Concluído",
   ).length
+  const saleQueueCount = (data.vendas || []).filter((item) => item.status === "Aguardando pagamento").length
+  const deliveryCount = (data.vendas || []).filter((item) => item.extra?.entrega && /separar|pronta|rota|não entregue/i.test(item.extra.entrega.status)).length
   return (
     <aside
       className={`sidebar ${collapsed ? "sidebar-collapsed" : ""} ${
@@ -480,6 +492,12 @@ function Sidebar({
                   <span>{label}</span>
                   {!collapsed && slug === "agendas" && openAgendaCount > 0 && (
                     <b>{Math.min(openAgendaCount, 99)}</b>
+                  )}
+                  {!collapsed && slug === "caixa" && saleQueueCount > 0 && (
+                    <b>{Math.min(saleQueueCount, 99)}</b>
+                  )}
+                  {!collapsed && slug === "entregas" && deliveryCount > 0 && (
+                    <b>{Math.min(deliveryCount, 99)}</b>
                   )}
                 </button>
               )
@@ -691,9 +709,12 @@ function Header({ openMobile }: { openMobile: () => void }) {
         >
           <Menu size={21} />
         </IconButton>
-        <div className="breadcrumb">
-          <Home size={14} />
-          <span>VetFlow</span>
+        <div className="breadcrumb bc-brand">
+          <button className="bc-logo" onClick={() => navigate("/")} aria-label="VetFlow, ir para o Dashboard">
+            <img src="/assets/vetflow-cat-mark.png" alt="" className="bc-cat" />
+            <img src="/assets/vetflow-wordmark-dark.png" alt="VetFlow" className="bc-word bc-word-light" />
+            <img src="/assets/vetflow-wordmark-light.png" alt="VetFlow" className="bc-word bc-word-dark" />
+          </button>
           <ChevronRight size={13} />
           <strong>{title}</strong>
         </div>
@@ -2495,6 +2516,9 @@ const router = createBrowserRouter([
       { path: "animais", element: <AnimalsModule /> },
       { path: "prontuarios", element: <ProntuariosModule /> },
       { path: "agendas", element: <AgendaModule /> },
+      { path: "vendas", element: <VxVendas /> },
+      { path: "caixa", element: <VxCaixa /> },
+      { path: "entregas", element: <VxEntregas /> },
       { path: "consultas", element: <VxConsultas /> },
       { path: "profissionais", element: <VxProfissionais /> },
       { path: "vacinas", element: <VxVacinas /> },

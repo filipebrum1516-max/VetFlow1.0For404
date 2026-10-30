@@ -114,20 +114,20 @@ export function matches(item: Item, query: string) {
 export function tone(status = "") {
   const value = normalize(status)
   if (
-    /(atras|vencid|urgent|critic|cancel|bloque|falt|suspens|glos|abaixo|faleci|inadimpl)/.test(
+    /(atras|vencid|urgent|critic|cancel|bloque|falt|suspens|glos|abaixo|faleci|inadimpl|recusad)/.test(
       value,
     )
   )
     return "red"
   if (
-    /(pend|aguard|a vencer|vencendo|analise|rascunho|aberta|pre-op|triagem|observ|renova|convite|agendad|solicitad|a receber|chegou)/.test(
+    /(pend|aguard|a vencer|vencendo|analise|rascunho|aberta|pre-op|triagem|observ|renova|convite|agendad|solicitad|a receber|chegou|parcial|aberto)/.test(
       value,
     )
   )
     return "orange"
   if (/(andamento|atendimento|em uso|ativa$|plantao|internado|em tratamento)/.test(value))
     return "blue"
-  if (/(conclu|aplicad|assinad|resolvid|recebid|pago|publicad|alta|aprovad|ativo|ativa|confirmad|disponivel|enviad|lida|respondid|atualizado|gerado)/.test(value))
+  if (/(conclu|^paga$|convertid|aplicad|assinad|resolvid|recebid|pago|publicad|alta|aprovad|ativo|ativa|confirmad|disponivel|enviad|lida|respondid|atualizado|gerado)/.test(value))
     return "green"
   return "gray"
 }

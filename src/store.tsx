@@ -112,6 +112,9 @@ export const modules = [
   ["internacoes", "Internações"],
   ["protocolos", "Protocolos"],
   ["servicos", "Serviços"],
+  ["vendas", "Vendas"],
+  ["caixa", "Caixa"],
+  ["entregas", "Entregas"],
   ["estoque", "Estoque"],
   ["financeiro", "Financeiro"],
   ["convenios", "Convênios"],
@@ -946,6 +949,180 @@ function generateUnit(unit: Unit, unitIndex: number): UnitData {
     },
   )
 
+  const sellers = professionalItems.slice(0, 5).map((item) => item.name).concat(["Recepção"])
+  const payForms = ["Pix", "Crédito", "Débito", "Dinheiro", "Pix", "Crédito", "Duplicata", "Dinheiro"]
+  const productPool = stock.filter((item) => item.category !== "Materiais").slice(0, 40)
+  const vendasSeed: Item[] = []
+  for (let index = 0; index < Math.round(260 * scale) + 40; index += 1) {
+    const animal = animals[(index * 13 + unitIndex) % animals.length]
+    const day = new Date(TODAY.getTime() - Math.floor(random() * 62) * DAY)
+    const count = 1 + Math.floor(random() * 3)
+    const itens = Array.from({ length: count }, (_, k) => {
+      const useService = (index + k) % 3 !== 0
+      if (useService) {
+        const [name, price] = services[(index * 7 + k * 3) % services.length] as unknown as [string, number]
+        return { tipo: "Serviço", ref: name, descricao: name, qtd: 1, preco: price, desconto: 0 }
+      }
+      const prod = productPool[(index * 5 + k) % productPool.length]
+      const price = Math.round((12 + ((index + k) % 12) * 11) * 1.8)
+      return { tipo: "Produto", ref: prod?.id, descricao: prod?.name || "Produto", qtd: 1 + ((index + k) % 2), preco: price, desconto: 0 }
+    })
+    const subtotal = itens.reduce((sum, it) => sum + it.qtd * it.preco, 0)
+    const desconto = index % 6 === 0 ? Math.round(subtotal * 0.05) : 0
+    const total = subtotal - desconto
+    const roll = random()
+    const status = roll < 0.06 ? "Cancelada" : roll < 0.13 ? "A receber" : roll < 0.18 ? "Parcialmente paga" : "Paga"
+    const forma = payForms[index % payForms.length]
+    const pago = status === "Paga" ? total : status === "Parcialmente paga" ? Math.round(total * 0.5) : 0
+    const parcelas = forma === "Crédito" ? 1 + (index % 4) : 1
+    vendasSeed.push(baseItem(unit.id, "vendas", index, day, {
+      name: `VND-${String(1200 - index).padStart(6, "0")}`,
+      subtitle: `${animal.owner} • ${animal.name}`,
+      kind: "Venda",
+      status,
+      owner: animal.owner,
+      ownerId: animal.ownerId,
+      animal: animal.name,
+      animalId: animal.id,
+      professional: sellers[index % sellers.length],
+      time: `${String(8 + (index % 11)).padStart(2, "0")}:${String((index * 7) % 60).padStart(2, "0")}`,
+      amountValue: total,
+      amount: money(total),
+      extra: {
+        itens,
+        subtotal,
+        desconto,
+        pago,
+        origem: index % 4 === 0 ? "Atendimento" : index % 9 === 0 ? "Orçamento" : "PDV",
+        pagamentos: pago ? [{ forma: status === "Parcialmente paga" ? "Dinheiro" : forma, valor: pago, parcelas }] : [],
+      },
+    }))
+  }
+  for (let index = 0; index < 18; index += 1) {
+    const animal = animals[(index * 29 + 3) % animals.length]
+    const day = new Date(TODAY.getTime() - (index * 2 + 1) * DAY)
+    const itens = [0, 1].map((k) => {
+      const [name, price] = services[(index * 5 + k * 4) % services.length] as unknown as [string, number]
+      return { tipo: "Serviço", ref: name, descricao: name, qtd: 1, preco: price, desconto: 0 }
+    })
+    const total = itens.reduce((sum, it) => sum + it.preco, 0)
+    const validade = dateValue(new Date(day.getTime() + 7 * DAY))
+    vendasSeed.push(baseItem(unit.id, "vendas", 2000 + index, day, {
+      name: `ORC-${String(80 - index).padStart(6, "0")}`,
+      subtitle: `${animal.owner} • ${animal.name}`,
+      kind: "Orçamento",
+      status: ["Aberto", "Enviado", "Aprovado", "Recusado", "Convertido"][index % 5] === "Aberto" && validade < dateValue(TODAY) ? "Vencido" : ["Aberto", "Enviado", "Aprovado", "Recusado", "Convertido"][index % 5],
+      owner: animal.owner,
+      ownerId: animal.ownerId,
+      animal: animal.name,
+      animalId: animal.id,
+      professional: sellers[index % sellers.length],
+      dueDate: validade,
+      amountValue: total,
+      amount: money(total),
+      extra: { itens, subtotal: total, desconto: 0 },
+    }))
+  }
+
+  /* fluxo balcão → caixa → entrega: numeração por data e vendas recentes */
+  {
+    const bairros = ["Centro", "Jardim América", "Setor 2", "Nova Esperança", "Vila Rica", "Bela Vista", "Parque dos Ipês"]
+    const ruas = ["Rua Rio Branco", "Avenida Brasil", "Rua das Flores", "Rua Tiradentes", "Avenida JK", "Rua Sete de Setembro", "Rua Dom Pedro II"]
+    const entregadores = ["Marcos Lima", "Diego Souza", "Paulo Henrique"]
+    const salesOnly = vendasSeed.filter((item) => item.kind === "Venda").sort((a, b) => `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`))
+    salesOnly.forEach((sale, index) => { sale.name = `VND-${String(1001 + index).padStart(6, "0")}` })
+    const caixaId = `${unit.id}-vendas-cx-seed`
+    const recent = salesOnly.slice(-48).reverse()
+    recent.forEach((sale, i) => {
+      const tutor = tutors.find((item) => item.id === sale.ownerId)
+      const tipo = i % 3 === 0 ? "Entrega" : i % 7 === 3 ? "Retirada" : "Balcão"
+      const when = new Date(Date.now() - (i * 23 + 4) * 60_000)
+      sale.date = dateValue(when)
+      sale.time = `${String(when.getHours()).padStart(2, "0")}:${String(when.getMinutes()).padStart(2, "0")}`
+      const extra = sale.extra || {}
+      if (i % 3 === 1) sale.professional = "Dr. Rafael"
+      extra.tipo = tipo
+      extra.historico = [`${sale.time} · Venda criada por ${sale.professional}`]
+      const total = sale.amountValue || 0
+      if (i < 7) {
+        sale.status = "Aguardando pagamento"
+        extra.pago = 0
+        extra.pagamentos = []
+        extra.formaSugerida = ["Pix", "Dinheiro", "Crédito", "Duplicata", "Débito", "Fiado", "Pix"][i]
+        extra.enviadaAs = sale.time
+        extra.finalizadaEm = when.getTime()
+      } else if (sale.status !== "Cancelada") {
+        sale.status = "Paga"
+        extra.pago = total
+        extra.caixaId = i < 30 ? caixaId : undefined
+        if (extra.caixaId) { extra.recebidoPor = "Dr. Rafael"; extra.recebidoAs = sale.time }
+        if (!extra.pagamentos?.length) extra.pagamentos = [{ forma: "Pix", valor: total, parcelas: 1 }]
+      }
+      if (tipo === "Entrega") {
+        const k = Math.floor(i / 3)
+        const cobrar = i >= 7 && k % 4 === 1
+        const status = i < 7 ? "Aguardando liberação" : ["A separar", "Pronta para sair", "Em rota", "Em rota", "Entregue", "Não entregue", "Concluída", "Concluída", "Pronta para sair", "Concluída", "Entregue", "A separar", "Concluída", "Concluída", "Concluída", "Concluída"][k % 16]
+        if (cobrar) {
+          sale.status = "Em entrega"
+          extra.pago = 0
+          extra.pagamentos = []
+        }
+        if (sale.status === "Paga" && /rota|entregue|concluída/i.test(status)) sale.status = status === "Concluída" ? "Concluída" : "Em entrega"
+        const addr = tutor?.address?.split(" • ")[0] || `${ruas[k % ruas.length]}, ${120 + k * 7}`
+        const [rua, numero] = addr.split(", ")
+        extra.entrega = {
+          status,
+          entregador: /aguardando|separar/i.test(status) ? "" : entregadores[k % entregadores.length],
+          ordem: (k % 5) + 1,
+          cep: `76${String(926 + (k % 7)).padStart(3, "0")}-${String(100 + k * 37).slice(-3)}`,
+          rua: rua || ruas[k % ruas.length],
+          numero: numero || String(100 + k),
+          complemento: k % 4 === 0 ? "Casa 2" : "",
+          bairro: bairros[k % bairros.length],
+          cidade: unit.city,
+          uf: "RO",
+          referencia: ["Próximo à praça", "Portão azul", "Em frente à escola", "Ao lado do mercado", ""][k % 5],
+          telefone: tutor?.phone || "(69) 99999-0000",
+          data: sale.date,
+          periodo: k % 2 === 0 ? "Manhã" : "Tarde",
+          taxa: [8, 10, 12, 15][k % 4],
+          aCobrar: cobrar ? total : 0,
+          obs: k % 3 === 0 ? "Deixar na portaria se não houver ninguém" : "",
+          recebidoPor: /entregue|concluída/i.test(status) ? tutor?.name?.split(" ")[0] || "Cliente" : "",
+          motivo: status === "Não entregue" ? "Cliente ausente" : "",
+          historico: [`${sale.time} · Entrega criada`],
+        }
+      }
+      sale.extra = extra
+    })
+    ;[1, 2, 3].forEach((d) => {
+      const dif = [0, -12.5, 4][d - 1]
+      const total = [5840.3, 6215.9, 4987.4][d - 1]
+      vendasSeed.push(baseItem(unit.id, "vendas", 3000 + d, new Date(Date.now() - d * DAY), {
+        id: `${caixaId}-${d}`,
+        name: `CX-000${4 - d}`,
+        subtitle: "Operador",
+        kind: "Caixa",
+        status: "Fechado",
+        professional: d === 2 ? "Recepção" : "Dr. Rafael",
+        time: "07:5" + d,
+        amountValue: 200,
+        extra: { movs: [], fechamento: `${dateValue(new Date(Date.now() - d * DAY))} 18:0${d}`, total, diferenca: dif, esperado: 1200 + d * 90, informado: 1200 + d * 90 + dif, vendas: 18 + d * 3 },
+      }))
+    })
+    vendasSeed.push(baseItem(unit.id, "vendas", 3000, new Date(), {
+      id: caixaId,
+      name: "CX-0004",
+      subtitle: "Operador Dr. Rafael",
+      kind: "Caixa",
+      status: "Aberto",
+      professional: "Dr. Rafael",
+      time: "07:58",
+      amountValue: 200,
+      extra: { movs: [{ tipo: "Sangria", valor: 300, motivo: "Depósito no banco", hora: "12:10", por: "Dr. Rafael" }, { tipo: "Suprimento", valor: 50, motivo: "Troco em moedas", hora: "13:02", por: "Dr. Rafael" }] },
+    }))
+  }
+
   const generic = (
     slug: ModuleSlug,
     count: number,
@@ -1043,6 +1220,9 @@ function generateUnit(unit: Unit, unitIndex: number): UnitData {
         amount: money(price),
       }),
     ),
+    vendas: vendasSeed,
+    caixa: [],
+    entregas: [],
     estoque: stock,
     financeiro: [...financeRevenue, ...expenses].sort((a, b) =>
       b.date!.localeCompare(a.date!),
