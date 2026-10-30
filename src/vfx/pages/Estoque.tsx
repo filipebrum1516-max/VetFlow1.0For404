@@ -5,9 +5,12 @@ import { useVetFlow, type Item } from "../../store"
 import { usePageForms } from "../hooks"
 import { addDays, brl, fmtDate, matches, Page, SearchBox, Seg, todayISO, useQueryParam } from "../ui"
 
-const aisleOf = (item: Item) => item.extra?.corredor || (item.category === "Vacinas" ? "A" : item.category === "Medicamentos" ? "B" : "C")
-const aisleName: Record<string, string> = { A: "Vacinas", B: "Medicamentos", C: "Materiais", D: "Outros" }
-const low = (item: Item) => (item.quantity || 0) < (item.minimum || 0)
+const CORREDORES: [string, string][] = [["A", "Vacinas"], ["B", "Medicamentos"], ["C", "Materiais"], ["D", "Rações"], ["E", "Petiscos"], ["F", "Coleiras e guias"], ["G", "Higiene"], ["H", "Brinquedos"], ["I", "Camas"], ["J", "Acessórios"]]
+const aisleName: Record<string, string> = Object.fromEntries([...CORREDORES, ["Z", "Outros"]])
+const aisleByCat: Record<string, string> = Object.fromEntries(CORREDORES.map(([k, v]) => [v, k]))
+const aisleOf = (item: Item) => String(item.extra?.corredor || aisleByCat[item.category || ""] || "Z")
+const out = (item: Item) => (item.quantity || 0) <= 0
+const low = (item: Item) => !out(item) && (item.quantity || 0) < (item.minimum || 0)
 const expiring = (item: Item) => !!item.dueDate && item.dueDate <= addDays(todayISO(), 60)
 const unitCost = (item: Item) => (item.quantity ? (item.amountValue || 0) / item.quantity : 12)
 
@@ -16,17 +19,23 @@ export default function Estoque() {
   const navigate = useNavigate()
   const forms = usePageForms("estoque")
   const param = useQueryParam("filtro")
-  const [filter, setFilter] = useState(param === "Acabando" ? "Acabando" : param === "Vencendo" ? "Vencendo" : "Todos")
+  const [filter, setFilter] = useState(param === "Acabando" ? "Acabando" : param === "Vencendo" ? "Vencendo" : param === "Esgotado" ? "Esgotado" : "Todos")
+  const [aisleFilter, setAisleFilter] = useState("")
   const [query, setQuery] = useState("")
   const [pages, setPages] = useState<Record<string, number>>({})
   const [unchecked, setUnchecked] = useState<string[]>([])
-  const items = data.estoque.filter((item) => matches(item, query) && (filter === "Todos" || (filter === "Acabando" ? low(item) : expiring(item))))
+  const items = data.estoque.filter((item) => matches(item, query) && (!aisleFilter || aisleOf(item) === aisleFilter) && (filter === "Todos" || (filter === "Acabando" ? low(item) : filter === "Esgotado" ? out(item) : expiring(item))))
+  const aisleCounts = useMemo(() => {
+    const m: Record<string, number> = {}
+    data.estoque.forEach((item) => { m[aisleOf(item)] = (m[aisleOf(item)] || 0) + 1 })
+    return m
+  }, [data.estoque])
   const aisles = useMemo(() => {
     const map = new Map<string, Item[]>()
     items.forEach((item) => map.set(aisleOf(item), [...(map.get(aisleOf(item)) || []), item]))
     return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]))
   }, [items])
-  const reorder = data.estoque.filter(low).filter((item) => !item.extra?.pedidoEm).slice(0, 10)
+  const reorder = data.estoque.filter((item) => low(item) || out(item)).filter((item) => !item.extra?.pedidoEm).slice(0, 10)
   const chosen = reorder.filter((item) => !unchecked.includes(item.id))
   const suggested = (item: Item) => Math.max(1, (item.minimum || 0) * 3 - (item.quantity || 0))
   const estimate = chosen.reduce((sum, item) => sum + suggested(item) * unitCost(item), 0)
@@ -45,11 +54,11 @@ export default function Estoque() {
       blobs={[["#e6cfa3", 120, 260, 600, 480], ["#ffd39a", "70%", -100, 360, 360], ["#b8dceb", "88%", "75%", 320, 320]]}
       crumb="Estoque"
       title="Almoxarifado"
-      sub="Corredores e caixas como no depósito. A régua lateral mostra quanto resta; a fita amarela, o que está acabando."
+      sub="Corredores e caixas como no depósito: farmácia veterinária e pet shop. A régua lateral mostra quanto resta; a fita amarela, o que está acabando; a vermelha, o que esgotou."
       actions={
         <>
           <SearchBox value={query} onChange={setQuery} placeholder="Buscar item ou lote" />
-          <Seg options={[["Todos", "Todos"], ["Acabando", `Acabando ${data.estoque.filter(low).length}`], ["Vencendo", `Vencendo ${data.estoque.filter(expiring).length}`]]} value={filter} onChange={setFilter} />
+          <Seg options={[["Todos", "Todos"], ["Acabando", `Acabando ${data.estoque.filter(low).length}`], ["Esgotado", `Esgotado ${data.estoque.filter(out).length}`], ["Vencendo", `Vencendo ${data.estoque.filter(expiring).length}`]]} value={filter} onChange={setFilter} />
           <button className="vx-btn vx-btn-g" onClick={() => forms.open("estoque")}>
             <Plus /> Nova caixa
           </button>
@@ -59,6 +68,12 @@ export default function Estoque() {
         </>
       }
     >
+      <div className="vx-aisle-chips">
+        <button className={!aisleFilter ? "on" : ""} onClick={() => setAisleFilter("")}>Todos os corredores <b>{data.estoque.length}</b></button>
+        {[...CORREDORES, ["Z", "Outros"] as [string, string]].filter(([k]) => aisleCounts[k]).map(([k, v]) => (
+          <button key={k} className={aisleFilter === k ? "on" : ""} onClick={() => setAisleFilter(aisleFilter === k ? "" : k)}><i>{k}</i>{v} <b>{aisleCounts[k]}</b></button>
+        ))}
+      </div>
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 290px", gap: 22, alignItems: "start" }} className="vx-stk-grid">
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           {aisles.map(([aisle, list]) => {
@@ -81,20 +96,22 @@ export default function Estoque() {
                     {visible.map((item) => {
                       const fill = Math.max(0.04, Math.min(1, (item.quantity || 0) / Math.max(1, (item.minimum || 1) * 3)))
                       return (
-                        <button key={item.id} className="vx-box" onClick={() => navigate(`/estoque/${item.id}`)} aria-label={`${item.name}: ${item.quantity} unidades`}>
+                        <button key={item.id} className={`vx-box${out(item) ? " is-out" : ""}`} onClick={() => navigate(`/estoque/${item.id}`)} aria-label={`${item.name}: ${item.quantity} unidades`}>
                           <span className="lid" />
                           <span style={{ flex: 1, padding: "30px 10px 10px 12px", display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
                             <span className="label">
                               <span style={{ display: "block", fontFamily: "JetBrains Mono, monospace", fontSize: 9, fontWeight: 800, color: "#5b6474" }}>{aisle}-{item.id.split("-").pop()?.padStart(3, "0")}</span>
-                              <span style={{ display: "block", fontSize: 12, fontWeight: 800, lineHeight: 1.15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</span>
+                              <span style={{ display: "block", fontSize: 12, fontWeight: 800, lineHeight: 1.15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={item.name}>{item.name}</span>
+                              {item.extra?.preco ? <span style={{ display: "block", fontSize: 10, fontWeight: 700, color: "#2b7a4b" }}>{brl(Number(item.extra.preco))}</span> : null}
                             </span>
                             <span style={{ marginTop: "auto", fontSize: 12, fontWeight: 700 }}><span className="vx-num" style={{ fontSize: 22 }}>{item.quantity ?? 0}</span> un.</span>
                             <span style={{ fontSize: 10, fontWeight: 700, color: expiring(item) ? "#b4322a" : "inherit" }}>{item.dueDate ? `val. ${fmtDate(item.dueDate, { month: "2-digit", year: "numeric" })}` : "sem validade"}</span>
                           </span>
                           <span style={{ width: 12, margin: "30px 8px 10px 0", borderRadius: 6, background: "rgba(255,255,255,.55)", position: "relative", overflow: "hidden" }}>
-                            <span style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: `${fill * 100}%`, background: low(item) ? "#b4322a" : fill < 0.45 ? "#c98a1b" : "#2b7a4b", borderRadius: 6 }} />
+                            <span style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: `${fill * 100}%`, background: out(item) || low(item) ? "#b4322a" : fill < 0.45 ? "#c98a1b" : "#2b7a4b", borderRadius: 6 }} />
                           </span>
                           {low(item) && <span className="vx-tape"><span>ACABANDO</span></span>}
+                          {out(item) && <span className="vx-tape vx-tape-out"><span>ESGOTADO</span></span>}
                         </button>
                       )
                     })}

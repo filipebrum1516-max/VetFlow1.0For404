@@ -1017,3 +1017,15 @@ textarea.vx-in { height: auto; min-height: 84px; padding: 10px 12px; line-height
   .bc-brand strong { font-size: 13px; }
 }
 @media (max-width: 520px) { .bc-brand strong { display: none; } }
+.vx-tape.vx-tape-out { background: repeating-linear-gradient(45deg, #b4322a 0 12px, #1a2233 12px 24px); }
+.vx-tape.vx-tape-out span { background: #b4322a; color: #fff; }
+.vx-box.is-out > span:not(.vx-tape):not(.lid) { opacity: .62; filter: grayscale(.5); }
+.vx-aisle-chips { display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 14px; margin-bottom: 4px; scrollbar-width: thin; }
+.vx-aisle-chips button { flex: none; display: inline-flex; align-items: center; gap: 7px; border: 1px solid rgba(26,34,51,.1); background: rgba(255,255,255,.7); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); border-radius: 999px; padding: 7px 12px; font: 700 12.5px Inter, sans-serif; color: #1a2233; cursor: pointer; transition: transform .15s, background .15s; }
+.vx-aisle-chips button:hover { transform: translateY(-1px); }
+.vx-aisle-chips button i { font-style: normal; width: 20px; height: 20px; border-radius: 6px; display: grid; place-items: center; background: #1a2233; color: #f6c744; font-size: 11px; }
+.vx-aisle-chips button b { color: #7a8190; font-weight: 700; }
+.vx-aisle-chips button.on { background: #1a2233; color: #fff; border-color: #1a2233; }
+.vx-aisle-chips button.on i { background: #f6c744; color: #1a2233; }
+.vx-aisle-chips button.on b { color: #c7cfdb; }
+[data-theme="dark"] .vx-aisle-chips button { background: rgba(22,28,38,.75); color: #eef2f7; border-color: #263041; }

@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate } from "react-router"
-import { AlertTriangle, ArrowDownToLine, ArrowUpFromLine, Banknote, Check, Clock, History, ListOrdered, Lock, Pencil, Printer, RotateCcw, ScanBarcode, Truck, Undo2, Unlock, Wallet, X } from "lucide-react"
+import { AlertTriangle, ArrowDownToLine, ArrowUpFromLine, Banknote, Check, Clock, History, ListOrdered, Lock, Package, Pencil, Printer, RotateCcw, ScanBarcode, Truck, Undo2, Unlock, Wallet, X } from "lucide-react"
 import { useVetFlow, type Item } from "../../store"
 import { brl, fmtDate, itemDate, parseMoney, todayISO, Page } from "../ui"
-import { A_PRAZO, addMonths, FORMAS, PARCELADAS, LIMITE_FIADO, lineTotal, minutesSince, nowTime, printHtml, stamp, type Entrega, type Line, type Pay } from "../vendasShared"
+import { A_PRAZO, planoInfo, addMonths, FORMAS, PARCELADAS, LIMITE_FIADO, lineTotal, minutesSince, nowTime, printHtml, stamp, type Entrega, type Line, type Pay } from "../vendasShared"
 import { PrintBar } from "../PrintMenu"
 import "../ops.css"
 import Layer from "../OpLayer"
@@ -54,7 +54,7 @@ export default function Caixa() {
 
   const select = (s: Item) => {
     if (s.extra?.emEdicao) { showToast(`${s.name} está sendo editada por ${s.extra.emEdicao}. Aguarde.`); return }
-    setSelId(s.id); setPays([]); setValor(""); setParcelas(1)
+    setSelId(s.id); setPays([]); setValor(""); setParcelas(Math.max(1, planoInfo(s.extra?.plano).total))
     setForma(FORMAS.includes(s.extra?.formaSugerida) ? s.extra.formaSugerida : "Dinheiro")
     setSeen((x) => new Set([...x, s.id]))
     window.setTimeout(() => valorRef.current?.focus(), 0)
@@ -101,7 +101,7 @@ export default function Caixa() {
       const st = data.estoque.find((x) => x.id === l.ref)
       if (st && l.tipo === "Produto") {
         const quantity = Math.max(0, (st.quantity || 0) - l.qtd)
-        updateItem("estoque", st.id, { quantity, subtitle: `${quantity} un. • mínimo ${st.minimum}`, status: quantity < (st.minimum || 0) ? "Abaixo do mínimo" : st.status })
+        updateItem("estoque", st.id, { quantity, subtitle: `${quantity} un. • mínimo ${st.minimum}`, status: quantity <= 0 ? "Esgotado" : quantity < (st.minimum || 0) ? "Abaixo do mínimo" : st.status })
       }
     }
   }
@@ -410,13 +410,21 @@ export default function Caixa() {
                 <div className="op-cb" style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: 12.5, color: "var(--muted)", paddingBottom: 6 }}>
                   <span>Vendedor <b style={{ color: "var(--ink)" }}>{sale.professional}</b></span>
                   <span>Enviada {minutesSince(itemDate(sale), sale.extra?.enviadaAs || sale.time)}</span>
-                  {sale.extra?.formaSugerida && <span>Sugerido <b style={{ color: "var(--or)" }}>{sale.extra.formaSugerida}</b></span>}
+                  {sale.extra?.formaSugerida && <span>Documento <b style={{ color: "var(--or)" }}>{sale.extra.documento || sale.extra.formaSugerida}</b></span>}
+                  {sale.extra?.plano && <span>Plano <b style={{ color: "var(--ink)" }}>{sale.extra.plano}</b></span>}
+                  {sale.extra?.interno && <span>Nº interno <b className="mono" style={{ color: "var(--ink)" }}>{sale.extra.interno}</b></span>}
                   {sale.extra?.obs && <span>Obs. <b style={{ color: "var(--ink)" }}>{sale.extra.obs}</b></span>}
                 </div>
                 <div className="op-table">
-                  <div className="op-tr op-th" style={{ gridTemplateColumns: "46px minmax(0,1fr) 90px 70px 100px" }}><span>Qtd.</span><span>Produto</span><span className="r">Unitário</span><span className="r">Desc.</span><span className="r">Total</span></div>
-                  {itens.map((l, i) => <div key={i} className="op-tr" style={{ gridTemplateColumns: "46px minmax(0,1fr) 90px 70px 100px" }}><span className="num">{l.qtd}</span><span>{l.descricao.replace(/ • lote \d+/, "")}</span><span className="r num muted">{brl(l.preco)}</span><span className="r num muted">{l.desconto ? `${l.desconto}%` : "—"}</span><b className="r num">{brl(lineTotal(l))}</b></div>)}
+                  <div className="op-tr op-th" style={{ gridTemplateColumns: "46px minmax(0,1fr) 90px 70px 100px 112px" }}><span>Qtd.</span><span>Produto</span><span className="r">Unitário</span><span className="r">Desc.</span><span className="r">Total</span><span className="r" title="Estoque agora → após receber">Estoque</span></div>
+                  {itens.map((l, i) => {
+                    const st = l.tipo === "Produto" && l.ref ? data.estoque.find((x) => x.id === l.ref) : undefined
+                    const now = st?.quantity ?? 0
+                    const after = now - l.qtd
+                    return <div key={i} className="op-tr" style={{ gridTemplateColumns: "46px minmax(0,1fr) 90px 70px 100px 112px" }}><span className="num">{l.qtd}</span><span>{l.descricao.replace(/ • lote \d+/, "")}{l.obs ? <small>Obs.: {l.obs}</small> : null}</span><span className="r num muted">{brl(l.preco)}</span><span className="r num muted">{l.desconto ? `${l.desconto}%` : "—"}</span><b className="r num">{brl(lineTotal(l))}</b><span className="r num" style={{ fontSize: 12 }}>{st ? <>{now} → <b style={{ color: after <= 0 ? "var(--red, #b4322a)" : after < (st.minimum || 0) ? "var(--amber, #c98a1b)" : "var(--green, #2b7a4b)" }}>{Math.max(0, after)}</b></> : <span className="muted">serviço</span>}</span></div>
+                  })}
                 </div>
+                {itens.some((l) => l.tipo === "Produto") && <div className="op-cb" style={{ paddingTop: 8, paddingBottom: 0 }}><div className="op-note info"><Package size={14} /> Ao concluir o recebimento, {itens.filter((l) => l.tipo === "Produto").reduce((a, l) => a + l.qtd, 0)} un. saem do estoque automaticamente.</div></div>}
                 <div className="op-cb op-sum" style={{ borderTop: "1px solid var(--line2)" }}>
                   <div><span>Subtotal</span><b>{brl(sale.extra?.subtotal || 0)}</b></div>
                   {!!sale.extra?.desconto && <div><span>Desconto</span><b>− {brl(sale.extra.desconto)}</b></div>}

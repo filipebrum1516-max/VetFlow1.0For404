@@ -3,7 +3,7 @@ import { useNavigate } from "react-router"
 import { AlertTriangle, Check, Clock, FileText, Lock, MapPin, Package, Pencil, ScanBarcode, Search, Send, ShoppingCart, Trash2, Truck, User, UserPlus, X } from "lucide-react"
 import { useVetFlow, type Item } from "../../store"
 import { brl, fmtDate, initials, itemDate, normalizeText, parseMoney, todayISO, Page } from "../ui"
-import { codeOf, editInfo, LIMITE_DESCONTO, LIMITE_FIADO, lineTotal, minutesSince, mmss, nextNumber, nowTime, priceOf, saleTone, shortCode, stamp, type Entrega, type Line } from "../vendasShared"
+import { codeOf, DOCUMENTOS, editInfo, planoInfo, PLANOS, LIMITE_DESCONTO, LIMITE_FIADO, lineTotal, minutesSince, mmss, nextNumber, nowTime, priceOf, saleTone, shortCode, stamp, type Entrega, type Line } from "../vendasShared"
 import { PrintBar } from "../PrintMenu"
 import "../ops.css"
 import Layer from "../OpLayer"
@@ -15,10 +15,16 @@ const SUGERIDAS = ["Dinheiro", "Pix", "Débito", "Crédito", "Duplicata", "Fiado
 const STATUS_LIST = ["Todas", "Aguardando pagamento", "Paga", "Em entrega", "Concluída", "Devolvida ao vendedor", "Cancelada"]
 const BLANK_ADDR = { cep: "", rua: "", numero: "", complemento: "", bairro: "", cidade: "", uf: "RO", referencia: "", telefone: "", data: "", periodo: "Manhã", taxa: "10,00", obs: "" }
 
+const REGISTROS = ["Venda", "Orçamento", "Transferência"] as const
+type Registro = (typeof REGISTROS)[number]
+const SECOES = ["Vendas", "Faturamento", "Devoluções", "Observação", "Outras informações", "Entrega"] as const
+type Secao = (typeof SECOES)[number]
+const BLANK_OUTRAS = { pedidoCliente: "", cpfNota: true, placa: "", destino: "", ref: "" }
+
 const Tag = ({ s }: { s: string }) => <span className={`op-tag ${saleTone(s)}`}>{s}</span>
 
 export default function Vendas() {
-  const { data, activeUnit, profile, addItem, updateItem } = useVetFlow()
+  const { data, activeUnit, profile, addItem, updateItem, staff, user, units } = useVetFlow()
   const navigate = useNavigate()
   const seller = profile?.displayName || "Recepção"
   const all = data.vendas || []
@@ -45,6 +51,26 @@ export default function Vendas() {
   const [sent, setSent] = useState<Item | null>(null)
   const [errors, setErrors] = useState<string[]>([])
   const numero = editing?.name || nextNumber(sales, "VND")
+
+  /* ---------------- cabeçalho estilo ERP ---------------- */
+  const [registro, setRegistro] = useState<Registro>("Venda")
+  const [sec, setSec] = useState<Secao>("Vendas")
+  const [plano, setPlano] = useState("À vista")
+  const [outras, setOutras] = useState({ ...BLANK_OUTRAS })
+  const vendedores = useMemo(() => staff.filter((u) => u.active && u.role !== "Entregador" && u.role !== "Estoque"), [staff])
+  const [vendedorId, setVendedorId] = useState(user?.id || "")
+  const [ajudanteId, setAjudanteId] = useState("")
+  const vendedorSel = staff.find((u) => u.id === vendedorId) || user || null
+  const vendName = vendedorSel?.displayName || seller
+  const vendCode = vendedorSel?.code || "—"
+  const vendRef = useRef<HTMLSelectElement>(null)
+  const ajudRef = useRef<HTMLSelectElement>(null)
+  const [svcMode, setSvcMode] = useState(false)
+  const [selLine, setSelLine] = useState<number | null>(null)
+  const [obsLine, setObsLine] = useState<number | null>(null)
+  const printRef = useRef<HTMLDivElement>(null)
+  const interno = editing?.extra?.interno || String(all.length + 1).padStart(6, "0")
+  const documentoLabel = (DOCUMENTOS.find(([, v]) => v === sugerida) || [sugerida])[0]
 
   /* reservas: itens de vendas que ainda não passaram no caixa */
   const reserved = useMemo(() => {
@@ -165,16 +191,23 @@ export default function Vendas() {
     const q = normalizeText(pq.trim())
     if (!q) return [] as Item[]
     const digits = pq.replace(/\D/g, "")
+    if (svcMode) return (data.servicos || []).filter((item) => normalizeText(item.name).includes(q)).slice(0, 8)
     return data.estoque.filter((item) => normalizeText(item.name).includes(q) || (digits.length >= 3 && (codeOf(item).includes(digits) || shortCode(item).includes(digits)))).slice(0, 8)
-  }, [pq, data.estoque])
+  }, [pq, data.estoque, data.servicos, svcMode])
+  const addService = (item: Item, qty = qtyNext) => {
+    setCart((current) => [...current, { tipo: "Serviço", ref: item.id, codigo: shortCode(item), descricao: item.name, qtd: qty, preco: item.amountValue || Number(item.extra?.preco) || 0, desconto: 0, vendedor: vendCode }])
+    setPq(""); setPIdx(0); setQtyNext(1)
+    prodRef.current?.focus()
+  }
   const addProduct = (item: Item, qty = qtyNext) => {
+    if (svcMode) return addService(item, qty)
     const disp = available(item) - (cart.find((l) => l.ref === item.id)?.qtd || 0)
     if (disp <= 0) { showToast(`${item.name} sem estoque disponível.`); return }
     const q = Math.min(qty, disp)
     setCart((current) => {
       const found = current.find((l) => l.ref === item.id)
       if (found) return current.map((l) => (l === found ? { ...l, qtd: l.qtd + q } : l))
-      return [...current, { tipo: "Produto", ref: item.id, codigo: shortCode(item), descricao: item.name, qtd: q, preco: priceOf(item), desconto: 0, lote: (item.name.match(/lote (\d+)/) || [])[1] || `L${shortCode(item)}`, validade: item.dueDate }]
+      return [...current, { tipo: "Produto", ref: item.id, codigo: shortCode(item), descricao: item.name, qtd: q, preco: priceOf(item), desconto: 0, vendedor: vendCode, lote: (item.name.match(/lote (\d+)/) || [])[1] || `L${shortCode(item)}`, validade: item.dueDate }]
     })
     if (q < qty) showToast(`Só ${q} disponível de ${item.name}.`)
     setPq(""); setPIdx(0); setQtyNext(1)
@@ -214,6 +247,7 @@ export default function Vendas() {
     if (release) releaseLock()
     setEditing(null); setTipo("Balcão"); setClientId(""); setCart([]); setDescValue(""); setSugerida("Pix"); setObs("")
     setAddr({ ...BLANK_ADDR, data: todayISO() }); setUseCadastro(true); setApproved(false); setErrors([]); setCepMsg("")
+    setRegistro("Venda"); setSec("Vendas"); setPlano("À vista"); setOutras({ ...BLANK_OUTRAS }); setAjudanteId(""); setVendedorId(user?.id || ""); setSvcMode(false); setSelLine(null); setObsLine(null)
     window.setTimeout(() => clientRef.current?.focus(), 0)
   }
 
@@ -232,7 +266,22 @@ export default function Vendas() {
     return errs.length === 0
   }
 
-  const finalize = (asQuote = false) => {
+  const finalize = (asQuoteArg = false) => {
+    const asQuote = asQuoteArg || registro === "Orçamento"
+    if (registro === "Transferência" && !asQuoteArg) {
+      const prods = cart.filter((l) => l.tipo === "Produto")
+      const errs = [!prods.length && "Adicione os produtos a transferir.", !outras.destino && "Escolha a unidade de destino em Outras informações."].filter(Boolean) as string[]
+      if (errs.length) { setErrors(errs); if (!outras.destino) setSec("Outras informações"); return }
+      for (const l of prods) {
+        const st = stockOf(l.ref)
+        if (st) { const q = Math.max(0, (st.quantity || 0) - l.qtd); updateItem("estoque", st.id, { quantity: q, subtitle: `${q} un. • mínimo ${st.minimum}`, status: q <= 0 ? "Esgotado" : q < (st.minimum || 0) ? "Abaixo do mínimo" : st.status }) }
+      }
+      const destino = units.find((u) => u.id === outras.destino)?.name || outras.destino
+      const t = addItem("vendas", { id: `${activeUnit.id}-vendas-trf-${Date.now()}`, name: nextNumber(all, "TRF"), kind: "Transferência", status: "Transferida", date: todayISO(), time: nowTime(), subtitle: `Para ${destino}`, owner: destino, professional: vendName, amountValue: subtotal, extra: { itens: cart, subtotal, interno, registro, destino, operador: seller, obs, historico: [`${stamp()} · Transferência para ${destino} por ${seller}`] } })
+      showToast(`${t.name}: ${prods.reduce((a, l) => a + l.qtd, 0)} un. transferidas para ${destino}. Estoque baixado.`)
+      reset()
+      return
+    }
     if (editing && !asQuote) {
       const cur = sales.find((x) => x.id === editing.id) || editing
       const info = editInfo(cur, seller)
@@ -252,11 +301,13 @@ export default function Vendas() {
       subtitle: client ? client.name : "Consumidor final",
       owner: client?.name || "Consumidor final",
       ownerId: client?.id,
-      professional: seller,
+      professional: vendName,
       amountValue: total,
       extra: {
         ...(editing?.extra || {}),
         itens: cart, subtotal, desconto, taxaEntrega: taxa, tipo, formaSugerida: sugerida, obs, pago: 0, pagamentos: [], entrega,
+        interno, registro: asQuote ? "Orçamento" : "Venda", plano, documento: documentoLabel, vendedorCodigo: vendCode, operador: seller,
+        ajudante: staff.find((u) => u.id === ajudanteId)?.displayName || undefined, outras,
         enviadaAs: nowTime(),
         finalizadaEm: editing?.extra?.finalizadaEm || Date.now(),
         emEdicao: undefined,
@@ -280,15 +331,46 @@ export default function Vendas() {
     reset(false)
   }
 
-  /* atalhos */
+  /* atalhos (padrão do ERP) */
+  const focusClient = () => { setClientId(""); setSec("Vendas"); window.setTimeout(() => clientRef.current?.focus(), 0) }
+  const focusProd = (svc = false) => { setSvcMode(svc); setSec("Vendas"); window.setTimeout(() => prodRef.current?.focus(), 0) }
+  const deleteLine = () => {
+    if (!cart.length) return
+    const i = selLine != null && selLine < cart.length ? selLine : cart.length - 1
+    setCart((c) => c.filter((_, k) => k !== i)); setSelLine(null)
+    showToast(`Item ${i + 1} apagado.`)
+  }
+  const obsItem = () => { if (cart.length) setObsLine(selLine != null && selLine < cart.length ? selLine : cart.length - 1) }
+  const sair = () => {
+    if (obsLine != null) return setObsLine(null)
+    if (pq) return setPq("")
+    if (cart.length && !window.confirm("Sair e descartar esta venda?")) return
+    reset()
+  }
+  const imprimir = () => { if (!cart.length) return showToast("Inclua itens para imprimir."); printRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }); printRef.current?.querySelector("button")?.focus() }
+  const FKEYS: [string, string, () => void][] = [
+    ["F5", "Incluir", () => focusProd(false)],
+    ["F3", "Apagar", deleteLine],
+    ["F4", "Leitura", () => focusProd(false)],
+    ["F6", "Vendedor", () => vendRef.current?.focus()],
+    ["F7", "Ajudante", () => ajudRef.current?.focus()],
+    ["F8", "Serviços", () => focusProd(true)],
+    ["F9", "Obs. item", obsItem],
+    ["F11", "Cliente", focusClient],
+    ["F10", "Salvar", () => finalize(true)],
+    ["F2", "Finaliza", () => finalize()],
+    ["Ctrl+P", "Imprimir", imprimir],
+    ["Esc", "Sair", sair],
+  ]
   useEffect(() => {
     if (tab !== "nova") return undefined
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "F2") { event.preventDefault(); prodRef.current?.focus() }
-      if (event.key === "F3") { event.preventDefault(); setClientId(""); window.setTimeout(() => clientRef.current?.focus(), 0) }
-      if (event.key === "F4") { event.preventDefault(); setTipo((t) => TIPOS[(TIPOS.indexOf(t) + 1) % 3]) }
-      if (event.key === "F10") { event.preventDefault(); if (!sent) finalize() }
-      if (event.key === "Enter" && sent) { event.preventDefault(); setSent(null) }
+      if (sent) { if (event.key === "Enter" || event.key === "Escape") { event.preventDefault(); setSent(null) } return }
+      if (cadastro || askApproval) return
+      const k = event.ctrlKey && event.key.toLowerCase() === "p" ? "Ctrl+P" : event.altKey && event.key.toLowerCase() === "c" ? "F11" : event.key === "Escape" ? "Esc" : event.key
+      if (k === "Esc" && (event.target as HTMLElement)?.closest?.(".op-drop, .op-search") && pq) { setPq(""); return }
+      const hit = FKEYS.find(([key]) => key === k)
+      if (hit) { event.preventDefault(); hit[2]() }
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
@@ -329,6 +411,8 @@ export default function Vendas() {
     setCart(sale.extra?.itens || [])
     setDescMode("R$"); setDescValue(sale.extra?.desconto ? String(sale.extra.desconto).replace(".", ",") : "")
     setSugerida(sale.extra?.formaSugerida || "Pix"); setObs(sale.extra?.obs || "")
+    setPlano(sale.extra?.plano || "À vista"); setOutras({ ...BLANK_OUTRAS, ...(sale.extra?.outras || {}) }); setRegistro("Venda")
+    const vend = staff.find((u) => u.displayName === sale.professional); if (vend) setVendedorId(vend.id)
     const e: Entrega | undefined = sale.extra?.entrega
     if (e) { setUseCadastro(false); setAddr({ ...BLANK_ADDR, ...e, taxa: String(e.taxa).replace(".", ","), complemento: e.complemento || "", referencia: e.referencia || "", obs: e.obs || "" }) }
     setDetail(null); setTab("nova")
@@ -378,20 +462,83 @@ export default function Vendas() {
       {tab === "nova" && (
         <div className="op-grid" style={{ gridTemplateColumns: "minmax(0,1fr) 360px" }}>
           <div className="op-col">
-            {/* tipo */}
-            <div className="op-card">
-              <div className="op-cb" style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-                <span className="muted" style={{ fontSize: 12, fontWeight: 600 }}>Tipo da venda <kbd>F4</kbd></span>
-                <div className="op-tabs">
-                  {TIPOS.map((t) => <button key={t} className={tipo === t ? "on" : ""} onClick={() => setTipo(t)}>{t === "Entrega" && <Truck size={14} />}{t}</button>)}
+            {/* cabeçalho ERP */}
+            <div className="op-card op-erp">
+              <div className="op-erp-top">
+                <div className="op-erp-f"><span>Nota</span><b className="op-num">{registro === "Orçamento" ? nextNumber(all, "ORC") : registro === "Transferência" ? nextNumber(all, "TRF") : numero}</b></div>
+                <div className="op-erp-f"><span>Nº interno</span><b className="mono">{interno}</b></div>
+                <div className="op-erp-f"><span>Emissão</span><b>{fmtDate(todayISO())}</b></div>
+                <div className="op-erp-f"><span>Hora</span><b className="mono">{new Date(now).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</b></div>
+                <div className="op-erp-f grow"><span>Tipo de registro</span>
+                  <div className="op-tabs">{REGISTROS.map((r) => <button key={r} className={registro === r ? "on" : ""} disabled={!!editing && r !== "Venda"} onClick={() => setRegistro(r)}>{r}</button>)}</div>
                 </div>
-                <span className="muted" style={{ fontSize: 12 }}>{tipo === "Balcão" ? "Cliente leva na hora." : tipo === "Retirada" ? "Cliente busca depois; os itens ficam separados." : "Vai para a aba Entregas após passar pelo caixa."}</span>
               </div>
+              <div className="op-erp-row">
+                <label className="op-f"><span>Vendedor <kbd>F6</kbd></span>
+                  <select ref={vendRef} className="op-in" value={vendedorId} onChange={(e) => setVendedorId(e.target.value)}>
+                    {vendedores.map((u) => <option key={u.id} value={u.id}>{u.code || "—"} · {u.displayName}</option>)}
+                  </select>
+                </label>
+                <label className="op-f"><span>Ajudante <kbd>F7</kbd></span>
+                  <select ref={ajudRef} className="op-in" value={ajudanteId} onChange={(e) => setAjudanteId(e.target.value)}>
+                    <option value="">Nenhum</option>
+                    {staff.filter((u) => u.active && u.id !== vendedorId).map((u) => <option key={u.id} value={u.id}>{u.code || "—"} · {u.displayName}</option>)}
+                  </select>
+                </label>
+                <div className="op-f"><span>Tipo de venda</span>
+                  <div className="op-tabs">{TIPOS.map((t) => <button key={t} className={tipo === t ? "on" : ""} onClick={() => { setTipo(t); if (t === "Entrega") setSec("Entrega") }}>{t === "Entrega" && <Truck size={14} />}{t}</button>)}</div>
+                </div>
+                <label className="op-f"><span>Plano de pagamento</span>
+                  <select className="op-in" value={plano} onChange={(e) => setPlano(e.target.value)}>{PLANOS.map((p) => <option key={p}>{p}</option>)}</select>
+                </label>
+                <label className="op-f"><span>Tipo de documento</span>
+                  <select className="op-in" value={sugerida} onChange={(e) => setSugerida(e.target.value)}>{DOCUMENTOS.map(([l, v]) => <option key={v} value={v}>{l}</option>)}</select>
+                </label>
+              </div>
+              <div className="op-erp-tabs" role="tablist">
+                {SECOES.map((x) => <button key={x} role="tab" aria-selected={sec === x} className={sec === x ? "on" : ""} onClick={() => setSec(x)}>{x}{x === "Entrega" && tipo === "Entrega" ? <i className="dot" /> : null}{x === "Observação" && obs ? <i className="dot" /> : null}</button>)}
+              </div>
+              {sec === "Faturamento" && (() => {
+                const pi = planoInfo(plano)
+                const venc = (i: number) => { const d = new Date(); d.setMonth(d.getMonth() + (pi.entrada ? i : i + (pi.total > 1 ? 1 : 0))); return d.toISOString().slice(0, 10) }
+                const v = pi.total ? total / pi.total : total
+                return (
+                  <div className="op-cb">
+                    <div className="op-table">
+                      <div className="op-tr op-th" style={{ gridTemplateColumns: "70px minmax(0,1fr) 130px 120px" }}><span>Parcela</span><span>Documento</span><span>Vencimento</span><span className="r">Valor</span></div>
+                      {Array.from({ length: pi.total }, (_, i) => (
+                        <div key={i} className="op-tr" style={{ gridTemplateColumns: "70px minmax(0,1fr) 130px 120px" }}><span className="mono">{i + 1}/{pi.total}</span><span>{pi.entrada && i === 0 ? "Entrada" : documentoLabel}</span><span className="num">{fmtDate(i === 0 && (pi.entrada || pi.total === 1) ? todayISO() : venc(i))}</span><b className="r num">{brl(v)}</b></div>
+                      ))}
+                    </div>
+                    <p className="muted" style={{ margin: "8px 0 0", fontSize: 12 }}>Prévia do faturamento. O caixa confirma valores, datas e a forma real de recebimento.</p>
+                  </div>
+                )
+              })()}
+              {sec === "Devoluções" && (() => {
+                const devs = sales.filter((x) => client && x.ownerId === client.id && /cancel|devolv/i.test(x.status)).slice(0, 8)
+                return <div className="op-cb">{!client ? <p className="muted" style={{ margin: 0, fontSize: 13 }}>Selecione o cliente para ver devoluções e cancelamentos anteriores.</p> : devs.length ? <div className="op-table">{devs.map((d) => <div key={d.id} className="op-tr" style={{ gridTemplateColumns: "120px 110px minmax(0,1fr) 110px" }}><span className="mono">{d.name}</span><span className="num muted">{fmtDate(itemDate(d))}</span><span><Tag s={d.status} />{d.extra?.motivoCancelamento ? <small>{d.extra.motivoCancelamento}</small> : null}</span><b className="r num">{brl(d.amountValue || 0)}</b></div>)}</div> : <p className="muted" style={{ margin: 0, fontSize: 13 }}>Nenhuma devolução registrada para {client.name}.</p>}</div>
+              })()}
+              {sec === "Observação" && <div className="op-cb"><textarea className="op-in" style={{ minHeight: 90 }} placeholder="Observação da venda (sai no pedido e aparece para o caixa)" value={obs} onChange={(e) => setObs(e.target.value)} /></div>}
+              {sec === "Outras informações" && (
+                <div className="op-cb">
+                  <div className="op-fields" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))" }}>
+                    <label className="op-f"><span>Pedido do cliente</span><input className="op-in" value={outras.pedidoCliente} onChange={(e) => setOutras({ ...outras, pedidoCliente: e.target.value })} /></label>
+                    <label className="op-f"><span>Referência / fazenda</span><input className="op-in" value={outras.ref} onChange={(e) => setOutras({ ...outras, ref: e.target.value })} /></label>
+                    <label className="op-f"><span>Placa do veículo</span><input className="op-in" value={outras.placa} onChange={(e) => setOutras({ ...outras, placa: e.target.value.toUpperCase() })} /></label>
+                    <label className="op-f"><span>Unidade de destino {registro === "Transferência" ? "*" : ""}</span>
+                      <select className="op-in" value={outras.destino} onChange={(e) => setOutras({ ...outras, destino: e.target.value })}><option value="">—</option>{units.filter((u) => u.id !== activeUnit.id).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</select>
+                    </label>
+                  </div>
+                  <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13, marginTop: 10 }}><input type="checkbox" checked={outras.cpfNota} onChange={(e) => setOutras({ ...outras, cpfNota: e.target.checked })} /> CPF/CNPJ do cliente na nota</label>
+                </div>
+              )}
+              {sec === "Entrega" && tipo !== "Entrega" && <div className="op-cb"><div className="op-note info"><Truck size={14} /> Esta venda é {tipo.toLowerCase()}. <button className="op-link" onClick={() => setTipo("Entrega")}>Transformar em entrega</button></div></div>}
+              {registro !== "Venda" && <div className="op-cb" style={{ paddingTop: 0 }}><div className="op-note info">{registro === "Orçamento" ? "Orçamento: salva os itens por 7 dias, sem reservar estoque e sem ir ao caixa." : "Transferência: os produtos saem deste estoque para a unidade de destino. Não passa pelo caixa."}</div></div>}
             </div>
 
             {/* cliente */}
             <div className="op-card">
-              <div className="op-ch"><h2><User /> Cliente <kbd>F3</kbd></h2>
+              <div className="op-ch"><h2><User /> Cliente <kbd>F11</kbd></h2>
                 {!client && clientId !== "cf" && <div style={{ display: "flex", gap: 6 }}><button className="op-btn sm" onClick={() => openCadastro(null, cq)}><UserPlus /> Novo cliente</button><button className="op-btn sm" onClick={() => setClientId("cf")}>Consumidor final</button></div>}
                 {(client || clientId === "cf") && <span style={{ display: "flex", gap: 14 }}>{client && <button className="op-link" onClick={() => openCadastro(client)}>Editar cadastro</button>}<button className="op-link" onClick={() => { setClientId(""); window.setTimeout(() => clientRef.current?.focus(), 0) }}>Trocar cliente</button></span>}
               </div>
@@ -442,17 +589,26 @@ export default function Vendas() {
 
             {/* produtos */}
             <div className="op-card">
-              <div className="op-ch"><h2><Package /> Produtos <kbd>F2</kbd></h2><span className="muted" style={{ fontSize: 12 }}>{itensCount} {itensCount === 1 ? "item" : "itens"}</span></div>
+              <div className="op-ch"><h2><Package /> Itens <kbd>F5</kbd></h2>
+                <span style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <span className="op-tabs" style={{ padding: 2 }}><button className={!svcMode ? "on" : ""} onClick={() => focusProd(false)}>Produtos</button><button className={svcMode ? "on" : ""} onClick={() => focusProd(true)}>Serviços <kbd>F8</kbd></button></span>
+                  <span className="muted" style={{ fontSize: 12 }}>{itensCount} {itensCount === 1 ? "item" : "itens"}</span>
+                </span></div>
               <div className="op-cb" style={{ display: "flex", gap: 8 }}>
                 <label className="op-f" style={{ width: 76 }}><span>Qtd.</span><input className="op-in lg r" inputMode="numeric" value={qtyNext} onChange={(e) => setQtyNext(Math.max(1, Number(e.target.value.replace(/\D/g, "")) || 1))} /></label>
                 <div className="op-f grow"><span>Produto</span>
                   <div className="op-search">
                     <ScanBarcode />
-                    <input ref={prodRef} className="op-in lg" placeholder="Nome, código ou código de barras (leitor)" value={pq} onChange={(e) => { setPq(e.target.value); setPIdx(0) }} onKeyDown={onProdKey} />
+                    <input ref={prodRef} className="op-in lg" placeholder={svcMode ? "Buscar serviço: consulta, banho, vacina…" : "Nome, código ou código de barras (leitor F4)"} value={pq} onChange={(e) => { setPq(e.target.value); setPIdx(0) }} onKeyDown={onProdKey} />
                     {prodHits.length > 0 && (
                       <div className="op-drop">
                         <div className="op-tr op-th" style={{ gridTemplateColumns: "70px minmax(0,1fr) 120px 80px 90px" }}><span>Código</span><span>Produto</span><span>Lote · validade</span><span className="r">Disp.</span><span className="r">Preço</span></div>
                         {prodHits.map((item, i) => {
+                          if (svcMode) return (
+                            <div key={item.id} className={`op-tr click ${i === pIdx ? "act" : ""}`} style={{ gridTemplateColumns: "70px minmax(0,1fr) 120px 80px 90px" }} onMouseDown={(e) => { e.preventDefault(); addService(item) }}>
+                              <span className="mono muted">{shortCode(item)}</span><span><strong>{item.name}</strong><small>Serviço</small></span><span className="muted">—</span><span className="r muted">—</span><b className="r num">{brl(item.amountValue || 0)}</b>
+                            </div>
+                          )
                           const disp = available(item)
                           return (
                             <div key={item.id} className={`op-tr click ${i === pIdx ? "act" : ""}`} style={{ gridTemplateColumns: "70px minmax(0,1fr) 120px 80px 90px", opacity: disp ? 1 : 0.55 }} onMouseDown={(e) => { e.preventDefault(); addProduct(item) }}>
@@ -470,21 +626,23 @@ export default function Vendas() {
                 </div>
               </div>
               <div className="op-table">
-                <div className="op-tr op-th" style={{ gridTemplateColumns: "28px 64px minmax(0,1fr) 104px 96px 74px 100px 30px" }}><span>#</span><span>Código</span><span>Produto</span><span>Qtd.</span><span className="r">Unitário</span><span className="r">Desc. %</span><span className="r">Total</span><span /></div>
+                <div className="op-tr op-th" style={{ gridTemplateColumns: "24px minmax(0,1fr) 96px 54px 84px 58px 94px 40px 26px" }}><span>#</span><span>Código · Descrição</span><span>Quant.</span><span className="r" title="Estoque atual">Est. at.</span><span className="r">Preço</span><span className="r">Desc. %</span><span className="r">Vl. total</span><span className="r">Vend.</span><span /></div>
                 {cart.length === 0 && <div className="op-empty">Nenhum produto. Busque pelo nome ou passe o leitor de código de barras.</div>}
                 {cart.map((line, i) => {
                   const st = stockOf(line.ref)
-                  const disp = st ? available(st) : 999
+                  const disp = st && line.tipo === "Produto" ? available(st) : 999
                   return (
-                    <div key={`${line.ref}-${i}`} className="op-tr" style={{ gridTemplateColumns: "28px 64px minmax(0,1fr) 104px 96px 74px 100px 30px" }}>
+                    <div key={`${line.ref}-${i}`} className={`op-tr click ${selLine === i ? "act" : ""}`} onClick={() => setSelLine(i)} style={{ gridTemplateColumns: "24px minmax(0,1fr) 96px 54px 84px 58px 94px 40px 26px" }}>
                       <span className="muted num">{i + 1}</span>
-                      <span className="mono muted">{line.codigo || "—"}</span>
-                      <span><strong>{line.descricao.replace(/ • lote \d+/, "")}</strong><small>Lote {line.lote || "—"}{line.validade ? ` · val. ${fmtDate(line.validade, { month: "2-digit", year: "2-digit" })}` : ""}{disp - line.qtd < (st?.minimum || 0) && st ? " · estoque ficará baixo" : ""}</small></span>
+                      <span><small className="mono" style={{ marginTop: 0 }}>{line.codigo || "—"}</small><strong>{line.descricao.replace(/ • lote \d+/, "")}</strong><small>{line.tipo === "Serviço" ? "Serviço" : <>Lote {line.lote || "—"}{line.validade ? ` · val. ${fmtDate(line.validade, { month: "2-digit", year: "2-digit" })}` : ""}{disp - line.qtd < (st?.minimum || 0) && st ? " · estoque ficará baixo" : ""}</>}</small>{line.obs ? <small style={{ color: "var(--or)" }}>Obs.: {line.obs}</small> : null}
+                        {obsLine === i && <input className="op-in" autoFocus style={{ height: 28, marginTop: 4 }} placeholder="Observação do item (Enter salva)" defaultValue={line.obs || ""} onClick={(e) => e.stopPropagation()} onKeyDown={(e) => { if (e.key === "Enter") { setLine(i, { obs: (e.target as HTMLInputElement).value }); setObsLine(null) } if (e.key === "Escape") { e.stopPropagation(); setObsLine(null) } }} onBlur={(e) => { setLine(i, { obs: e.target.value }); setObsLine(null) }} />}</span>
                       <span className="op-qty"><button onClick={() => setLine(i, { qtd: Math.max(1, line.qtd - 1) })}>−</button><input value={line.qtd} onChange={(e) => setLine(i, { qtd: Math.max(1, Math.min(disp, Number(e.target.value.replace(/\D/g, "")) || 1)) })} aria-label="Quantidade" /><button onClick={() => setLine(i, { qtd: Math.min(disp, line.qtd + 1) })}>+</button></span>
+                      <span className="r num">{st ? <b style={{ color: (st.quantity || 0) - line.qtd <= 0 ? "var(--red, #b4322a)" : (st.quantity || 0) - line.qtd < (st.minimum || 0) ? "var(--amber)" : undefined }}>{st.quantity ?? 0}</b> : <span className="muted">—</span>}</span>
                       <span className="r num">{brl(line.preco)}</span>
                       <input className="op-in r" style={{ height: 30 }} value={line.desconto || ""} placeholder="0" onChange={(e) => setLine(i, { desconto: Math.min(100, Number(e.target.value.replace(",", ".").replace(/[^\d.]/g, "")) || 0) })} aria-label="Desconto do item" />
                       <b className="r num">{brl(lineTotal(line))}</b>
-                      <button className="op-x" aria-label="Remover" onClick={() => setCart((c) => c.filter((_, k) => k !== i))}><Trash2 /></button>
+                      <span className="r mono muted">{line.vendedor || vendCode}</span>
+                      <button className="op-x" aria-label="Remover" onClick={(e) => { e.stopPropagation(); setCart((c) => c.filter((_, k) => k !== i)) }}><Trash2 /></button>
                     </div>
                   )
                 })}
@@ -492,7 +650,7 @@ export default function Vendas() {
             </div>
 
             {/* entrega */}
-            {tipo === "Entrega" && (
+            {tipo === "Entrega" && (sec === "Entrega" || sec === "Vendas") && (
               <div className="op-card">
                 <div className="op-ch"><h2><MapPin /> Endereço de entrega</h2>
                   {client && <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12.5 }}><input type="checkbox" checked={useCadastro} onChange={(e) => setUseCadastro(e.target.checked)} /> Usar endereço do cadastro</label>}
@@ -544,26 +702,27 @@ export default function Vendas() {
               <div className="op-total"><span>Total</span><b>{brl(total)}</b></div>
             </div>
             <div className="op-card">
-              <div className="op-ch"><h2>Forma de pagamento sugerida</h2></div>
+              <div className="op-ch"><h2>Pagamento</h2><span className="op-tag plain">{plano}{planoInfo(plano).total > 1 ? ` · ${planoInfo(plano).total}× ${brl(total / planoInfo(plano).total)}` : ""}</span></div>
               <div className="op-cb" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                <div className="op-chips">{SUGERIDAS.map((f) => <button key={f} className={`op-chip ${sugerida === f ? "on" : ""}`} onClick={() => setSugerida(f)}>{f}</button>)}</div>
-                <p className="muted" style={{ margin: 0, fontSize: 12 }}>Só uma indicação: o recebimento é feito e confirmado no caixa.</p>
-                <textarea className="op-in" placeholder="Observação para o caixa (opcional)" value={obs} onChange={(e) => setObs(e.target.value)} />
+                <div className="op-chips">{DOCUMENTOS.map(([l, f]) => <button key={f} className={`op-chip ${sugerida === f ? "on" : ""}`} onClick={() => setSugerida(f)}>{l}</button>)}</div>
+                <p className="muted" style={{ margin: 0, fontSize: 12 }}>Tipo de documento e plano são uma indicação: o recebimento é feito e confirmado no caixa.</p>
               </div>
             </div>
             {errors.length > 0 && <div className="op-note bad" style={{ flexDirection: "column", gap: 4 }}>{errors.map((e) => <span key={e}>• {e}</span>)}</div>}
-            <button className="op-btn pri lg" onClick={() => finalize()}><Send /> Finalizar e enviar ao caixa <kbd>F10</kbd></button>
+            <button className="op-btn pri lg" onClick={() => finalize()}><Send /> {registro === "Orçamento" ? "Salvar orçamento" : registro === "Transferência" ? "Confirmar transferência" : "Finalizar e enviar ao caixa"} <kbd>F2</kbd></button>
             <div style={{ display: "flex", gap: 8 }}>
-              <button className="op-btn grow" onClick={() => finalize(true)}><FileText /> Salvar orçamento</button>
+              <button className="op-btn grow" onClick={() => finalize(true)}><FileText /> Salvar como orçamento <kbd>F10</kbd></button>
               <button className="op-btn dan" onClick={() => reset()}><X /> {editing ? "Descartar edição" : "Limpar"}</button>
             </div>
             {cart.length > 0 && (
-              <div className="op-card op-cb" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <div ref={printRef} className="op-card op-cb" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 <span className="muted" style={{ fontSize: 11.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em" }}>Imprimir antes de finalizar</span>
                 <PrintBar sale={{ id: "draft", name: numero, subtitle: "", status: "Rascunho", createdAt: new Date().toISOString(), kind: "Venda", date: todayISO(), time: nowTime(), dueDate: (() => { const d = new Date(); d.setDate(d.getDate() + 7); return d.toISOString().slice(0, 10) })(), owner: client?.name || "Consumidor final", ownerId: client?.id, professional: seller, amountValue: total, extra: { itens: cart, subtotal, desconto, taxaEntrega: taxa, tipo, formaSugerida: sugerida, entrega: tipo === "Entrega" ? { ...addr, taxa, aCobrar: 0, status: "", entregador: "" } : undefined } } as Item} unitName={activeUnit.name} tutor={client || undefined} only={["Orçamento", "Conferência", "Duplicata"]} />
               </div>
             )}
-            <div className="op-keys"><span><kbd>F2</kbd> produto</span><span><kbd>F3</kbd> cliente</span><span><kbd>F4</kbd> tipo</span><span><kbd>F10</kbd> finalizar</span><span><kbd>↑</kbd><kbd>↓</kbd><kbd>Enter</kbd> escolher</span></div>
+          </div>
+          <div className="op-fkeys" role="toolbar" aria-label="Atalhos">
+            {FKEYS.map(([k, l, fn]) => <button key={k} className={k === "F2" ? "pri" : k === "Esc" ? "k-esc" : ""} onClick={fn}><kbd>{k}</kbd>{l}</button>)}
           </div>
         </div>
       )}

@@ -448,6 +448,11 @@ const services = [
   ["Ultrassonografia", 280],
   ["Atendimento emergencial", 390],
   ["Consulta de felinos", 230],
+  ["Banho porte pequeno", 55],
+  ["Banho e tosa porte médio", 95],
+  ["Tosa higiênica", 45],
+  ["Hidratação de pelos", 40],
+  ["Táxi dog", 25],
 ] as const
 const examNames = [
   "Hemograma completo",
@@ -543,6 +548,55 @@ function dateInHistory(random: () => number, seasonal = false) {
 function money(value: number) {
   return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
 }
+
+
+// Catálogo pet shop + farmácia: [nome, categoria, custo, preço de venda, validade em meses (0 = sem)]
+const PET_CATALOG: [string, string, number, number, number][] = [
+  ["Ração Premier Cães Adultos 15 kg", "Rações", 189.9, 279.9, 14],
+  ["Ração Golden Formula Filhotes 10,1 kg", "Rações", 132.5, 199.9, 12],
+  ["Ração Royal Canin Mini Adult 7,5 kg", "Rações", 241, 349.9, 12],
+  ["Ração Gatos Castrados Salmão 10,1 kg", "Rações", 158, 239.9, 12],
+  ["Ração úmida sachê Gatos 85 g", "Rações", 2.4, 4.9, 18],
+  ["Ração Renal Veterinária 2 kg", "Rações", 98, 152.9, 12],
+  ["Ração Hypoallergenic 10 kg", "Rações", 312, 459.9, 12],
+  ["Areia sanitária 4 kg", "Higiene", 14.5, 26.9, 0],
+  ["Petisco Bifinho Carne 65 g", "Petiscos", 4.1, 8.9, 10],
+  ["Osso de couro nó 15 cm", "Petiscos", 5.2, 11.9, 18],
+  ["Biscoito Dog Pop Integral 250 g", "Petiscos", 7.8, 15.9, 10],
+  ["Petisco cremoso Gatos (4 un.)", "Petiscos", 9.9, 19.9, 12],
+  ["Palito dental Dentastix (7 un.)", "Petiscos", 13.2, 24.9, 12],
+  ["Coleira de nylon ajustável M", "Coleiras e guias", 11, 29.9, 0],
+  ["Coleira antipulgas Seresto até 8 kg", "Coleiras e guias", 168, 249.9, 24],
+  ["Guia retrátil 5 m", "Coleiras e guias", 38, 79.9, 0],
+  ["Peitoral acolchoado P", "Coleiras e guias", 29, 64.9, 0],
+  ["Coleira para gatos com guizo", "Coleiras e guias", 6.5, 17.9, 0],
+  ["Shampoo neutro 500 ml", "Higiene", 12.4, 27.9, 24],
+  ["Condicionador pelos longos 500 ml", "Higiene", 14.9, 32.9, 24],
+  ["Tapete higiênico 30 un.", "Higiene", 39, 74.9, 0],
+  ["Lenço umedecido pet 100 un.", "Higiene", 9.5, 19.9, 18],
+  ["Escova de dente + creme dental", "Higiene", 11.9, 24.9, 18],
+  ["Bolinha de borracha maciça", "Brinquedos", 6.9, 16.9, 0],
+  ["Mordedor corda dupla", "Brinquedos", 8.5, 21.9, 0],
+  ["Varinha com penas para gatos", "Brinquedos", 7.2, 18.9, 0],
+  ["Brinquedo recheável Kong M", "Brinquedos", 42, 89.9, 0],
+  ["Arranhador papelão para gatos", "Brinquedos", 19, 39.9, 0],
+  ["Cama retangular M", "Camas", 68, 139.9, 0],
+  ["Cama iglu para gatos", "Camas", 74, 149.9, 0],
+  ["Colchonete impermeável G", "Camas", 59, 119.9, 0],
+  ["Comedouro inox 500 ml", "Acessórios", 9.8, 22.9, 0],
+  ["Bebedouro fonte elétrica 2 L", "Acessórios", 72, 149.9, 0],
+  ["Caixa de transporte nº 2", "Acessórios", 64, 129.9, 0],
+  ["Roupa pós-cirúrgica P", "Acessórios", 22, 49.9, 0],
+  ["Colar elizabetano nº 3", "Acessórios", 7.9, 19.9, 0],
+  ["Vermífugo Drontal Plus 10 kg (2 comp.)", "Medicamentos", 28.5, 49.9, 24],
+  ["Antipulgas NexGard 4–10 kg", "Medicamentos", 62, 99.9, 24],
+  ["Antipulgas Bravecto 10–20 kg", "Medicamentos", 158, 239.9, 24],
+  ["Simparic 10,1–20 kg (1 comp.)", "Medicamentos", 58, 92.9, 24],
+  ["Meloxicam 2 mg (10 comp.)", "Medicamentos", 18, 34.9, 18],
+  ["Otomax pomada otológica 15 g", "Medicamentos", 44, 79.9, 18],
+  ["Cefalexina 500 mg (10 comp.)", "Medicamentos", 21, 39.9, 18],
+  ["Suplemento Condroitina 60 comp.", "Medicamentos", 69, 119.9, 18],
+]
 
 function baseItem(
   unitId: string,
@@ -949,9 +1003,29 @@ function generateUnit(unit: Unit, unitIndex: number): UnitData {
     },
   )
 
+  PET_CATALOG.forEach(([name, category, cost, price, months], k) => {
+    const index = stock.length
+    const minimum = category === "Rações" ? 8 : 5 + (k % 6)
+    const roll = random()
+    const quantity = k % 11 === 4 ? 0 : roll < 0.14 ? Math.max(1, Math.floor(minimum * 0.5)) : Math.floor(minimum * (1.5 + random() * 4))
+    const due = months ? new Date(TODAY.getTime() + months * 30 * DAY - (k % 7) * 45 * DAY) : null
+    stock.push(baseItem(unit.id, "estoque", index, dateInHistory(random), {
+      name,
+      subtitle: `${quantity} un. • mínimo ${minimum}`,
+      status: quantity === 0 ? "Esgotado" : quantity < minimum ? "Abaixo do mínimo" : "Disponível",
+      category,
+      quantity,
+      minimum,
+      dueDate: due ? dateValue(due) : undefined,
+      amountValue: quantity * cost,
+      amount: money(quantity * cost),
+      extra: { custo: cost, preco: price, codigo: String(7891000 + k * 37).slice(-6) },
+    }))
+  })
+
   const sellers = professionalItems.slice(0, 5).map((item) => item.name).concat(["Recepção"])
   const payForms = ["Pix", "Crédito", "Débito", "Dinheiro", "Pix", "Crédito", "Duplicata", "Dinheiro"]
-  const productPool = stock.filter((item) => item.category !== "Materiais").slice(0, 40)
+  const productPool = stock.filter((item) => item.category !== "Materiais" && item.category !== "Vacinas").slice(-60)
   const vendasSeed: Item[] = []
   for (let index = 0; index < Math.round(260 * scale) + 40; index += 1) {
     const animal = animals[(index * 13 + unitIndex) % animals.length]
@@ -965,7 +1039,7 @@ function generateUnit(unit: Unit, unitIndex: number): UnitData {
       }
       const prod = productPool[(index * 5 + k) % productPool.length]
       const price = Math.round((12 + ((index + k) % 12) * 11) * 1.8)
-      return { tipo: "Produto", ref: prod?.id, descricao: prod?.name || "Produto", qtd: 1 + ((index + k) % 2), preco: price, desconto: 0 }
+      return { tipo: "Produto", ref: prod?.id, descricao: prod?.name || "Produto", qtd: 1 + ((index + k) % 2), preco: Number(prod?.extra?.preco) || price, desconto: 0 }
     })
     const subtotal = itens.reduce((sum, it) => sum + it.qtd * it.preco, 0)
     const desconto = index % 6 === 0 ? Math.round(subtotal * 0.05) : 0
@@ -1395,8 +1469,13 @@ type StoreValue = {
   updateItem: (module: ModuleSlug, id: string, patch: Partial<Item>) => void
   deleteItem: (module: ModuleSlug, id: string) => void
   authenticated: boolean
-  login: (unitId: string) => void
+  login: (identifier: string, password: string) => StaffUser | null
   logout: () => void
+  user: StaffUser | null
+  staff: StaffUser[]
+  saveStaff: (user: StaffUser) => void
+  clinic: Clinic | ""
+  chooseClinic: (clinic: Clinic) => void
   theme: "light" | "dark"
   toggleTheme: () => void
   highlightedId: string
@@ -1407,6 +1486,37 @@ type StoreValue = {
   addUnit: (unit: Omit<Unit, "id" | "shortName" | "profile">) => Unit
   updateUnit: (id: string, patch: Partial<Unit>) => void
 }
+
+export type Role = "Administrador" | "Vendedor" | "Caixa" | "Estoque" | "Veterinário" | "Entregador"
+export type StaffUser = { id: string; name: string; displayName: string; username: string; email: string; cpf: string; password: string; role: Role; crmv?: string; code?: string; active: boolean }
+export const STAFF: StaffUser[] = [
+  { id: "u-admin", name: "Rafael Souza", displayName: "Dr. Rafael", username: "admin", email: "admin@vetflow.com", cpf: "482.315.770-10", password: "admin123", role: "Administrador", crmv: "CRMV-SP 28.410", code: "001", active: true },
+  { id: "u-vend", name: "Felipe Brum", displayName: "Felipe Brum", username: "vendedor", email: "vendedor@vetflow.com", cpf: "041.115.882-02", password: "vendedor123", role: "Vendedor", code: "026", active: true },
+  { id: "u-caixa", name: "Franciely Rocha", displayName: "Franciely Rocha", username: "caixa", email: "caixa@vetflow.com", cpf: "271.904.338-48", password: "caixa123", role: "Caixa", code: "030", active: true },
+  { id: "u-est", name: "João Matias", displayName: "João Matias", username: "estoque", email: "estoque@vetflow.com", cpf: "660.218.497-31", password: "estoque123", role: "Estoque", code: "037", active: true },
+  { id: "u-vet", name: "Ana Martins", displayName: "Dra. Ana Martins", username: "veterinario", email: "veterinario@vetflow.com", cpf: "448.902.115-19", password: "vet123", role: "Veterinário", crmv: "CRMV-RO 4.215", active: true },
+  { id: "u-vet2", name: "Marcos Nunes", displayName: "Dr. Marcos Nunes", username: "veterinario2", email: "marcos@vetflow.com", cpf: "519.337.204-66", password: "vet123", role: "Veterinário", crmv: "CRMV-RO 3.870", active: true },
+  { id: "u-ent", name: "Cauã Torres", displayName: "Cauã Torres", username: "entregador", email: "entregador@vetflow.com", cpf: "032.774.519-77", password: "entrega123", role: "Entregador", active: true },
+]
+/** Abas liberadas para cada perfil ("*" = todas). */
+export const ROLE_ACCESS: Record<Role, string[]> = {
+  Administrador: ["*"],
+  Vendedor: ["dashboard", "vendas", "estoque", "tutores", "animais", "servicos", "perfil", "configuracoes", "ajuda"],
+  Caixa: ["caixa", "vendas", "entregas", "estoque", "tutores", "financeiro", "perfil", "configuracoes", "ajuda"],
+  Estoque: ["estoque", "medicamentos", "vendas", "perfil", "configuracoes", "ajuda"],
+  "Veterinário": ["dashboard", "agendas", "consultas", "prontuarios", "animais", "tutores", "vacinas", "prescricoes", "medicamentos", "exames", "procedimentos", "cirurgias", "internacoes", "protocolos", "teleatendimentos", "comunicacao", "estoque", "perfil", "configuracoes", "ajuda"],
+  Entregador: ["entregas", "perfil", "configuracoes", "ajuda"],
+}
+export const ROLE_HOME: Record<Role, string> = { Administrador: "/", Vendedor: "/vendas", Caixa: "/caixa", Estoque: "/estoque", "Veterinário": "/agendas", Entregador: "/entregas" }
+export function canAccess(role: Role | undefined, area: string) {
+  if (!role) return false
+  const list = ROLE_ACCESS[role]
+  return list.includes("*") || list.includes(area)
+}
+export type Clinic = "exemplo" | "minha"
+export const MINHA_UNIT: Unit = {
+  id: "minha", name: "Minha clínica", shortName: "Minha clínica", cnpj: "", phone: "", email: "", street: "", number: "", neighborhood: "", city: "Sua cidade", state: "RO", cep: "", responsible: "", status: "Ativa", profile: "Ambiente real da sua clínica",
+} as Unit
 
 const StoreContext = createContext<StoreValue | null>(null)
 const STORAGE_KEY = "vetflow-state-v4"
@@ -1479,13 +1589,14 @@ export function VetFlowProvider({ children }: { children: ReactNode }) {
   const [unitUpdates, setUnitUpdates] = useState<
     Record<string, Partial<Unit>>
   >(persisted?.unitUpdates || {})
-  const units = useMemo(
+  const allUnits = useMemo(
     () => [
       ...seedUnits.map((unit) => ({ ...unit, ...unitUpdates[unit.id] })),
       ...customUnits.map((unit) => ({ ...unit, ...unitUpdates[unit.id] })),
     ],
     [customUnits, unitUpdates],
   )
+  const minhaUnit = useMemo(() => ({ ...MINHA_UNIT, ...unitUpdates.minha }), [unitUpdates])
   const [changes, setChanges] = useState<DataChange[]>(persisted?.changes || [])
   const [activeUnitId, setActiveUnitId] = useState<string>(
     persisted?.activeUnitId || "centro",
@@ -1498,19 +1609,42 @@ export function VetFlowProvider({ children }: { children: ReactNode }) {
       ]),
     )
     return applyChanges(
-      { ...seed, ...customData },
+      { ...seed, ...customData, minha: emptyUnitData() },
       persisted?.changes || [],
     )
   })
-  const [authenticated, setAuthenticated] = useState<boolean>(
-    () => {
-      try {
-        return sessionStorage.getItem("vetflow-session") === "admin"
-      } catch {
-        return false
-      }
-    },
-  )
+  const [staff, setStaff] = useState<StaffUser[]>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("vetflow-staff") || "null")
+      if (Array.isArray(saved) && saved.length) return [...saved, ...STAFF.filter((u) => !saved.some((x: StaffUser) => x.id === u.id))]
+    } catch { /* sem cadastro salvo */ }
+    return STAFF
+  })
+  const [session, setSession] = useState<{ userId: string; clinic: Clinic | "" } | null>(() => {
+    try {
+      const raw = sessionStorage.getItem("vetflow-session")
+      if (!raw) return null
+      if (raw === "admin") return { userId: "u-admin", clinic: "exemplo" }
+      return JSON.parse(raw)
+    } catch {
+      return null
+    }
+  })
+  useEffect(() => {
+    try {
+      if (session) sessionStorage.setItem("vetflow-session", JSON.stringify(session))
+      else sessionStorage.removeItem("vetflow-session")
+    } catch { /* sem sessão */ }
+  }, [session])
+  useEffect(() => {
+    try { localStorage.setItem("vetflow-staff", JSON.stringify(staff)) } catch { /* sem espaço */ }
+  }, [staff])
+  const units = useMemo(() => (session?.clinic === "minha" ? [minhaUnit] : allUnits), [session?.clinic, allUnits, minhaUnit])
+  const user = session ? staff.find((u) => u.id === session.userId) || null : null
+  const authenticated = !!user
+  const clinic: Clinic | "" = session?.clinic || ""
+  const effectiveUnitId = session?.clinic === "minha" ? "minha" : activeUnitId === "minha" ? "centro" : activeUnitId
+
   const [theme, setTheme] = useState<"light" | "dark">(
     persisted?.theme || "light",
   )
@@ -1561,18 +1695,18 @@ export function VetFlowProvider({ children }: { children: ReactNode }) {
   const addItem = useCallback(
     (module: ModuleSlug, partial: Partial<Item>) => {
       const animal = partial.animalId
-        ? allData[activeUnitId].animais.find(
+        ? allData[effectiveUnitId].animais.find(
             (item) => item.id === partial.animalId,
           )
         : undefined
       const owner = animal
-        ? allData[activeUnitId].tutores.find(
+        ? allData[effectiveUnitId].tutores.find(
             (item) => item.id === animal.ownerId,
           )
         : undefined
       const amountValue = Number(partial.amountValue || 0)
       const item: Item = {
-        id: `${activeUnitId}-${module}-${Date.now()}`,
+        id: `${effectiveUnitId}-${module}-${Date.now()}`,
         name: partial.name || "Novo registro",
         subtitle:
           partial.subtitle ||
@@ -1580,7 +1714,7 @@ export function VetFlowProvider({ children }: { children: ReactNode }) {
         status: partial.status || "Ativo",
         createdAt: new Date().toISOString(),
         date: partial.date || dateValue(TODAY),
-        unitId: activeUnitId,
+        unitId: effectiveUnitId,
         ...partial,
         animal: partial.animal || animal?.name,
         owner: partial.owner || owner?.name,
@@ -1591,14 +1725,14 @@ export function VetFlowProvider({ children }: { children: ReactNode }) {
       }
       setAllData((current) => ({
         ...current,
-        [activeUnitId]: {
-          ...current[activeUnitId],
-          [module]: [item, ...current[activeUnitId][module]],
+        [effectiveUnitId]: {
+          ...current[effectiveUnitId],
+          [module]: [item, ...current[effectiveUnitId][module]],
         },
       }))
       setChanges((current) => [
         ...current,
-        { operation: "add", unitId: activeUnitId, module, id: item.id, item },
+        { operation: "add", unitId: effectiveUnitId, module, id: item.id, item },
       ])
       setHighlightedId(item.id)
       window.setTimeout(() => setHighlightedId(""), 3000)
@@ -1610,51 +1744,51 @@ export function VetFlowProvider({ children }: { children: ReactNode }) {
           time: "Agora",
           read: false,
           path: `/${module}/${item.id}`,
-          unitId: activeUnitId,
+          unitId: effectiveUnitId,
         },
         ...current,
       ])
       return item
     },
-    [activeUnitId, allData],
+    [effectiveUnitId, allData],
   )
 
   const updateItem = useCallback(
     (module: ModuleSlug, id: string, patch: Partial<Item>) => {
       setAllData((current) => ({
         ...current,
-        [activeUnitId]: {
-          ...current[activeUnitId],
-          [module]: current[activeUnitId][module].map((item) =>
+        [effectiveUnitId]: {
+          ...current[effectiveUnitId],
+          [module]: current[effectiveUnitId][module].map((item) =>
             item.id === id ? { ...item, ...patch } : item,
           ),
         },
       }))
       setChanges((current) => [
         ...current,
-        { operation: "update", unitId: activeUnitId, module, id, patch },
+        { operation: "update", unitId: effectiveUnitId, module, id, patch },
       ])
     },
-    [activeUnitId],
+    [effectiveUnitId],
   )
 
   const deleteItem = useCallback(
     (module: ModuleSlug, id: string) => {
       setAllData((current) => ({
         ...current,
-        [activeUnitId]: {
-          ...current[activeUnitId],
-          [module]: current[activeUnitId][module].filter(
+        [effectiveUnitId]: {
+          ...current[effectiveUnitId],
+          [module]: current[effectiveUnitId][module].filter(
             (item) => item.id !== id,
           ),
         },
       }))
       setChanges((current) => [
         ...current,
-        { operation: "delete", unitId: activeUnitId, module, id },
+        { operation: "delete", unitId: effectiveUnitId, module, id },
       ])
     },
-    [activeUnitId],
+    [effectiveUnitId],
   )
 
   const addUnit = useCallback(
@@ -1694,19 +1828,25 @@ export function VetFlowProvider({ children }: { children: ReactNode }) {
     [activeUnitId, units],
   )
 
+  const userProfile = useMemo<UserProfile>(() => {
+    if (!user) return profile
+    if (user.id === "u-admin") return { ...profile, email: user.email }
+    return { ...profile, name: user.name, displayName: user.displayName, email: user.email, crmv: user.crmv || user.role, specialty: user.role }
+  }, [user, profile])
+
   const value = useMemo<StoreValue>(
     () => ({
       units,
-      activeUnit: units.find((unit) => unit.id === activeUnitId) || units[0],
-      activeUnitId,
+      activeUnit: units.find((unit) => unit.id === effectiveUnitId) || units[0],
+      activeUnitId: effectiveUnitId,
       setActiveUnitId,
-      data: allData[activeUnitId] || emptyUnitData(),
+      data: allData[effectiveUnitId] || emptyUnitData(),
       allData,
       notifications: notifications.filter(
-        (item) => item.unitId === activeUnitId,
+        (item) => item.unitId === effectiveUnitId,
       ),
       unreadCount: notifications.filter(
-        (item) => item.unitId === activeUnitId && !item.read,
+        (item) => item.unitId === effectiveUnitId && !item.read,
       ).length,
       markRead: (id) =>
         setNotifications((current) =>
@@ -1724,20 +1864,28 @@ export function VetFlowProvider({ children }: { children: ReactNode }) {
       updateItem,
       deleteItem,
       authenticated,
-      login: (unitId) => {
-        setActiveUnitId(unitId)
-        setAuthenticated(true)
-        try { sessionStorage.setItem("vetflow-session", "admin") } catch { /* sem sessão */ }
+      login: (identifier, password) => {
+        const id = identifier.trim().toLowerCase()
+        const digits = id.replace(/\D/g, "")
+        const found = staff.find((u) => u.active && (u.username === id || u.email.toLowerCase() === id || (digits.length === 11 && u.cpf.replace(/\D/g, "") === digits)))
+        if (!found || found.password !== password) return null
+        setSession({ userId: found.id, clinic: "" })
+        return found
       },
-      logout: () => {
-        try { sessionStorage.removeItem("vetflow-session") } catch { /* sem sessão */ }
-        setAuthenticated(false)
+      logout: () => setSession(null),
+      user,
+      staff,
+      saveStaff: (u) => setStaff((cur) => (cur.some((x) => x.id === u.id) ? cur.map((x) => (x.id === u.id ? u : x)) : [...cur, u])),
+      clinic,
+      chooseClinic: (c) => {
+        setSession((cur) => (cur ? { ...cur, clinic: c } : cur))
+        if (c === "exemplo" && activeUnitId === "minha") setActiveUnitId("centro")
       },
       theme,
       toggleTheme: () =>
         setTheme((current) => (current === "light" ? "dark" : "light")),
       highlightedId,
-      profile,
+      profile: userProfile,
       updateProfile: (patch) =>
         setProfile((current) => ({ ...current, ...patch })),
       timeZone,
@@ -1756,8 +1904,14 @@ export function VetFlowProvider({ children }: { children: ReactNode }) {
       theme,
       highlightedId,
       profile,
+      userProfile,
       timeZone,
       units,
+      user,
+      staff,
+      clinic,
+      session,
+      effectiveUnitId,
       addUnit,
       updateUnit,
     ],

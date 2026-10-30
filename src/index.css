@@ -4399,4 +4399,22 @@ button:disabled { cursor: not-allowed; opacity: .55; transform: none !important;
 .login-page .login-dev-hint { flex-wrap: wrap; justify-content: center; row-gap: 4px; column-gap: 10px; text-align: center; line-height: 1.3; }
 .login-page .login-dev-hint span { white-space: nowrap; }
 [data-theme="dark"] .login-page, [data-theme="dark"] .login-page .login-form-panel { background: #0e131b; }
-
+/* login: termos e acessos de teste */
+.login-form-card label.login-terms { display: flex; align-items: flex-start; gap: 8px; margin: 2px 0 14px; font-size: 11px; color: #5b6474; line-height: 1.45; cursor: pointer; }
+.login-form-card label.login-terms input { width: 16px; height: 16px; margin-top: 1px; accent-color: #f15a24; flex: none; }
+.login-form-card label.login-terms span { display: inline; margin: 0; font-size: 11px; font-weight: 500; }
+.login-terms a { color: #e94f17; font-weight: 700; }
+.login-accounts { margin-top: 14px; padding: 10px 12px; border: 1px solid #eee; border-radius: 12px; background: #fafafa; display: grid; gap: 4px; }
+.login-accounts b { font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase; color: #8a8f99; margin-bottom: 2px; }
+.login-accounts span { display: grid; grid-template-columns: 96px 1fr 1fr; gap: 6px; align-items: center; font-size: 11px; }
+.login-accounts i { font-style: normal; font-weight: 700; font-size: 10px; padding: 2px 8px; border-radius: 999px; background: #eef0f3; color: #5b6474; justify-self: start; }
+.login-accounts code { font: 600 11px "JetBrains Mono", Consolas, monospace; color: #1a2233; }
+.login-accounts .role-administrador i { background: #f0ecfb; color: #6b4fbb; }
+.login-accounts .role-vendedor i { background: #e6f4ec; color: #137a48; }
+.login-accounts .role-caixa i { background: #e8f0fc; color: #1d5fbf; }
+.login-accounts .role-estoque i { background: #fff3df; color: #9a5800; }
+.login-accounts .role-veterinario i { background: #fdecea; color: #b42318; }
+.login-accounts .role-entregador i { background: #eef0f3; color: #5b6474; }
+[data-theme="dark"] .login-accounts { background: #161c26; border-color: #263041; }
+[data-theme="dark"] .login-accounts code { color: #eef2f7; }
+.unit-switch-clinic { border-top: 1px dashed rgba(127,127,127,.3) !important; }

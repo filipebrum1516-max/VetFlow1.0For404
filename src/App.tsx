@@ -90,6 +90,8 @@ import {
   modules,
   normalize,
   useVetFlow,
+  canAccess,
+  ROLE_HOME,
   type Item,
   type ModuleSlug,
   type Unit,
@@ -129,6 +131,9 @@ const VxPublicacoes = lazy(() => import("./vfx/pages/Publicacoes"))
 const VxDocumentos = lazy(() => import("./vfx/pages/Documentos"))
 const VxOcorrencias = lazy(() => import("./vfx/pages/Ocorrencias"))
 const VxUsuarios = lazy(() => import("./vfx/pages/Usuarios"))
+const VxEquipe = lazy(() => import("./vfx/pages/Equipe"))
+const VxEscolha = lazy(() => import("./vfx/pages/EscolherClinica"))
+const VxPrivacidade = lazy(() => import("./vfx/pages/Privacidade"))
 const VxPerfil = lazy(() => import("./vfx/pages/Sistema").then((m) => ({ default: m.Perfil })))
 const VxConfig = lazy(() => import("./vfx/pages/Sistema").then((m) => ({ default: m.Configuracoes })))
 const VxAjuda = lazy(() => import("./vfx/pages/Sistema").then((m) => ({ default: m.Ajuda })))
@@ -329,7 +334,8 @@ function UnitSelector({
   dark?: boolean
   onSelect?: () => void
 }) {
-  const { units, activeUnit, setActiveUnitId } = useVetFlow()
+  const { units, activeUnit, setActiveUnitId, clinic } = useVetFlow()
+  const goTo = useNavigate()
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState("")
   const ref = useRef<HTMLDivElement>(null)
@@ -357,7 +363,7 @@ function UnitSelector({
       >
         <MapPin size={16} />
         <span>
-          <small>Unidade ativa</small>
+          <small>{clinic === "minha" ? "Minha clínica" : "Clínica exemplo · unidade"}</small>
           <strong>{activeUnit.name}</strong>
         </span>
         <ChevronDown size={15} className={open ? "rotate" : ""} />
@@ -396,6 +402,10 @@ function UnitSelector({
                 {unit.id === activeUnit.id && <Check size={16} />}
               </button>
             ))}
+            <button className="unit-switch-clinic" onClick={() => { setOpen(false); goTo("/escolher-clinica") }}>
+              <span className="clinic-avatar">⇄</span>
+              <span><strong>Trocar de clínica</strong><small>{clinic === "minha" ? "Ir para a Clínica exemplo" : "Ir para a Minha clínica"}</small></span>
+            </button>
           </div>
         </div>
       )}
@@ -414,9 +424,11 @@ function Sidebar({
   mobileOpen: boolean
   closeMobile: () => void
 }) {
-  const { profile, data } = useVetFlow()
+  const { profile, data, user } = useVetFlow()
   const location = useLocation()
   const navigate = useNavigate()
+  const role = user?.role
+  const groups = navGroups.map(([g, slugs]) => [g, slugs.filter((slug) => canAccess(role, slug))] as [string, ModuleSlug[]]).filter(([, slugs]) => slugs.length)
   const openAgendaCount = data.agendas.filter(
     (item) => item.status !== "Concluído",
   ).length
@@ -432,7 +444,7 @@ function Sidebar({
         <button
           className="brand"
           onClick={() => {
-            navigate("/")
+            navigate(user ? ROLE_HOME[user.role] : "/")
             closeMobile()
           }}
         >
@@ -459,7 +471,7 @@ function Sidebar({
         </div>
       )}
       <nav className="nav-scroll">
-        <button
+        {canAccess(role, "dashboard") && <button
           className={`nav-item ${
             location.pathname === "/" ? "nav-item-active" : ""
           }`}
@@ -470,8 +482,8 @@ function Sidebar({
         >
           <LayoutDashboard size={18} />
           <span>Dashboard</span>
-        </button>
-        {navGroups.map(([group, slugs]) => (
+        </button>}
+        {groups.map(([group, slugs]) => (
           <div className="nav-group" key={group}>
             {!collapsed && <div className="nav-group-title">{group}</div>}
             {slugs.map((slug) => {
@@ -530,7 +542,7 @@ function Sidebar({
           </span>
           <span style={{ minWidth: 0 }}>
             <strong>{profile.displayName}</strong>
-            <small>{profile.crmv || "Veterinário administrador"}</small>
+            <small>{user ? `${user.role}${user.crmv && user.role !== "Administrador" ? ` · ${user.crmv}` : ""}` : profile.crmv}</small>
           </span>
           <i className="vx-online" aria-label="online" />
         </button>
@@ -640,6 +652,7 @@ function Header({ openMobile }: { openMobile: () => void }) {
     profile,
     timeZone,
     activeUnit,
+    user,
   } = useVetFlow()
   const navigate = useNavigate()
   const location = useLocation()
@@ -806,13 +819,13 @@ function Header({ openMobile }: { openMobile: () => void }) {
               </span>
               <span>
                 <strong>{profile.displayName}</strong>
-                <small>Veterinário</small>
+                <small>{user?.role || "Veterinário"}</small>
               </span>
               <ChevronDown size={15} className={profileOpen ? "rotate" : ""} />
             </button>
             {profileOpen && (
               <div className="dropdown-panel profile-menu">
-                <button onClick={() => goFromProfile("/")}>
+                <button onClick={() => goFromProfile(user ? ROLE_HOME[user.role] : "/")}>
                   <Home size={17} />
                   <span>Menu inicial</span>
                 </button>
@@ -833,9 +846,13 @@ function Header({ openMobile }: { openMobile: () => void }) {
                   {theme === "light" ? <Moon size={17} /> : <Sun size={17} />}
                   <span>Alternar tema</span>
                 </button>
-                <button onClick={() => goFromProfile("/unidades")}>
+                <button onClick={() => goFromProfile("/escolher-clinica")}>
                   <Building2 size={17} />
-                  <span>Alterar unidade</span>
+                  <span>Trocar de clínica</span>
+                </button>
+                <button onClick={() => goFromProfile("/privacidade")}>
+                  <ShieldCheck size={17} />
+                  <span>Privacidade e LGPD</span>
                 </button>
                 <button onClick={() => goFromProfile("/ajuda")}>
                   <HelpCircle size={17} />
@@ -921,10 +938,14 @@ function PrintHead() {
 }
 
 function Shell() {
-  const { authenticated } = useVetFlow()
+  const { authenticated, clinic, user } = useVetFlow()
+  const location = useLocation()
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   if (!authenticated) return <Navigate to="/site" replace />
+  if (!clinic) return <Navigate to="/escolher-clinica" replace />
+  const area = location.pathname === "/" ? "dashboard" : location.pathname.split("/")[1]
+  if (user && !canAccess(user.role, area)) return <Navigate to={ROLE_HOME[user.role]} replace />
   return (
     <div className={`app-shell ${collapsed ? "shell-collapsed" : ""}`}>
       <Sidebar
@@ -956,11 +977,12 @@ function Shell() {
 }
 
 function Login() {
-  const { authenticated, login, units, theme } = useVetFlow()
+  const { authenticated, clinic, login, theme } = useVetFlow()
   const navigate = useNavigate()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
-  if (authenticated) return <Navigate to="/" replace />
+  const [accepted, setAccepted] = useState(() => { try { return localStorage.getItem("vetflow-lgpd") === "1" } catch { return false } })
+  if (authenticated) return <Navigate to={clinic ? "/" : "/escolher-clinica"} replace />
 
   const cover =
     theme === "dark"
@@ -970,16 +992,21 @@ function Login() {
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const values = new FormData(event.currentTarget)
-    const user = String(values.get("email") || "").trim().toLowerCase()
+    const id = String(values.get("email") || "").trim()
     const pass = String(values.get("password") || "")
-    if (!user || !pass) return setError("Informe usuário e senha para continuar.")
-    if (user !== "admin" || pass !== "admin123")
-      return setError("Usuário ou senha incorretos.")
+    if (!id || !pass) return setError("Informe usuário, e-mail ou CPF e a senha.")
+    if (!accepted) return setError("Para entrar, aceite os Termos de Uso e a Política de Privacidade.")
     setLoading(true)
     window.setTimeout(() => {
-      login(String(values.get("unit")))
-      navigate("/")
-    }, 500)
+      const u = login(id, pass)
+      if (!u) {
+        setLoading(false)
+        setError("Usuário ou senha incorretos.")
+        return
+      }
+      try { localStorage.setItem("vetflow-lgpd", "1") } catch { /* sem armazenamento */ }
+      navigate("/escolher-clinica")
+    }, 350)
   }
   return (
     <div className="login-page">
@@ -991,45 +1018,24 @@ function Login() {
           <img src="/assets/vetflow-logo.png" alt="VetFlow" />
           <span className="eyebrow">LOGIN</span>
           <h2>Bem-vindo ao VetFlow</h2>
-          <p>Entre com suas credenciais para acessar sua clínica.</p>
+          <p>Entre com seu usuário, e-mail ou CPF e sua senha.</p>
           <label>
-            <span>Unidade</span>
-            <div className="input-control">
-              <MapPin size={18} />
-              <select name="unit">
-                {units
-                  .filter((unit) => unit.status === "Ativa")
-                  .map((unit) => (
-                    <option value={unit.id} key={unit.id}>
-                      {unit.name}
-                    </option>
-                  ))}
-              </select>
-            </div>
-          </label>
-          <label>
-            <span>Usuário</span>
+            <span>Usuário, e-mail ou CPF</span>
             <div className="input-control">
               <Mail size={18} />
-              <input
-                name="email"
-                type="text"
-                autoComplete="username"
-                placeholder="Digite seu usuário"
-              />
+              <input name="email" type="text" autoComplete="username" placeholder="Digite seu usuário, e-mail ou CPF" />
             </div>
           </label>
           <label>
             <span>Senha</span>
             <div className="input-control">
               <LockKeyhole size={18} />
-              <input
-                name="password"
-                type="password"
-                autoComplete="current-password"
-                placeholder="Digite sua senha"
-              />
+              <input name="password" type="password" autoComplete="current-password" placeholder="Digite sua senha" />
             </div>
+          </label>
+          <label className="login-terms">
+            <input type="checkbox" checked={accepted} onChange={(event) => setAccepted(event.target.checked)} />
+            <span>Li e aceito os <a href="/privacidade" target="_blank" rel="noreferrer">Termos de Uso e a Política de Privacidade</a> (LGPD).</span>
           </label>
           {error && (
             <div className="form-error">
@@ -1040,22 +1046,14 @@ function Login() {
           <Button type="submit" disabled={loading}>
             {loading ? "Entrando…" : "Entrar no VetFlow"}
           </Button>
-          <button
-            type="button"
-            className="text-link"
-            onClick={() =>
-              setError(
-                "Enviamos as instruções de recuperação para o e-mail cadastrado.",
-              )
-            }
-          >
+          <button type="button" className="text-link" onClick={() => setError("Peça ao administrador da clínica para redefinir sua senha em Usuários e acessos.")}>
             Esqueci minha senha
           </button>
-          <div className="login-dev-hint" aria-label="Acesso de desenvolvimento">
-            <i />
-            <span>Acesso dev</span>
-            <span>usuário <b>admin</b></span>
-            <span>senha <b>admin123</b></span>
+          <div className="login-accounts" aria-label="Acessos de teste">
+            <b>Acessos de teste</b>
+            {[["Administrador", "admin", "admin123"], ["Vendedor", "vendedor", "vendedor123"], ["Caixa", "caixa", "caixa123"], ["Estoque", "estoque", "estoque123"], ["Veterinário", "veterinario", "vet123"], ["Entregador", "entregador", "entrega123"]].map(([r, u, pw]) => (
+              <span key={u} className={`role-${normalize(r)}`}><i>{r}</i><code>{u}</code><code>{pw}</code></span>
+            ))}
           </div>
           <button type="button" className="text-link" onClick={() => navigate("/site")}>
             ← Voltar ao site
@@ -2502,6 +2500,22 @@ const router = createBrowserRouter([
     element: <Login />,
   },
   {
+    path: "/escolher-clinica",
+    element: (
+      <Suspense fallback={<PageLoader />}>
+        <VxEscolha />
+      </Suspense>
+    ),
+  },
+  {
+    path: "/privacidade",
+    element: (
+      <Suspense fallback={<PageLoader />}>
+        <VxPrivacidade />
+      </Suspense>
+    ),
+  },
+  {
     path: "/",
     element: <Shell />,
     errorElement: <RouteError />,
@@ -2538,7 +2552,8 @@ const router = createBrowserRouter([
       { path: "publicacoes", element: <VxPublicacoes /> },
       { path: "documentos", element: <VxDocumentos /> },
       { path: "ocorrencias", element: <VxOcorrencias /> },
-      { path: "usuarios", element: <VxUsuarios /> },
+      { path: "usuarios", element: <VxEquipe /> },
+      { path: "usuarios-permissoes", element: <VxUsuarios /> },
       { path: "perfil", element: <VxPerfil /> },
       { path: "configuracoes", element: <VxConfig /> },
       { path: "ajuda", element: <VxAjuda /> },

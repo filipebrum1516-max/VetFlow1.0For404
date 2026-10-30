@@ -1,7 +1,7 @@
 import type { Item } from "../store"
 import { brl, fmtDate } from "./ui"
 
-export type Line = { tipo: string; ref?: string; codigo?: string; descricao: string; qtd: number; preco: number; desconto: number; lote?: string; validade?: string }
+export type Line = { tipo: string; ref?: string; codigo?: string; descricao: string; qtd: number; preco: number; desconto: number; lote?: string; validade?: string; obs?: string; vendedor?: string }
 export type Pay = { forma: string; valor: number; parcelas: number; vencimentos?: string[]; troco?: number; detalhe?: string }
 export type Entrega = {
   status: string
@@ -30,7 +30,7 @@ export type Entrega = {
   historico?: string[]
 }
 
-export const FORMAS = ["Dinheiro", "Pix", "Débito", "Crédito", "Duplicata", "Fiado", "Boleto", "Transferência", "Cheque", "Convênio", "Vale-crédito"] as const
+export const FORMAS = ["Dinheiro", "Pix", "Débito", "Crédito", "Duplicata", "Fiado", "Boleto", "Transferência", "Cheque", "Convênio", "Vale-crédito", "Retirada"] as const
 /** formas que viram "a receber" no financeiro */
 export const A_PRAZO = ["Crédito", "Duplicata", "Fiado", "Boleto", "Convênio"]
 /** formas com parcelas e vencimentos definidos no caixa */
@@ -49,7 +49,7 @@ export const codeOf = (item: Item) => {
   return `7891${String(1000 + n).padStart(6, "0")}`.slice(0, 13)
 }
 export const shortCode = (item: Item) => String(Number(item.id.replace(/\D+/g, "").slice(-4)) || 0).padStart(5, "0")
-export const priceOf = (item: Item) => Math.round(((item.amountValue || 0) / Math.max(1, item.quantity || 1)) * 1.8 * 100) / 100 || 25
+export const priceOf = (item: Item) => Number(item.extra?.preco) || Math.round(((item.amountValue || 0) / Math.max(1, item.quantity || 1)) * 1.8 * 100) / 100 || 25
 
 export function nextNumber(items: Item[], prefix: string) {
   let max = 0
@@ -129,10 +129,10 @@ export const EDIT_WINDOW = 5 * 60 * 1000
 export function editInfo(sale: Item, seller: string, now = Date.now()) {
   const start = sale.extra?.reabertaEm || sale.extra?.finalizadaEm
   const left = start ? EDIT_WINDOW - (now - start) : -1
-  const own = sale.professional === seller
+  const own = sale.professional === seller || sale.extra?.operador === seller
   const statusOk = /aguardando pag|devolvida/i.test(sale.status)
   const can = own && statusOk && left > 0
-  const reason = !statusOk ? "A venda já passou pelo caixa." : !own ? `Só ${sale.professional} pode editar esta venda.` : left <= 0 ? "O prazo de 5 minutos para edição terminou." : ""
+  const reason = !statusOk ? "A venda já passou pelo caixa." : !own ? `Só ${sale.extra?.operador || sale.professional} pode editar esta venda.` : left <= 0 ? "O prazo de 5 minutos para edição terminou." : ""
   return { can, left: Math.max(0, left), reason }
 }
 export const mmss = (ms: number) => `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, "0")}`
@@ -241,3 +241,15 @@ export function reciboHtml(sale: Item, unitName: string, tutor?: Item) {
   <p>Para clareza, firmamos o presente.</p>
   <div class="sig" style="width:50%;margin-left:auto">${unitName}</div></div>`
 }
+
+/* ---------------- plano de pagamento (padrão ERP) ---------------- */
+export const PLANOS = ["À vista", ...Array.from({ length: 12 }, (_, i) => `${i + 1}X`), ...Array.from({ length: 11 }, (_, i) => `1+${i + 1}X`)]
+/** "3X" → 3 parcelas sem entrada; "1+3X" → entrada + 3 parcelas */
+export function planoInfo(plano?: string) {
+  const m = /^1\+(\d+)X$/.exec(plano || "")
+  if (m) return { entrada: true, parcelas: Number(m[1]), total: Number(m[1]) + 1 }
+  const n = /^(\d+)X$/.exec(plano || "")
+  if (n) return { entrada: false, parcelas: Number(n[1]), total: Number(n[1]) }
+  return { entrada: false, parcelas: 1, total: 1 }
+}
+export const DOCUMENTOS: [string, string][] = [["Dinheiro", "Dinheiro"], ["Pix", "Pix"], ["Cartão de débito", "Débito"], ["Cartão de crédito", "Crédito"], ["Duplicata", "Duplicata"], ["Cheque", "Cheque"], ["Boleto", "Boleto"], ["Fiado (anotado)", "Fiado"], ["Convênio", "Convênio"], ["Vale-crédito", "Vale-crédito"], ["Transferência", "Transferência"], ["Retirada", "Retirada"]]
