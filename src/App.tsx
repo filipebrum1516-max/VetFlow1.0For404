@@ -940,7 +940,15 @@ function PrintHead() {
 function Shell() {
   const { authenticated, clinic, user } = useVetFlow()
   const location = useLocation()
-  const [collapsed, setCollapsed] = useState(false)
+  const tabletWidth = () => typeof window !== "undefined" && window.innerWidth > 900 && window.innerWidth <= 1180
+  const [collapsed, setCollapsed] = useState(tabletWidth)
+  useEffect(() => {
+    /* tablets e notebooks pequenos: menu vira trilho de ícones para dar espaço ao conteúdo */
+    let last = tabletWidth()
+    const onResize = () => { const t = tabletWidth(); if (t !== last) { last = t; setCollapsed(t) } }
+    window.addEventListener("resize", onResize)
+    return () => window.removeEventListener("resize", onResize)
+  }, [])
   const [mobileOpen, setMobileOpen] = useState(false)
   if (!authenticated) return <Navigate to="/site" replace />
   if (!clinic) return <Navigate to="/escolher-clinica" replace />
@@ -976,18 +984,17 @@ function Shell() {
   )
 }
 
+const PAW = <svg viewBox="0 0 100 100"><ellipse cx="50" cy="66" rx="25" ry="21" /><ellipse cx="23" cy="40" rx="10" ry="13" transform="rotate(-18 23 40)" /><ellipse cx="41" cy="25" rx="10" ry="14" transform="rotate(-6 41 25)" /><ellipse cx="60" cy="25" rx="10" ry="14" transform="rotate(6 60 25)" /><ellipse cx="78" cy="40" rx="10" ry="13" transform="rotate(18 78 40)" /></svg>
+const BONE = <svg viewBox="0 0 120 40"><path d="M22 8a10 10 0 0 0-14 13 10 10 0 0 0 14 13l2-4h72l2 4a10 10 0 0 0 14-13 10 10 0 0 0-14-13l-2 4H24z" /></svg>
+
 function Login() {
-  const { authenticated, clinic, login, theme } = useVetFlow()
+  const { authenticated, clinic, login } = useVetFlow()
   const navigate = useNavigate()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
   const [accepted, setAccepted] = useState(() => { try { return localStorage.getItem("vetflow-lgpd") === "1" } catch { return false } })
   if (authenticated) return <Navigate to={clinic ? "/" : "/escolher-clinica"} replace />
 
-  const cover =
-    theme === "dark"
-      ? "/assets/vetflow-login-cover-dark.png"
-      : "/assets/vetflow-login-cover.png"
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -1010,8 +1017,18 @@ function Login() {
   }
   return (
     <div className="login-page">
-      <section className="login-brand-panel login-image-panel">
-        <img src={cover} alt="VetFlow 1.0 com cachorro" />
+      <section className="login-scene" aria-label="VetFlow 1.0">
+        <span className="ls-paw p1" aria-hidden="true">{PAW}</span>
+        <span className="ls-paw p2" aria-hidden="true">{PAW}</span>
+        <span className="ls-paw p3" aria-hidden="true">{PAW}</span>
+        <div className="ls-brand">
+          <span className="ls-bone b1" aria-hidden="true">{BONE}</span>
+          <img className="ls-word ls-word-l" src="/assets/vetflow-wordmark-dark.png" alt="VetFlow" />
+          <img className="ls-word ls-word-d" src="/assets/vetflow-wordmark-light.png" alt="" aria-hidden="true" />
+          <span className="ls-bone b2" aria-hidden="true">{BONE}</span>
+          <span className="ls-ver">1.0</span>
+        </div>
+        <img className="ls-dog" src="/assets/vetflow-login-dog.png" alt="Cachorro corgi sorrindo" />
       </section>
       <section className="login-form-panel">
         <form className="login-form-card" onSubmit={submit}>

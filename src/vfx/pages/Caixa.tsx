@@ -428,6 +428,7 @@ export default function Caixa() {
                 <div className="op-cb op-sum" style={{ borderTop: "1px solid var(--line2)" }}>
                   <div><span>Subtotal</span><b>{brl(sale.extra?.subtotal || 0)}</b></div>
                   {!!sale.extra?.desconto && <div><span>Desconto</span><b>− {brl(sale.extra.desconto)}</b></div>}
+                  {sale.extra?.descontoLiberado?.por && <div><span className="muted" style={{ fontSize: 12 }}>Desconto de {Number(sale.extra.descontoLiberado.pct || sale.extra.descontoPct || 0).toFixed(1).replace(".", ",")}% liberado por</span><b style={{ fontSize: 12 }}>{sale.extra.descontoLiberado.por}</b></div>}
                   {!!sale.extra?.taxaEntrega && <div><span>Taxa de entrega</span><b>{brl(sale.extra.taxaEntrega)}</b></div>}
                 </div>
                 <div className="op-total"><span>Total a receber</span><b>{brl(total)}</b></div>

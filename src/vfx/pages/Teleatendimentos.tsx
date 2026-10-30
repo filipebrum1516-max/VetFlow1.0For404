@@ -1,176 +1,371 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate } from "react-router"
-import { Camera, CameraOff, Copy, Mic, MicOff, MonitorUp, PhoneOff, Play, Plus, Video } from "lucide-react"
+import { ArrowLeft, Calendar, Camera, CameraOff, Check, ClipboardList, Clock, Copy, FileText, MessageCircle, Mic, MicOff, MonitorUp, PawPrint, PhoneOff, Pill, Play, Plus, Search, Send, ShieldCheck, Stethoscope, Trash2, User, Video, Wifi } from "lucide-react"
 import { useVetFlow, type Item } from "../../store"
 import { usePageForms } from "../hooks"
-import { colorFor, fmtDate, initials, itemDate, Page, StatusPill, todayISO } from "../ui"
+import { addDays, colorFor, fmtDate, initials, itemDate, normalizeText, Page, StatusPill, todayISO } from "../ui"
+import "../tele.css"
 
 const key = (item: Item) => `${itemDate(item)} ${item.time || "00:00"}`
+type Filtro = "Hoje" | "Próximos" | "Concluídos" | "Todos"
+type Soap = { s: string; o: string; a: string; p: string }
+type Rx = { med: string; dose: string; freq: string; dias: string }
+type Msg = { de: "vet" | "tutor"; texto: string; hora: string }
+const BLANK_SOAP: Soap = { s: "", o: "", a: "", p: "" }
+const SOAP_LABELS: [keyof Soap, string, string][] = [
+  ["s", "Queixa (S)", "O que o tutor relata: início, frequência, apetite, comportamento…"],
+  ["o", "Achados pela câmera (O)", "Postura, respiração, mucosas visíveis, lesões, marcha…"],
+  ["a", "Avaliação (A)", "Hipóteses e gravidade"],
+  ["p", "Plano e orientação (P)", "Conduta, medicação, retorno ou encaminhamento presencial"],
+]
+const hhmm = () => new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+const dayLabel = (iso: string) => {
+  const t = todayISO()
+  if (iso === t) return "Hoje"
+  if (iso === addDays(t, 1)) return "Amanhã"
+  if (iso === addDays(t, -1)) return "Ontem"
+  return fmtDate(iso, { weekday: "long", day: "2-digit", month: "long" })
+}
 
 export default function Teleatendimentos() {
-  const { data, updateItem, addItem } = useVetFlow()
+  const { data, updateItem, addItem, profile } = useVetFlow()
   const navigate = useNavigate()
-  const forms = usePageForms("teleatendimentos", (saved) => setCurrentId(saved.id))
-  const sorted = useMemo(() => [...data.teleatendimentos].sort((a, b) => key(a).localeCompare(key(b))), [data.teleatendimentos])
-  const live = sorted.filter((item) => item.status === "Em andamento").slice(-1)[0]
-  const queue = sorted.filter((item) => item.status === "Agendado" && itemDate(item) >= todayISO())
-  const fallbackQueue = queue.length ? queue : sorted.filter((item) => item.status === "Agendado").slice(-6)
-  const [currentId, setCurrentId] = useState("")
-  const current = data.teleatendimentos.find((item) => item.id === currentId) || live || fallbackQueue[0] || sorted[sorted.length - 1]
-  const waiting = fallbackQueue.filter((item) => item.id !== current?.id).slice(0, 4)
+  const forms = usePageForms("teleatendimentos", (saved) => setRoomId(saved.id))
+  const all = data.teleatendimentos
+  const sorted = useMemo(() => [...all].sort((a, b) => key(a).localeCompare(key(b))), [all])
+  const today = todayISO()
+
+  /* ---------------- lista ---------------- */
+  const [roomId, setRoomId] = useState("")
+  const [filtro, setFiltro] = useState<Filtro>("Próximos")
+  const [q, setQ] = useState("")
+  const [limit, setLimit] = useState(24)
+  const live = sorted.filter((item) => item.status === "Em andamento")
+  const list = useMemo(() => {
+    const nq = normalizeText(q.trim())
+    let l = sorted.filter((item) => !nq || normalizeText(`${item.owner} ${item.animal} ${item.name} ${item.professional}`).includes(nq))
+    if (filtro === "Hoje") l = l.filter((item) => itemDate(item) === today)
+    if (filtro === "Próximos") l = l.filter((item) => item.status === "Em andamento" || (itemDate(item) >= today && !/conclu|faltou|cancel/i.test(item.status)))
+    if (filtro === "Concluídos") l = l.filter((item) => /conclu/i.test(item.status)).reverse()
+    if (filtro === "Todos") l = [...l].reverse()
+    return l
+  }, [sorted, filtro, q, today])
+  const groups = useMemo(() => {
+    const m = new Map<string, Item[]>()
+    for (const item of list.slice(0, limit)) m.set(itemDate(item), [...(m.get(itemDate(item)) || []), item])
+    return [...m.entries()]
+  }, [list, limit])
+  const counts = {
+    hoje: sorted.filter((i) => itemDate(i) === today).length,
+    prox: sorted.filter((i) => i.status === "Em andamento" || (itemDate(i) >= today && !/conclu|faltou|cancel/i.test(i.status))).length,
+    conc: sorted.filter((i) => /conclu/i.test(i.status)).length,
+  }
+  const week = Array.from({ length: 7 }, (_, i) => addDays(today, i)).map((d) => ({ d, n: sorted.filter((i) => itemDate(i) === d).length }))
+
+  /* ---------------- sala ---------------- */
+  const current = all.find((item) => item.id === roomId) || null
+  const animal = data.animais.find((item) => item.id === current?.animalId)
+  const tutor = data.tutores.find((item) => item.id === (current?.ownerId || animal?.ownerId))
+  const historico = useMemo(() => (current?.animalId ? data.prontuarios.filter((p) => p.animalId === current.animalId).slice(0, 4) : []), [data.prontuarios, current?.animalId])
+  const vacinas = useMemo(() => (current?.animalId ? data.vacinas.filter((v) => v.animalId === current.animalId).slice(0, 4) : []), [data.vacinas, current?.animalId])
+  const waiting = sorted.filter((item) => item.id !== current?.id && itemDate(item) === today && /agendado/i.test(item.status)).slice(0, 5)
+  const [tab, setTab] = useState<"soap" | "paciente" | "receita" | "chat">("soap")
   const [mic, setMic] = useState(true)
   const [cam, setCam] = useState(false)
-  const [notes, setNotes] = useState("")
+  const [soap, setSoap] = useState<Soap>(BLANK_SOAP)
+  const [rx, setRx] = useState<Rx[]>([])
+  const [rxDraft, setRxDraft] = useState<Rx>({ med: "", dose: "", freq: "12/12h", dias: "7" })
+  const [msgs, setMsgs] = useState<Msg[]>([])
+  const [msg, setMsg] = useState("")
+  const [consent, setConsent] = useState(false)
   const [now, setNow] = useState(Date.now())
+  const [ended, setEnded] = useState<Item | null>(null)
   const selfVideo = useRef<HTMLVideoElement>(null)
   const stream = useRef<MediaStream | null>(null)
-  const animal = data.animais.find((item) => item.id === current?.animalId)
   useEffect(() => {
-    setNotes(current?.extra?.anotacoes || "")
+    const ex = current?.extra || {}
+    setSoap({ ...BLANK_SOAP, ...(ex.soap || {}), s: ex.soap?.s || ex.anotacoes || "" })
+    setRx(ex.receita || [])
+    setMsgs(ex.chat || (current ? [{ de: "tutor", texto: `Olá! ${current.animal} está aqui comigo.`, hora: current.time || hhmm() }] : []))
+    setConsent(!!ex.consentimento)
+    setTab("soap")
   }, [current?.id])
-  useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 1000)
-    return () => window.clearInterval(timer)
-  }, [])
+  useEffect(() => { const t = window.setInterval(() => setNow(Date.now()), 1000); return () => window.clearInterval(t) }, [])
   useEffect(() => () => stream.current?.getTracks().forEach((track) => track.stop()), [])
+  useEffect(() => { if (!roomId) { stream.current?.getTracks().forEach((t) => t.stop()); stream.current = null; setCam(false) } }, [roomId])
 
   const toggleCam = async () => {
-    if (cam) {
-      stream.current?.getTracks().forEach((track) => track.stop())
-      stream.current = null
-      setCam(false)
-      return
-    }
+    if (cam) { stream.current?.getTracks().forEach((t) => t.stop()); stream.current = null; setCam(false); return }
     try {
       const media = await navigator.mediaDevices.getUserMedia({ video: true, audio: false })
-      stream.current = media
-      setCam(true)
-      window.setTimeout(() => {
-        if (selfVideo.current) selfVideo.current.srcObject = media
-      }, 50)
-    } catch {
-      forms.toast("Não foi possível acessar a câmera. Verifique a permissão do navegador.")
-    }
+      stream.current = media; setCam(true)
+      window.setTimeout(() => { if (selfVideo.current) selfVideo.current.srcObject = media }, 50)
+    } catch { forms.toast("Não foi possível acessar a câmera. Verifique a permissão do navegador.") }
   }
   const shareScreen = async () => {
     try {
       const media = await navigator.mediaDevices.getDisplayMedia({ video: true })
       forms.toast("Compartilhando a tela com o tutor.")
       media.getVideoTracks()[0].addEventListener("ended", () => forms.toast("Compartilhamento encerrado."))
-    } catch {
-      forms.toast("Compartilhamento de tela cancelado.")
-    }
+    } catch { forms.toast("Compartilhamento de tela cancelado.") }
   }
-  const start = () => {
-    if (!current) return
-    updateItem("teleatendimentos", current.id, { status: "Em andamento", extra: { ...(current.extra || {}), inicio: new Date().toISOString() } })
-    forms.toast(`Chamada com ${current.owner} iniciada.`)
+  const extraNow = (patch: Record<string, unknown> = {}) => ({ ...(current?.extra || {}), soap, receita: rx, chat: msgs, consentimento: consent, anotacoes: soapText(), ...patch })
+  const soapText = () => SOAP_LABELS.filter(([k]) => soap[k].trim()).map(([k, l]) => `${l}: ${soap[k].trim()}`).join("\n")
+  const open = (item: Item) => { setRoomId(item.id); setEnded(null); window.scrollTo({ top: 0, behavior: "smooth" }) }
+  const start = (item: Item | null = current) => {
+    if (!item) return
+    if (item.id !== roomId) open(item)
+    updateItem("teleatendimentos", item.id, { status: "Em andamento", extra: { ...(item.extra || {}), inicio: new Date().toISOString() } })
+    forms.toast(`Chamada com ${item.owner} iniciada.`)
   }
   const end = () => {
     if (!current) return
-    updateItem("teleatendimentos", current.id, { status: "Concluído", notes: notes || current.notes, extra: { ...(current.extra || {}), anotacoes: notes, fim: new Date().toISOString() } })
-    stream.current?.getTracks().forEach((track) => track.stop())
-    setCam(false)
-    forms.toast("Chamada encerrada e salva.")
-    if (waiting[0]) setCurrentId(waiting[0].id)
+    const fim = new Date().toISOString()
+    updateItem("teleatendimentos", current.id, { status: "Concluído", notes: soapText() || current.notes, extra: extraNow({ fim }) })
+    stream.current?.getTracks().forEach((t) => t.stop()); setCam(false)
+    setEnded({ ...current, status: "Concluído", extra: extraNow({ fim }) })
   }
-  const capture = () => {
-    const stamp = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
-    setNotes((value) => `${value}${value ? "\n" : ""}Foto capturada às ${stamp}.`)
-    forms.toast("Foto anexada às anotações.")
-  }
+  const saveDraft = () => { if (current) { updateItem("teleatendimentos", current.id, { extra: extraNow() }); forms.toast("Anotações salvas.") } }
   const saveRecord = () => {
     if (!current) return
-    updateItem("teleatendimentos", current.id, { notes, extra: { ...(current.extra || {}), anotacoes: notes } })
-    addItem("prontuarios", { name: `Teleatendimento • ${current.name}`, animalId: current.animalId, professionalId: current.professionalId, professional: current.professional, category: "Evolução clínica", status: "Concluído", clinicalHistory: notes || current.notes, time: current.time })
-    forms.toast("Anotações salvas no prontuário do paciente.")
+    updateItem("teleatendimentos", current.id, { extra: extraNow({ prontuarioEm: new Date().toISOString() }) })
+    addItem("prontuarios", { name: `Teleatendimento • ${current.name}`, animalId: current.animalId, animal: current.animal, owner: current.owner, professionalId: current.professionalId, professional: current.professional, category: "Evolução clínica", status: "Concluído", clinicalHistory: soap.s || current.notes, diagnosis: soap.a, treatment: [soap.p, ...rx.map((r) => `${r.med} ${r.dose} ${r.freq} por ${r.dias} dias`)].filter(Boolean).join("\n"), notes: soap.o, time: current.time })
+    if (rx.length) addItem("prescricoes", { name: `Receita • ${current.animal}`, animalId: current.animalId, animal: current.animal, owner: current.owner, professional: current.professional, professionalId: current.professionalId, status: "Emitida", notes: rx.map((r) => `${r.med} — ${r.dose}, ${r.freq}, ${r.dias} dias`).join("\n") })
+    forms.toast(rx.length ? "Prontuário e receita salvos." : "Anotações salvas no prontuário do paciente.")
   }
+  const addRx = () => {
+    if (!rxDraft.med.trim()) return forms.toast("Informe o medicamento.")
+    setRx((r) => [...r, rxDraft]); setRxDraft({ med: "", dose: "", freq: "12/12h", dias: "7" })
+  }
+  const sendMsg = () => {
+    const t = msg.trim(); if (!t) return
+    setMsgs((m) => [...m, { de: "vet", texto: t, hora: hhmm() }]); setMsg("")
+  }
+  const capture = () => { setSoap((s) => ({ ...s, o: `${s.o}${s.o ? "\n" : ""}Foto capturada às ${hhmm()}.` })); forms.toast("Foto anexada aos achados.") }
   const elapsed = current?.extra?.inicio && current.status === "Em andamento" ? Math.floor((now - new Date(current.extra.inicio).getTime()) / 1000) : 0
   const clock = `${String(Math.floor(elapsed / 60)).padStart(2, "0")}:${String(elapsed % 60).padStart(2, "0")}`
   const link = current ? `vetflow.app/sala/${current.id.split("-").pop()}` : ""
+  const resumo = ended ? `Olá, ${ended.owner}! Resumo do teleatendimento de ${ended.animal} (${fmtDate(itemDate(ended))}):\n${soap.a ? `Avaliação: ${soap.a}\n` : ""}${soap.p ? `Orientação: ${soap.p}\n` : ""}${rx.length ? `Receita: ${rx.map((r) => `${r.med} ${r.dose} ${r.freq} por ${r.dias} dias`).join("; ")}\n` : ""}Qualquer dúvida, estamos à disposição. ${profile?.displayName || "Equipe VetFlow"}` : ""
+  const whatsapp = (tutor?.phone || "").replace(/\D/g, "")
 
-  return (
-    <Page
-      bg="#e8f1fb"
-      blobs={[["#8cc9ff", -100, -80, 520, 460], ["#c9b8ff", "80%", "70%", 420, 420]]}
-      crumb="Teleatendimentos"
-      title="Na chamada"
-      actions={
-        <>
-          <span className="vx-lbl">Sala de espera</span>
-          {waiting.map((item) => (
-            <button key={item.id} onClick={() => setCurrentId(item.id)} style={{ border: 0, background: "transparent", display: "flex", flexDirection: "column", alignItems: "center", gap: 2, cursor: "pointer", font: "inherit", color: "inherit" }} aria-label={`Abrir chamada de ${item.owner}`}>
-              <span className="vx-av" style={{ width: 46, height: 46, background: colorFor(item.owner || ""), border: "3px solid #fff" }}>{initials(item.owner)}</span>
-              <span style={{ fontSize: 11, fontWeight: 700 }}>{item.time || fmtDate(itemDate(item), { day: "2-digit", month: "2-digit" })}</span>
-            </button>
-          ))}
-          <button className="vx-btn vx-btn-p" onClick={() => forms.open()}>
-            <Plus /> Agendar
-          </button>
-        </>
-      }
-    >
-      {current ? (
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 320px", gap: 20 }} className="vx-tele-grid">
-          <div className="vx-video">
-            <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, color: "rgba(255,255,255,.85)" }}>
-              <span className="vx-tele-face">{initials(current.owner)}</span>
-              <div style={{ fontSize: 14 }}>{current.status === "Em andamento" ? `${current.owner} está na chamada` : `Aguardando iniciar · ${fmtDate(itemDate(current))} ${current.time || ""}`}</div>
-              {current.status !== "Em andamento" && !/conclu/i.test(current.status) && (
-                <button className="vx-btn vx-btn-p" onClick={start}><Play /> Iniciar chamada</button>
+  /* ================= SALA ================= */
+  if (current) {
+    const isLive = current.status === "Em andamento"
+    const done = /conclu/i.test(current.status)
+    return (
+      <Page bg="#e8f1fb" blobs={[["#8cc9ff", -100, -80, 520, 460], ["#c9b8ff", "80%", "70%", 420, 420]]} crumb="Teleatendimentos" title={isLive ? "Na chamada" : done ? "Teleatendimento concluído" : "Sala de teleatendimento"}
+        actions={<>
+          <button className="vx-btn vx-btn-g" onClick={() => setRoomId("")}><ArrowLeft /> Todos os teleatendimentos</button>
+          <button className="vx-btn vx-btn-p" onClick={() => forms.open()}><Plus /> Agendar</button>
+        </>}>
+        <div className="tl-room">
+          <div className="tl-stage">
+            <div className="vx-video tl-video">
+              <div className="tl-center">
+                <span className="vx-tele-face">{initials(current.owner)}</span>
+                <div style={{ fontSize: 14 }}>{isLive ? `${current.owner} está na chamada` : done ? "Chamada encerrada" : `Aguardando iniciar · ${dayLabel(itemDate(current))} ${current.time || ""}`}</div>
+                {!isLive && !done && <button className="vx-btn vx-btn-p" onClick={() => start()} disabled={!consent} title={consent ? "" : "Confirme o consentimento do tutor"}><Play /> Iniciar chamada</button>}
+                {!isLive && !done && !consent && <label className="tl-consent dark"><input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} /> Tutor autorizou o atendimento remoto e o registro dos dados (LGPD)</label>}
+              </div>
+              <div className="vx-dark tl-chip-l">
+                <span className="vx-dot" style={{ background: isLive ? "#ff5a4e" : "#9aa6b8", width: 10, height: 10 }} />
+                <span className="mono">{clock}</span>
+                <span className="tl-hide-sm" style={{ opacity: 0.8 }}>· {current.owner} com {current.animal}</span>
+                {isLive && <span className="tl-net"><Wifi size={14} /> boa</span>}
+              </div>
+              <button className="vx-dark tl-chip-r" onClick={() => { void navigator.clipboard?.writeText(`https://${link}`); forms.toast("Link da sala copiado. Envie ao tutor.") }}><Copy size={14} /> <span className="tl-hide-sm">{link}</span><span className="tl-show-sm">Link</span></button>
+              <div className="tl-self">
+                {cam ? <video ref={selfVideo} autoPlay muted playsInline /> : <span className="vx-tele-self-off"><CameraOff size={18} /><small>Câmera desligada</small><button type="button" onClick={toggleCam}>Ligar câmera</button></span>}
+              </div>
+              <div className="vx-dark tl-ctrl">
+                <button className={`vx-ctrl ${mic ? "" : "off"}`} aria-pressed={!mic} onClick={() => setMic(!mic)}>{mic ? <Mic /> : <MicOff />}<small>{mic ? "Microfone" : "Mudo"}</small></button>
+                <button className={`vx-ctrl ${cam ? "" : "off"}`} aria-pressed={cam} onClick={toggleCam}>{cam ? <Camera /> : <CameraOff />}<small>Câmera</small></button>
+                <button className="vx-ctrl" onClick={shareScreen}><MonitorUp /><small>Tela</small></button>
+                <button className="vx-ctrl" onClick={capture}><Video /><small>Foto</small></button>
+                <button className="vx-ctrl" onClick={() => setTab("chat")}><MessageCircle /><small>Chat</small></button>
+                <button className="vx-ctrl end" onClick={end} disabled={!isLive}><PhoneOff /><small>Encerrar</small></button>
+              </div>
+            </div>
+
+            {ended && (
+              <div className="vx-glass tl-summary">
+                <div className="tl-sum-h"><span className="tl-ok"><Check /></span><div><b>Chamada encerrada</b><small>{ended.owner} · {ended.animal} · {ended.extra?.inicio ? `${Math.max(1, Math.round((new Date(ended.extra.fim).getTime() - new Date(ended.extra.inicio).getTime()) / 60000))} min` : ""}</small></div></div>
+                <pre className="tl-resumo">{resumo}</pre>
+                <div className="tl-actions">
+                  <button className="vx-btn vx-btn-p" onClick={saveRecord}><FileText /> Salvar no prontuário{rx.length ? " + receita" : ""}</button>
+                  <a className="vx-btn vx-btn-g" href={`https://wa.me/${whatsapp.length >= 10 ? "55" + whatsapp : ""}?text=${encodeURIComponent(resumo)}`} target="_blank" rel="noreferrer"><Send /> Enviar resumo no WhatsApp</a>
+                  <button className="vx-btn vx-btn-g" onClick={() => navigate("/agendas")}><Calendar /> Agendar presencial</button>
+                  {waiting[0] && <button className="vx-btn vx-btn-g" onClick={() => open(waiting[0])}>Próximo: {waiting[0].owner}</button>}
+                </div>
+              </div>
+            )}
+
+            {waiting.length > 0 && (
+              <div className="tl-wait">
+                <span className="vx-lbl">Sala de espera · hoje</span>
+                <div className="tl-wait-row">
+                  {waiting.map((w) => (
+                    <button key={w.id} className="vx-glass tl-wait-card" onClick={() => open(w)}>
+                      <span className="vx-av" style={{ background: colorFor(w.owner || "") }}>{initials(w.owner)}</span>
+                      <span><b>{w.owner}</b><small>{w.animal} · {w.time}</small></span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <aside className="tl-side">
+            <div className="vx-glass tl-patient">
+              <span className="vx-av" style={{ background: colorFor(current.animal || "") }}>{initials(current.animal)}</span>
+              <span className="tl-pt-main"><strong>{current.animal}</strong><small>{[animal?.species, animal?.breed, animal?.sex, animal?.weight].filter(Boolean).join(" · ") || animal?.subtitle}</small><small>Tutor: {current.owner}{tutor?.phone ? ` · ${tutor.phone}` : ""}</small></span>
+              <StatusPill status={current.status} />
+            </div>
+            <div className="vx-glass tl-panel">
+              <div className="tl-tabs" role="tablist">
+                {([["soap", "Anotações", ClipboardList], ["paciente", "Paciente", PawPrint], ["receita", `Receita${rx.length ? ` ${rx.length}` : ""}`, Pill], ["chat", "Chat", MessageCircle]] as const).map(([k, l, Icon]) => (
+                  <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? "on" : ""} onClick={() => setTab(k)}><Icon size={15} /> {l}</button>
+                ))}
+              </div>
+
+              {tab === "soap" && (
+                <div className="tl-body">
+                  {current.notes && !/^Queixa/.test(current.notes) && <div className="vx-note"><b>Motivo do agendamento:</b> {current.notes}</div>}
+                  {SOAP_LABELS.map(([k, l, ph]) => (
+                    <label key={k} className="tl-f"><span>{l}</span><textarea className="vx-in" rows={k === "s" || k === "p" ? 3 : 2} placeholder={ph} value={soap[k]} onChange={(e) => setSoap({ ...soap, [k]: e.target.value })} /></label>
+                  ))}
+                  <label className="tl-consent"><input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} /> <ShieldCheck size={14} /> Consentimento do tutor para atendimento remoto (LGPD)</label>
+                  <div className="tl-actions">
+                    <button className="vx-btn vx-btn-g" onClick={saveDraft}>Salvar rascunho</button>
+                    <button className="vx-btn vx-btn-p" onClick={saveRecord}><FileText /> Salvar no prontuário</button>
+                  </div>
+                </div>
+              )}
+
+              {tab === "paciente" && (
+                <div className="tl-body">
+                  <div className="tl-kv">
+                    <span>Espécie</span><b>{animal?.species || "—"}</b>
+                    <span>Raça</span><b>{animal?.breed || "—"}</b>
+                    <span>Sexo</span><b>{animal?.sex || "—"}</b>
+                    <span>Peso</span><b>{animal?.weight || "—"}</b>
+                    <span>Nascimento</span><b>{animal?.birthDate ? fmtDate(animal.birthDate) : "—"}</b>
+                    <span>Veterinário</span><b>{current.professional || "—"}</b>
+                  </div>
+                  <span className="vx-lbl">Últimos registros</span>
+                  {historico.length ? historico.map((h) => <button key={h.id} className="tl-line" onClick={() => navigate(`/prontuarios/${h.id}`)}><Stethoscope size={14} /><span><b>{h.name}</b><small>{fmtDate(itemDate(h))} · {h.professional}</small></span></button>) : <p className="tl-muted">Sem registros anteriores.</p>}
+                  <span className="vx-lbl">Vacinas</span>
+                  {vacinas.length ? vacinas.map((v) => <div key={v.id} className="tl-line"><Check size={14} /><span><b>{v.name}</b><small>{fmtDate(itemDate(v))} · {v.status}</small></span></div>) : <p className="tl-muted">Nenhuma vacina registrada.</p>}
+                  {animal && <button className="vx-btn vx-btn-g" onClick={() => navigate(`/animais/${animal.id}`)}><User /> Abrir ficha completa</button>}
+                </div>
+              )}
+
+              {tab === "receita" && (
+                <div className="tl-body">
+                  <div className="tl-rx-form">
+                    <input className="vx-in" placeholder="Medicamento" value={rxDraft.med} list="tl-meds" onChange={(e) => setRxDraft({ ...rxDraft, med: e.target.value })} />
+                    <datalist id="tl-meds">{data.medicamentos.slice(0, 40).map((m) => <option key={m.id} value={m.name} />)}</datalist>
+                    <input className="vx-in" placeholder="Dose (ex.: 1 comp.)" value={rxDraft.dose} onChange={(e) => setRxDraft({ ...rxDraft, dose: e.target.value })} />
+                    <select className="vx-in" value={rxDraft.freq} onChange={(e) => setRxDraft({ ...rxDraft, freq: e.target.value })}>{["24/24h", "12/12h", "8/8h", "6/6h", "dose única"].map((f) => <option key={f}>{f}</option>)}</select>
+                    <input className="vx-in" inputMode="numeric" placeholder="Dias" value={rxDraft.dias} onChange={(e) => setRxDraft({ ...rxDraft, dias: e.target.value.replace(/\D/g, "") })} />
+                    <button className="vx-btn vx-btn-p" onClick={addRx}><Plus /> Adicionar</button>
+                  </div>
+                  {rx.length ? rx.map((r, i) => (
+                    <div key={i} className="tl-line"><Pill size={14} /><span><b>{r.med}</b><small>{r.dose || "—"} · {r.freq} · {r.dias} dias</small></span><button className="tl-x" aria-label="Remover" onClick={() => setRx(rx.filter((_, k) => k !== i))}><Trash2 size={14} /></button></div>
+                  )) : <p className="tl-muted">Nenhum item na receita. Ao salvar no prontuário, a receita também é emitida.</p>}
+                </div>
+              )}
+
+              {tab === "chat" && (
+                <div className="tl-body tl-chat">
+                  <div className="tl-msgs">
+                    {msgs.map((m, i) => <div key={i} className={`tl-msg ${m.de}`}><span>{m.texto}</span><small>{m.hora}</small></div>)}
+                  </div>
+                  <div className="tl-send">
+                    <input className="vx-in" placeholder="Mensagem para o tutor" value={msg} onChange={(e) => setMsg(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") sendMsg() }} />
+                    <button className="vx-btn vx-btn-p" aria-label="Enviar" onClick={sendMsg}><Send /></button>
+                  </div>
+                </div>
               )}
             </div>
-            <div className="vx-dark" style={{ position: "absolute", left: 20, top: 20, padding: "10px 14px", borderRadius: 16, display: "flex", alignItems: "center", gap: 10 }}>
-              <span className="vx-dot" style={{ background: current.status === "Em andamento" ? "#ff5a4e" : "#9aa6b8", width: 10, height: 10 }} />
-              <span style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 14 }}>{clock}</span>
-              <span style={{ fontSize: 13, opacity: 0.8 }}>· {current.owner} com {current.animal}</span>
-            </div>
-            <button className="vx-dark vx-roomlink" style={{ position: "absolute", right: 20, top: 20, padding: "6px 12px", borderRadius: 12, fontSize: 12, fontWeight: 700, display: "flex", gap: 6, alignItems: "center", cursor: "pointer" }} onClick={() => { void navigator.clipboard?.writeText(`https://${link}`); forms.toast("Link da sala copiado.") }}>
-              <Copy size={14} /> {link}
-            </button>
-            <div className="vx-selfview" style={{ position: "absolute", right: 20, bottom: 110, width: 190, height: 130, borderRadius: 20, background: "linear-gradient(160deg,#6b7fa5,#2a3550)", border: "2px solid rgba(255,255,255,.35)", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
-              {cam ? <video ref={selfVideo} autoPlay muted playsInline style={{ width: "100%", height: "100%", objectFit: "cover", transform: "scaleX(-1)" }} /> : <span className="vx-tele-self-off"><CameraOff size={18} /><small>Câmera desligada</small><button type="button" onClick={toggleCam}>Ligar câmera</button></span>}
-            </div>
-            <div className="vx-dark vx-ctrlbar" style={{ position: "absolute", left: "50%", bottom: 22, transform: "translateX(-50%)", padding: 10, borderRadius: 999, display: "flex", gap: 10, background: "rgba(255,255,255,.14)" }}>
-              <button className={`vx-ctrl ${mic ? "" : "off"}`} aria-label={mic ? "Desligar microfone" : "Ligar microfone"} aria-pressed={!mic} onClick={() => setMic(!mic)}>{mic ? <Mic /> : <MicOff />}<small>{mic ? "Microfone" : "Mudo"}</small></button>
-              <button className={`vx-ctrl ${cam ? "" : "off"}`} aria-label={cam ? "Desligar câmera" : "Ligar câmera"} aria-pressed={cam} onClick={toggleCam}>{cam ? <Camera /> : <CameraOff />}<small>{cam ? "Desligar câmera" : "Ligar câmera"}</small></button>
-              <button className="vx-ctrl" aria-label="Compartilhar tela" onClick={shareScreen}><MonitorUp /><small>Tela</small></button>
-              <button className="vx-ctrl" aria-label="Capturar foto" onClick={capture}><Video /><small>Foto</small></button>
-              <button className="vx-ctrl end" aria-label="Encerrar chamada" onClick={end}><PhoneOff /><small>Encerrar</small></button>
-            </div>
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <button className="vx-glass" style={{ padding: 18, display: "flex", gap: 12, alignItems: "center", font: "inherit", color: "inherit", textAlign: "left", cursor: "pointer" }} onClick={() => navigate(`/teleatendimentos/${current.id}`)}>
-              <span className="vx-av" style={{ width: 52, height: 52, borderRadius: 16, background: colorFor(current.animal || "") }}>{initials(current.animal)}</span>
-              <span style={{ flex: 1 }}>
-                <strong style={{ display: "block", fontSize: 17 }}>{current.animal}</strong>
-                <small style={{ fontSize: 12, color: "var(--vx-muted)" }}>{animal?.subtitle} · {current.name}</small>
-              </span>
-              <StatusPill status={current.status} />
-            </button>
-            <div className="vx-glass" style={{ padding: 18, flex: 1, display: "flex", flexDirection: "column", gap: 10 }}>
-              <div className="vx-row" style={{ justifyContent: "space-between" }}><span className="vx-lbl">Anotações ao vivo</span>{current.status === "Em andamento" && <span className="vx-chip" style={{ minHeight: 24, background: "#e2ecff", color: "#2457c5", border: 0 }}>gravando notas</span>}</div>
-              <textarea className="vx-in" aria-label="Anotações da chamada" style={{ minHeight: 200, flex: 1 }} value={notes} placeholder="Queixa, achados pela câmera, orientação…" onChange={(event) => setNotes(event.target.value)} />
-              {current.notes && <div className="vx-note"><b>Motivo:</b> {current.notes}</div>}
-              <div className="vx-tele-toggles">
-                <button type="button" className={`vx-tele-tg ${cam ? "on" : ""}`} aria-pressed={cam} onClick={toggleCam}>
-                  {cam ? <Camera size={16} /> : <CameraOff size={16} />} {cam ? "Câmera ligada" : "Câmera desligada"}
-                  <i />
-                </button>
-                <button type="button" className={`vx-tele-tg ${mic ? "on" : ""}`} aria-pressed={mic} onClick={() => setMic(!mic)}>
-                  {mic ? <Mic size={16} /> : <MicOff size={16} />} {mic ? "Microfone ligado" : "Microfone mudo"}
-                  <i />
-                </button>
-              </div>
-              <button className="vx-btn vx-btn-g" onClick={() => navigate(`/agendas`)}>Agendar presencial</button>
-              <button className="vx-btn vx-btn-p" onClick={saveRecord}>Salvar no prontuário</button>
-            </div>
-          </div>
+          </aside>
         </div>
-      ) : (
-        <div className="vx-glass vx-empty">Nenhum teleatendimento. <button className="vx-btn vx-btn-p" onClick={() => forms.open()}>Agendar o primeiro</button></div>
+        {forms.node}
+      </Page>
+    )
+  }
+
+  /* ================= LISTA EM CARDS ================= */
+  return (
+    <Page bg="#e8f1fb" blobs={[["#8cc9ff", -100, -80, 520, 460], ["#c9b8ff", "80%", "70%", 420, 420], ["#b8e8dc", "40%", "85%", 360, 300]]}
+      crumb="Teleatendimentos" title="Teleatendimentos"
+      sub="Todos os atendimentos por vídeo, organizados por dia. Escolha um card para abrir a sala e iniciar a chamada."
+      actions={<>
+        <label className="tl-search"><Search size={16} /><input placeholder="Tutor, animal ou veterinário" value={q} onChange={(e) => setQ(e.target.value)} /></label>
+        <button className="vx-btn vx-btn-p" onClick={() => forms.open()}><Plus /> Agendar</button>
+      </>}>
+      <div className="tl-top">
+        <div className="tl-filters" role="tablist">
+          {([["Próximos", counts.prox], ["Hoje", counts.hoje], ["Concluídos", counts.conc], ["Todos", sorted.length]] as const).map(([f, n]) => (
+            <button key={f} role="tab" aria-selected={filtro === f} className={filtro === f ? "on" : ""} onClick={() => { setFiltro(f); setLimit(24) }}>{f} <b>{n}</b></button>
+          ))}
+        </div>
+        <div className="tl-week">
+          {week.map(({ d, n }) => (
+            <span key={d} className={`tl-day ${d === today ? "today" : ""}`}><small>{fmtDate(d, { weekday: "short" }).replace(".", "")}</small><b>{d.slice(8)}</b><i style={{ opacity: n ? 1 : 0.25 }}>{n}</i></span>
+          ))}
+        </div>
+      </div>
+
+      {live.length > 0 && filtro !== "Concluídos" && (
+        <div className="tl-live-strip">
+          {live.map((item) => (
+            <button key={item.id} className="tl-live" onClick={() => open(item)}>
+              <span className="tl-rec" /> <b>Ao vivo</b> · {item.owner} com {item.animal} · {item.professional} <span className="tl-go">Voltar à sala →</span>
+            </button>
+          ))}
+        </div>
       )}
-      <style>{`@media (max-width: 1100px){ .vx-tele-grid{ grid-template-columns: 1fr !important; } }`}</style>
+
+      {groups.map(([d, items]) => (
+        <section key={d} className="tl-group">
+          <h3><span>{dayLabel(d)}</span><small>{fmtDate(d)} · {items.length} {items.length === 1 ? "atendimento" : "atendimentos"}</small></h3>
+          <div className="tl-grid">
+            {items.map((item, i) => {
+              const isLive = item.status === "Em andamento"
+              const done = /conclu|faltou|cancel/i.test(item.status)
+              const an = data.animais.find((a) => a.id === item.animalId)
+              return (
+                <article key={item.id} className={`tl-card ${isLive ? "live" : ""} ${done ? "done" : ""}`} style={{ animationDelay: `${Math.min(i, 10) * 45}ms` }}>
+                  <header>
+                    <span className="tl-time"><Clock size={14} /> {item.time || "--:--"}</span>
+                    {isLive ? <span className="tl-badge live"><span className="tl-rec" /> Ao vivo</span> : <StatusPill status={item.status} />}
+                  </header>
+                  <div className="tl-kind"><Video size={15} /> {item.name}</div>
+                  <div className="tl-who">
+                    <span className="vx-av" style={{ background: colorFor(item.owner || "") }}>{initials(item.owner)}</span>
+                    <span><b>{item.owner}</b><small>Tutor</small></span>
+                  </div>
+                  <div className="tl-pet">
+                    <span className="tl-pet-ic" style={{ background: colorFor(item.animal || "") }}><PawPrint size={15} /></span>
+                    <span><b>{item.animal}</b><small>{[an?.species, an?.breed].filter(Boolean).join(" · ") || "Paciente"}</small></span>
+                  </div>
+                  {item.notes && <p className="tl-motivo">{item.notes}</p>}
+                  <footer>
+                    <span className="tl-vet"><Stethoscope size={14} /> {item.professional || "—"}</span>
+                    <span className="tl-btns">
+                      <button className="vx-btn vx-btn-g" onClick={() => open(item)}>{done ? "Ver" : "Abrir sala"}</button>
+                      {!done && <button className="vx-btn vx-btn-p" onClick={() => open(item)}><Play /> {isLive ? "Entrar" : "Iniciar"}</button>}
+                    </span>
+                  </footer>
+                </article>
+              )
+            })}
+          </div>
+        </section>
+      ))}
+      {!groups.length && <div className="vx-glass vx-empty">Nenhum teleatendimento neste filtro. <button className="vx-btn vx-btn-p" onClick={() => forms.open()}><Plus /> Agendar</button></div>}
+      {list.length > limit && <div style={{ textAlign: "center", marginTop: 16 }}><button className="vx-btn vx-btn-g" onClick={() => setLimit(limit + 24)}>Mostrar mais ({list.length - limit})</button></div>}
       {forms.node}
     </Page>
   )

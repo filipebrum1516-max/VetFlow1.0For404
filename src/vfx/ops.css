@@ -428,3 +428,21 @@ a.op-btn { text-decoration: none; color: inherit; }
 .op-fkeys button { padding: 5px 9px 5px 5px; font-size: 11.5px; }
 .op-fkeys button kbd { min-width: 22px; padding: 2px 5px; font-size: 10.5px; }
 .op-erp-row .op-in { min-width: 0; }
+/* listas suspensas (busca de produto/cliente) sempre por cima da barra de atalhos */
+.op-col:has(.op-drop), .op-card:has(.op-drop), .op-search:has(.op-drop) { position: relative; z-index: 40; }
+.op-drop { z-index: 50; }
+.op-vx .op-drop { background: rgba(255,255,255,.98); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); box-shadow: 0 24px 50px -18px rgba(20,26,38,.4); }
+[data-theme="dark"] .op-vx .op-drop { background: rgba(22,28,38,.98); }
+.op-drop.up { top: auto; bottom: calc(100% + 4px); }
+.vx-copy { position: relative; z-index: 0; }
+/* medidor de desconto x limite */
+.op-desc-meter { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; font-size: 12px; color: var(--muted); }
+.op-desc-meter > span:first-child { font-weight: 700; color: var(--ink); }
+.op-desc-meter .bar { position: relative; height: 6px; border-radius: 6px; background: var(--line2); overflow: visible; }
+.op-desc-meter .bar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 6px; background: #2b7a4b; transition: width .2s; }
+.op-desc-meter .bar i.over { background: #c62f22; }
+.op-desc-meter .bar em { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--ink); opacity: .45; border-radius: 2px; }
+.op-desc-ask { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-radius: 14px; background: #fdecea; color: #8a1f17; }
+.op-desc-ask b { font-size: 30px; letter-spacing: -.03em; }
+.op-desc-ask span { font-size: 12.5px; line-height: 1.4; }
+[data-theme="dark"] .op-desc-ask { background: rgba(198,47,34,.18); color: #ffb4ab; }

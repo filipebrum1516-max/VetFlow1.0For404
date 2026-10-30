@@ -37,7 +37,8 @@ export const A_PRAZO = ["Crédito", "Duplicata", "Fiado", "Boleto", "Convênio"]
 export const PARCELADAS = ["Duplicata", "Boleto"]
 export const ENTREGADORES = ["Marcos Lima", "Diego Souza", "Paulo Henrique"]
 export const LIMITE_FIADO = 1500
-export const LIMITE_DESCONTO = 10
+/** desconto máximo sem liberação (vendedor e demais perfis). Acima disso, só com a senha de um administrador. */
+export const LIMITE_DESCONTO = 7
 
 export const lineTotal = (line: Line) => Math.max(0, line.qtd * line.preco * (1 - (line.desconto || 0) / 100))
 export const nowTime = () => new Date().toTimeString().slice(0, 5)

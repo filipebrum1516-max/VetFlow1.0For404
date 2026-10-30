@@ -16,7 +16,7 @@
 .esc-wrap { position: relative; z-index: 2; min-height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 24px; transition: transform .65s cubic-bezier(.6, 0, .3, 1), opacity .55s ease, filter .55s ease; }
 .esc-hd { text-align: center; margin-bottom: 36px; }
 .esc-hd > * { animation: escUp .8s cubic-bezier(.2, .7, .2, 1) both; }
-.esc-hd img { height: 44px; margin-bottom: 22px; animation-delay: .05s; }
+.esc-hd img { display: block; height: 44px; width: auto; margin: 0 auto 22px; animation-delay: .05s; }
 .esc-hi { display: block; font-size: 13px; letter-spacing: .2em; text-transform: uppercase; color: #ffb08f; font-weight: 700; animation-delay: .15s; }
 .esc-hd h1 { font-size: clamp(30px, 4vw, 48px); margin: 10px 0 8px; letter-spacing: -.04em; line-height: 1.05; color: #fff; animation-delay: .25s; }
 .esc-hd h1 span { background: linear-gradient(90deg, #ffb08f, #e94f17 45%, #ffd27a, #ffb08f); background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: escShine 6s linear infinite; }
@@ -80,7 +80,7 @@
   .esc-ill { height: 96px; margin-bottom: 14px; }
   .esc-ill .b { transform-origin: bottom; scale: .7; }
   .esc-badge { top: 30px; right: 30px; }
-  .esc-hd { margin-bottom: 22px; } .esc-hd img { height: 32px; margin-bottom: 14px; }
+  .esc-hd { margin-bottom: 22px; } .esc-hd img { height: 32px; margin: 0 auto 14px; }
   .esc-card ul { display: none; } .esc-card em { margin-bottom: 14px; font-size: 13px; }
   .esc-ft { flex-direction: column; gap: 6px; margin-top: 18px; }
 }

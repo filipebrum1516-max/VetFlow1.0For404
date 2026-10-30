@@ -4418,3 +4418,31 @@ button:disabled { cursor: not-allowed; opacity: .55; transform: none !important;
 [data-theme="dark"] .login-accounts { background: #161c26; border-color: #263041; }
 [data-theme="dark"] .login-accounts code { color: #eef2f7; }
 .unit-switch-clinic { border-top: 1px dashed rgba(127,127,127,.3) !important; }
+/* ===== Login: cena com imagem transparente (fundo muda só pela cor do tema) ===== */
+.login-page .login-scene { --ls-bg: #fbfaf8; --ls-paw: #e2d5c5; --ls-bone: #dccab4; --ls-ver: #3a4150; position: relative; min-height: 100vh; min-height: 100dvh; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: clamp(8px, 2vh, 22px); padding: clamp(24px, 5vh, 56px) clamp(20px, 4vw, 56px); background: var(--ls-bg); transition: background .3s; }
+[data-theme="dark"] .login-page .login-scene { --ls-bg: #0c111b; --ls-paw: rgba(226,213,197,.16); --ls-bone: #cdb89f; --ls-ver: #d6dbe4; }
+.login-scene .ls-brand { position: relative; z-index: 2; display: flex; flex-direction: column; align-items: center; width: min(78%, 520px); }
+.login-scene .ls-word { width: 100%; height: auto; display: block; }
+.login-scene .ls-ver { margin-top: 4px; font: 300 clamp(26px, 4vh, 44px)/1 Inter, system-ui, sans-serif; color: var(--ls-ver); letter-spacing: -.02em; }
+.login-scene .ls-bone { position: absolute; width: clamp(48px, 9vw, 92px); fill: var(--ls-bone); top: 18%; }
+.login-scene .ls-bone svg, .login-scene .ls-paw svg { width: 100%; height: auto; display: block; }
+.login-scene .ls-bone.b1 { left: -14%; transform: rotate(-38deg); }
+.login-scene .ls-bone.b2 { right: -14%; transform: rotate(32deg); }
+.login-scene .ls-dog { position: relative; z-index: 2; display: block; width: auto; height: auto; max-width: min(78%, 560px); max-height: min(62vh, 640px); object-fit: contain; filter: drop-shadow(0 26px 30px rgba(20,24,36,.16)); animation: lsDog 6s ease-in-out infinite; }
+[data-theme="dark"] .login-scene .ls-dog { filter: drop-shadow(0 26px 34px rgba(0,0,0,.5)); }
+.login-scene .ls-paw { position: absolute; z-index: 1; fill: var(--ls-paw); pointer-events: none; }
+.login-scene .ls-paw.p1 { width: clamp(120px, 20vw, 240px); left: -3%; bottom: 14%; transform: rotate(-24deg); }
+.login-scene .ls-paw.p2 { width: clamp(80px, 12vw, 150px); right: 2%; top: 40%; transform: rotate(18deg); }
+.login-scene .ls-paw.p3 { width: clamp(110px, 17vw, 210px); right: -4%; bottom: -4%; transform: rotate(-10deg); opacity: .7; }
+@keyframes lsDog { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+@media (prefers-reduced-motion: reduce) { .login-scene .ls-dog { animation: none; } }
+@media (max-width: 900px) { .login-page .login-scene { display: none !important; } }
+.login-scene .ls-word-d { display: none; }
+[data-theme="dark"] .login-scene .ls-word-l { display: none; }
+[data-theme="dark"] .login-scene .ls-word-d { display: block; }
+.login-scene .ls-brand { width: min(68%, 500px); }
+.login-scene .ls-bone { top: 4%; }
+.login-scene .ls-bone.b1 { left: -19%; }
+.login-scene .ls-bone.b2 { right: -19%; }
+/* tabela de tutores: rola dentro do card em telas médias, sem estourar a página */
+@media (max-width: 1280px) { .tutors-list-card { overflow-x: auto; } .tutors-list-head, .tutor-row { min-width: 780px; } }

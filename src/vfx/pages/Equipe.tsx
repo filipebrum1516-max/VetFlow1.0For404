@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react"
-import { useNavigate } from "react-router"
+import { useEffect, useMemo, useState } from "react"
+import { useNavigate, useSearchParams } from "react-router"
 import { Eye, EyeOff, KeyRound, Plus, Save, ShieldCheck, UserX } from "lucide-react"
 import { modules, ROLE_ACCESS, useVetFlow, type Role, type StaffUser } from "../../store"
 import { initials, normalizeText, Page, SearchBox, useToast } from "../ui"
@@ -30,6 +30,9 @@ export default function Equipe() {
   const [draft, setDraft] = useState<StaffUser | null>(null)
   const [showPass, setShowPass] = useState(false)
   const [errors, setErrors] = useState<string[]>([])
+  const [params] = useSearchParams()
+  const qUser = params.get("u") || ""
+  useEffect(() => { if (qUser) { setSelId(qUser); setRoleFilter(""); setDraft(null) } }, [qUser])
 
   const list = useMemo(() => {
     const q = normalizeText(query.trim())
@@ -37,7 +40,7 @@ export default function Equipe() {
     return staff.filter((u) => (!roleFilter || u.role === roleFilter) && (!q || normalizeText(`${u.name} ${u.displayName} ${u.email} ${u.username} ${u.role}`).includes(q) || (d.length >= 3 && u.cpf.replace(/\D/g, "").includes(d))))
   }, [staff, query, roleFilter])
   const counts = useMemo(() => Object.fromEntries(ROLES.map((r) => [r, staff.filter((u) => u.role === r).length])) as Record<Role, number>, [staff])
-  const selected = staff.find((u) => u.id === selId) || null
+  const selected = list.find((u) => u.id === selId) || (selId === "" && draft ? null : list[0]) || null
   const form = draft || selected
 
   const pick = (u: StaffUser) => { setSelId(u.id); setDraft(null); setErrors([]); setShowPass(false) }
@@ -86,8 +89,8 @@ export default function Equipe() {
     >
       <div className="eq">
         <div className="eq-roles">
-          <button className={!roleFilter ? "on" : ""} onClick={() => setRoleFilter("")}>Todos <b>{staff.length}</b></button>
-          {ROLES.map((r) => <button key={r} className={roleFilter === r ? "on" : ""} style={{ ["--c" as string]: ROLE_COLOR[r] }} onClick={() => setRoleFilter(roleFilter === r ? "" : r)}><i />{r} <b>{counts[r]}</b></button>)}
+          <button className={!roleFilter ? "on" : ""} onClick={() => { setRoleFilter(""); setDraft(null) }}>Todos <b>{staff.length}</b></button>
+          {ROLES.map((r) => <button key={r} className={roleFilter === r ? "on" : ""} style={{ ["--c" as string]: ROLE_COLOR[r] }} onClick={() => { const next = roleFilter === r ? "" : r; setRoleFilter(next); setDraft(null); setErrors([]); const first = staff.find((u) => !next || u.role === next); if (first) setSelId(first.id) }}><i />{r} <b>{counts[r]}</b></button>)}
         </div>
 
         <div className="eq-cards">

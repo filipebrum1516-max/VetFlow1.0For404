@@ -8,7 +8,7 @@ import { addDays, colorFor, fmtLong, initials, itemDate, matches, Page, SearchBo
 const onDuty = (status: string) => /ativo|plant/i.test(status) && !/inativo/i.test(status)
 
 export default function Profissionais() {
-  const { data } = useVetFlow()
+  const { data, staff } = useVetFlow()
   const navigate = useNavigate()
   const forms = usePageForms("profissionais")
   const [filter, setFilter] = useState("Todos")
@@ -19,7 +19,17 @@ export default function Profissionais() {
     return agendaDays.includes(today) ? today : agendaDays.find((value) => value >= today) || agendaDays[agendaDays.length - 1] || today
   })
   const isVet = (item: Item) => /crmv/i.test(item.registration || item.subtitle) || /^dra?\./i.test(item.name)
-  const pros = data.profissionais.filter(
+  /* equipe completa: profissionais cadastrados + todos os usuários do sistema (vendedor, caixa, estoque, entregador...) */
+  const team = useMemo(() => {
+    const norm = (t: string) => t.toLowerCase().replace(/^(dra?\.)\s*/, "").trim()
+    const known = new Set(data.profissionais.map((p) => norm(p.name)))
+    const extra = staff.filter((u) => !known.has(norm(u.displayName)) && !known.has(norm(u.name))).map((u) => ({
+      id: `staff-${u.id}`, name: u.displayName, subtitle: `${u.role} • ${u.email}`, status: u.active ? "Ativo" : "Inativo", category: u.role,
+      registration: u.crmv || (u.code ? `Cód. ${u.code}` : "—"), phone: `@${u.username}`, unitId: "", createdAt: "", extra: { staffId: u.id, papel: u.role },
+    }) as unknown as Item)
+    return [...data.profissionais, ...extra]
+  }, [data.profissionais, staff])
+  const pros = team.filter(
     (item) => matches(item, query) && (filter === "Todos" || (filter === "Veterinários" ? isVet(item) : !isVet(item))),
   )
   const dayAgenda = data.agendas.filter((item) => itemDate(item) === day)
@@ -30,7 +40,7 @@ export default function Profissionais() {
     return { hour, count: slot.length, pros: new Set(slot.map((item) => item.professionalId)).size }
   })
   const max = Math.max(1, ...coverage.map((slot) => slot.count))
-  const vets = data.profissionais.filter(isVet).length
+  const vets = team.filter(isVet).length
 
   return (
     <Page
@@ -38,11 +48,11 @@ export default function Profissionais() {
       blobs={[["#9ec5ff", -140, 120, 520, 520], ["#ffc7a0", "80%", 200, 460, 380], ["#b8e8dc", "42%", 600, 380, 300]]}
       crumb="Profissionais"
       title="Quem está de crachá hoje"
-      sub="A equipe pendurada no quadro. Crachá aceso = no plantão. Toque num crachá para abrir a ficha."
+      sub="Toda a equipe pendurada no quadro: veterinários, vendedores, caixa, estoque e entregadores. Crachá aceso = no plantão. Toque num crachá para abrir a ficha."
       actions={
         <>
           <SearchBox value={query} onChange={setQuery} placeholder="Buscar profissional" />
-          <Seg options={[["Todos", `Todos ${data.profissionais.length}`], ["Veterinários", `Veterinários ${vets}`], ["Equipe", `Equipe ${data.profissionais.length - vets}`]]} value={filter} onChange={setFilter} />
+          <Seg options={[["Todos", `Todos ${team.length}`], ["Veterinários", `Veterinários ${vets}`], ["Equipe", `Equipe ${team.length - vets}`]]} value={filter} onChange={setFilter} />
           <button className="vx-btn vx-btn-p" onClick={() => forms.open()}>
             <Plus /> Novo profissional
           </button>
@@ -60,7 +70,7 @@ export default function Profissionais() {
                 key={item.id}
                 className="vx-badge"
                 style={{ transform: `rotate(${rotation}deg)` }}
-                onClick={() => navigate(`/profissionais/${item.id}`)}
+                onClick={() => navigate(item.extra?.staffId ? `/usuarios?u=${item.extra.staffId}` : `/profissionais/${item.id}`)}
                 aria-label={`Abrir ficha de ${item.name}`}
               >
                 <span className="cord" style={{ height: 22 + (index % 3) * 12, background: color }} />

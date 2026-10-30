@@ -598,6 +598,70 @@ const PET_CATALOG: [string, string, number, number, number][] = [
   ["Suplemento Condroitina 60 comp.", "Medicamentos", 69, 119.9, 18],
 ]
 
+// Conteúdo das publicações: cada tema com legendas diferentes
+const PUB_CONTENT: Record<string, { img: string; tags: string; cta: string; caps: string[] }> = {
+  "Cuidados no calor": { img: "Calor de 35°? Seu pet sente mais", tags: "#verão #cuidadoscomopet #veterinario", cta: "Agendar check-up", caps: [
+    "Dias quentes pedem atenção redobrada: água fresca sempre à vista, passeios só antes das 9h ou depois das 17h e nada de deixar o pet no carro, nem por 5 minutos. Língua muito para fora, gengiva vermelha e cansaço fora do normal são sinais de alerta. 🐶☀️",
+    "Teste rápido antes do passeio: encoste a mão no asfalto por 7 segundos. Se estiver quente para você, vai queimar as patinhas dele. Prefira grama e sombra! 🐾",
+    "Raças de focinho curto (pug, buldogue, shih-tzu e persas) sofrem mais com o calor. Ambiente ventilado, tapete gelado e muita água. Na dúvida, fale com a gente.",
+  ]},
+  "Campanha de vacinação antirrábica": { img: "Vacina antirrábica: proteja quem você ama", tags: "#raiva #vacinação #saúdepública", cta: "Agendar vacina", caps: [
+    "A raiva não tem cura, mas tem prevenção: uma dose por ano. Cães e gatos a partir de 3 meses. Traga a carteirinha e garanta a proteção de toda a família. 💉",
+    "Campanha de vacinação antirrábica na clínica: atendimento por ordem de chegada das 8h às 17h. Gatos em caixa de transporte, cães de coleira e guia, por favor!",
+    "Seu pet está com a antirrábica em dia? Confira a carteirinha: se a última dose tem mais de 12 meses, está na hora de renovar.",
+  ]},
+  "Saúde bucal pet": { img: "Mau hálito não é normal", tags: "#saúdebucal #odontologiaveterinária #petcare", cta: "Avaliar os dentes", caps: [
+    "80% dos cães e gatos acima de 3 anos têm algum problema dental. Escovação 3x por semana, petiscos dentais e avaliação anual fazem toda a diferença. 🦷",
+    "Tártaro amarelado, gengiva sangrando ou dificuldade para mastigar? Pode ser doença periodontal, que afeta até coração e rins. Agende uma avaliação.",
+    "Como começar a escovar: dedeira, pasta própria para pets (nunca a nossa!) e muita paciência. Comece com 10 segundos e um petisco de recompensa.",
+  ]},
+  "Prevenção de pulgas e carrapatos": { img: "Pulga e carrapato: fora daqui!", tags: "#antipulgas #carrapato #erliquiose", cta: "Ver antipulgas", caps: [
+    "Carrapato transmite doença do carrapato (erliquiose e babesiose), que pode ser fatal. O antipulgas em dia, todo mês, é a forma mais barata de proteger. 🛡️",
+    "Para cada pulga no seu pet existem outras 95 no ambiente. Trate o animal e também a casa: aspire cantinhos, lave a caminha e use produto no quintal.",
+    "Comprimido, pipeta ou coleira? Cada opção tem duração e indicação diferentes. Pergunte ao nosso time qual combina com a rotina do seu pet.",
+  ]},
+  "Vacinação contra aftosa no rebanho": { img: "Aftosa: rebanho vacinado, mercado aberto", tags: "#aftosa #pecuária #rebanho", cta: "Agendar visita", caps: [
+    "Etapa de vacinação contra febre aftosa: vacine todo o rebanho e declare no órgão de defesa agropecuária dentro do prazo. Nossa equipe atende na fazenda. 🐄",
+    "Dicas para a vacinação: vacina na geladeira entre 2°C e 8°C, agulha limpa e aplicação na tábua do pescoço. Animal bem contido é menos estresse e menos perda.",
+    "Rebanho sem aftosa garante a venda para outros estados e para exportação. Conte com a gente para planejar o manejo sanitário completo.",
+  ]},
+  "Cuidados com cascos do cavalo": { img: "Sem casco, sem cavalo", tags: "#equinos #casqueamento #cavalos", cta: "Agendar casqueamento", caps: [
+    "Casqueamento a cada 30 a 45 dias evita rachaduras, manqueiras e problemas de aprumo. Limpe os cascos todos os dias depois do trabalho. 🐴",
+    "Cheiro forte e área escura na ranilha podem ser podridão. Mantenha a baia seca e chame o veterinário ao primeiro sinal.",
+    "Ferrageamento correto distribui o peso e protege o casco em terreno pedregoso. Nossa equipe avalia o andamento e indica o melhor ferrageamento.",
+  ]},
+  "Castração: mitos e verdades": { img: "Castração: mito ou verdade?", tags: "#castração #mitoouverdade #adoçãoresponsável", cta: "Agendar avaliação", caps: [
+    "MITO: o pet fica preguiçoso. VERDADE: castração reduz o risco de câncer de mama, infecção no útero e problemas de próstata. Com dieta certa, ele continua ativo. ✂️",
+    "A fêmea precisa ter uma cria antes de castrar? Mito! Quanto mais cedo a castração, maior a proteção contra tumores de mama.",
+    "Pré-operatório na clínica: exames de sangue, jejum orientado e acompanhamento no pós. Tire suas dúvidas por mensagem.",
+  ]},
+  "Bem-estar do rebanho leiteiro": { img: "Vaca confortável produz mais leite", tags: "#leite #bemestaranimal #pecuárialeiteira", cta: "Falar com o técnico", caps: [
+    "Sombra, água à vontade e cama seca aumentam a produção e reduzem a mastite. Bem-estar também é resultado no tanque. 🥛",
+    "Pré-dipping, teste da caneca de fundo escuro e pós-dipping: três passos simples que previnem a mastite na ordenha.",
+    "Estresse térmico derruba a produção em até 20%. Ventiladores e aspersores na sala de espera fazem diferença no verão.",
+  ]},
+  "Check-up do gato idoso": { img: "Gato com mais de 7 anos? Check-up!", tags: "#gatoidoso #felinos #checkup", cta: "Agendar check-up", caps: [
+    "Gatos escondem bem a dor. A partir dos 7 anos, faça check-up a cada 6 meses: exames de sangue, urina e pressão detectam doença renal bem no começo. 🐱",
+    "Está bebendo mais água e fazendo mais xixi? Pode ser rim ou diabetes. Não espere: quanto antes o diagnóstico, melhor a qualidade de vida.",
+    "Atendimento cat friendly: sala separada, horário tranquilo e manuseio gentil. Seu gato merece uma consulta sem estresse.",
+  ]},
+  "Alimentação do filhote": { img: "Filhote bem alimentado cresce forte", tags: "#filhote #nutriçãopet #primeirosdias", cta: "Ver rações filhote", caps: [
+    "Filhote come de 3 a 4 vezes ao dia, sempre com ração específica para a fase e o porte. Nada de leite de vaca: pode causar diarreia. 🍼",
+    "Troca de ração aos poucos: em 7 dias, misture a nova com a antiga aumentando a proporção. Assim o intestino se adapta sem problemas.",
+    "Petisco é recompensa, não refeição: no máximo 10% das calorias do dia. Temos opções naturais e funcionais no pet shop.",
+  ]},
+  "Atendimento a campo em haras": { img: "Vamos até o seu haras", tags: "#haras #veterinárioacampo #equinos", cta: "Agendar visita", caps: [
+    "Atendimento a campo com estrutura completa: ultrassom portátil, exames e vacinação no seu haras. Menos transporte, menos estresse para o animal. 🚙",
+    "Programa reprodutivo: acompanhamento de cio, inseminação e diagnóstico de gestação na própria propriedade.",
+    "Plano de saúde do plantel: vermifugação estratégica, vacinas e odontologia equina em visitas agendadas.",
+  ]},
+  "Bezerros: colostro nas primeiras horas": { img: "Colostro: o primeiro remédio", tags: "#bezerros #colostro #pecuária", cta: "Falar com o técnico", caps: [
+    "O bezerro precisa mamar 10% do peso em colostro nas primeiras 6 horas de vida. É ali que ele recebe a defesa que vai protegê-lo nos primeiros meses. 🐮",
+    "Cura do umbigo com iodo a 10% logo ao nascer e repetida por 3 dias evita onfalite e perdas no bezerreiro.",
+    "Bezerreiro limpo, seco e ventilado reduz diarreias e pneumonias. Pequenos cuidados, grandes resultados no desmame.",
+  ]},
+}
+
 function baseItem(
   unitId: string,
   slug: ModuleSlug,
@@ -1325,7 +1389,19 @@ function generateUnit(unit: Unit, unitIndex: number): UnitData {
         "Triagem remota",
       ],
       ["Agendado", "Concluído", "Em andamento", "Faltou"],
-    ),
+    ).map((item, index) => {
+      /* agenda realista: alguns hoje, próximos 6 dias agendados, o restante no histórico */
+      const REAL_TODAY = new Date(); REAL_TODAY.setHours(12, 0, 0, 0)
+      const MOTIVOS = ["Tutor relata coceira e lambedura nas patas há 5 dias.", "Acompanhamento da ferida cirúrgica, 7º dia pós-castração.", "Discutir resultado do hemograma e bioquímico.", "Vômito ocasional desde ontem; apetite preservado.", "Revisão da dose do anti-inflamatório.", "Filhote com diarreia leve; orientar dieta.", "Gato urinando fora da caixa há 3 dias.", "Retorno de otite: avaliar evolução pela câmera."]
+      const slot = index % 19
+      const hour = ["08:00", "08:40", "09:20", "10:00", "10:40", "11:20", "13:30", "14:10", "14:50", "15:30", "16:10", "16:50", "17:30"]
+      const iso = (d: Date) => dateValue(d)
+      let date: string, status: string
+      if (index < 7) { date = iso(REAL_TODAY); status = index === 1 ? "Em andamento" : index === 0 ? "Concluído" : "Agendado" }
+      else if (index < 25) { date = iso(new Date(REAL_TODAY.getTime() + (1 + (index % 6)) * DAY)); status = "Agendado" }
+      else { date = item.date && item.date < iso(REAL_TODAY) ? item.date : iso(new Date(REAL_TODAY.getTime() - (1 + (index % 40)) * DAY)); status = index % 9 === 0 ? "Faltou" : "Concluído" }
+      return { ...item, date, status, time: hour[index < 7 ? index * 2 : slot % hour.length], notes: MOTIVOS[index % MOTIVOS.length], extra: { ...(item.extra || {}), ...(status === "Em andamento" ? { inicio: new Date(Date.now() - 6 * 60000).toISOString() } : {}) } }
+    }),
     comunicacao: linked(
       "comunicacao",
       210,
@@ -1337,7 +1413,7 @@ function generateUnit(unit: Unit, unitIndex: number): UnitData {
       ],
       ["Enviada", "Lida", "Pendente", "Respondida"],
     ),
-    publicacoes: generic(
+    publicacoes: (generic(
       "publicacoes",
       54,
       [
@@ -1355,7 +1431,24 @@ function generateUnit(unit: Unit, unitIndex: number): UnitData {
         "Bezerros: colostro nas primeiras horas",
       ],
       ["Publicada", "Agendada", "Rascunho"],
-    ),
+    ) as Item[]).map((item, index) => {
+      const topic = item.name.replace(/ #\d+$/, "")
+      const c = PUB_CONTENT[topic]
+      if (!c) return item
+      const num = /#(\d+)$/.exec(item.name)
+      const orig = num ? Number(num[1]) - 1 : index % 12
+      const v = Math.floor(orig / 12)
+      const formato = ["Post", "Carrossel", "Stories", "Reels"][(orig + v) % 4]
+      const low = topic.charAt(0).toLowerCase() + topic.slice(1)
+      const extras = [
+        `Perguntas e respostas sobre ${low}: deixe sua dúvida nos comentários e a nossa equipe responde ao vivo na quinta, às 19h. 💬`,
+        `Checklist rápido de ${low}: salve este post e compartilhe com quem também cuida de animais. Precisa de ajuda? Fale com a gente pelo WhatsApp. ✅`,
+      ]
+      const legenda = v < c.caps.length ? c.caps[v] : extras[(v - c.caps.length) % extras.length]
+      const textoImagem = v === 0 ? c.img : v < c.caps.length ? legenda.split(/[.:!?]/)[0].slice(0, 48) : v === c.caps.length ? `Tire suas dúvidas: ${low}` : `Checklist: ${low}`
+      const sufixo = ["", " · dica 2", " · dica 3", " · perguntas e respostas", " · checklist"][v] || ` · ${v + 1}`
+      return { ...item, name: `${topic}${sufixo}`, category: formato, notes: legenda, extra: { ...(item.extra || {}), legenda, hashtags: c.tags, cta: c.cta, textoImagem, formato } }
+    }),
     documentos: linked(
       "documentos",
       260,

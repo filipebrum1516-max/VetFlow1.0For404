@@ -46,7 +46,12 @@ export default function Vendas() {
   const [obs, setObs] = useState("")
   const [addr, setAddr] = useState({ ...BLANK_ADDR, data: todayISO() })
   const [useCadastro, setUseCadastro] = useState(true)
-  const [approved, setApproved] = useState(false)
+  /* liberação de desconto: guarda até quantos % o administrador autorizou nesta venda */
+  const [approval, setApproval] = useState<{ pct: number; por: string; em: string } | null>(null)
+  const [adminPass, setAdminPass] = useState("")
+  const [adminUser, setAdminUser] = useState("")
+  const [approvalErr, setApprovalErr] = useState("")
+  const [approvalTries, setApprovalTries] = useState(0)
   const [askApproval, setAskApproval] = useState(false)
   const [sent, setSent] = useState<Item | null>(null)
   const [errors, setErrors] = useState<string[]>([])
@@ -187,6 +192,9 @@ export default function Vendas() {
   const [pIdx, setPIdx] = useState(0)
   const [qtyNext, setQtyNext] = useState(1)
   const prodRef = useRef<HTMLInputElement>(null)
+  /* abre a lista para cima quando não há espaço embaixo (ex.: perto da barra de atalhos) */
+  const [dropUp, setDropUp] = useState(false)
+  const measureDrop = () => { const r = prodRef.current?.getBoundingClientRect(); if (r) setDropUp(window.innerHeight - r.bottom < 380 && r.top > 380) }
   const prodHits = useMemo(() => {
     const q = normalizeText(pq.trim())
     if (!q) return [] as Item[]
@@ -233,7 +241,29 @@ export default function Vendas() {
   const desconto = Math.min(subtotal, descMode === "%" ? (subtotal * descNum) / 100 : descNum)
   const descPct = subtotal ? (desconto / subtotal) * 100 : 0
   const maxItemDesc = cart.reduce((m, l) => Math.max(m, l.desconto || 0), 0)
-  const needApproval = (descPct > LIMITE_DESCONTO || maxItemDesc > LIMITE_DESCONTO) && !approved
+  /* desconto efetivo = itens + desconto geral, sobre o valor cheio */
+  const bruto = cart.reduce((s, l) => s + l.qtd * l.preco, 0)
+  const descEfetivo = bruto ? ((bruto - (subtotal - desconto)) / bruto) * 100 : 0
+  const pctPedido = Math.round(Math.max(descEfetivo, maxItemDesc) * 100) / 100
+  const isAdmin = user?.role === "Administrador"
+  const acimaLimite = pctPedido > LIMITE_DESCONTO + 1e-9
+  const approved = !!approval && pctPedido <= approval.pct + 1e-9
+  const needApproval = acimaLimite && !isAdmin && !approved
+  const admins = staff.filter((u) => u.active && u.role === "Administrador")
+  const openApproval = () => { setAdminPass(""); setApprovalErr(""); setAdminUser(admins[0]?.id || ""); setAskApproval(true) }
+  const confirmApproval = () => {
+    if (approvalTries >= 5) { setApprovalErr("Muitas tentativas. Chame o administrador até o balcão."); return }
+    const adm = admins.find((u) => u.id === adminUser)
+    if (!adm || adm.password !== adminPass) {
+      setApprovalTries((t) => t + 1)
+      setApprovalErr(`Senha do administrador incorreta.${approvalTries + 1 >= 3 ? ` ${5 - approvalTries - 1} tentativa(s) restante(s).` : ""}`)
+      setAdminPass("")
+      return
+    }
+    setApproval({ pct: pctPedido, por: adm.displayName, em: stamp() })
+    setApprovalTries(0); setAskApproval(false); setAdminPass("")
+    showToast(`Desconto de ${pctPedido.toFixed(1).replace(".", ",")}% liberado por ${adm.displayName}.`)
+  }
   const taxa = tipo === "Entrega" ? parseMoney(addr.taxa) : 0
   const total = Math.max(0, subtotal - desconto + taxa)
   const itensCount = cart.reduce((s, l) => s + l.qtd, 0)
@@ -246,7 +276,7 @@ export default function Vendas() {
   const reset = (release = true) => {
     if (release) releaseLock()
     setEditing(null); setTipo("Balcão"); setClientId(""); setCart([]); setDescValue(""); setSugerida("Pix"); setObs("")
-    setAddr({ ...BLANK_ADDR, data: todayISO() }); setUseCadastro(true); setApproved(false); setErrors([]); setCepMsg("")
+    setAddr({ ...BLANK_ADDR, data: todayISO() }); setUseCadastro(true); setApproval(null); setApprovalTries(0); setErrors([]); setCepMsg("")
     setRegistro("Venda"); setSec("Vendas"); setPlano("À vista"); setOutras({ ...BLANK_OUTRAS }); setAjudanteId(""); setVendedorId(user?.id || ""); setSvcMode(false); setSelLine(null); setObsLine(null)
     window.setTimeout(() => clientRef.current?.focus(), 0)
   }
@@ -291,7 +321,7 @@ export default function Vendas() {
       if (!cart.length) { setErrors(["Adicione pelo menos um produto."]); return }
     } else {
       if (!validate()) return
-      if (needApproval) { setAskApproval(true); return }
+      if (needApproval) { openApproval(); return }
     }
     const entrega: Entrega | undefined = tipo === "Entrega" ? {
       status: "Aguardando liberação", entregador: "", cep: addr.cep, rua: addr.rua, numero: addr.numero, complemento: addr.complemento, bairro: addr.bairro, cidade: addr.cidade, uf: addr.uf,
@@ -306,6 +336,7 @@ export default function Vendas() {
       extra: {
         ...(editing?.extra || {}),
         itens: cart, subtotal, desconto, taxaEntrega: taxa, tipo, formaSugerida: sugerida, obs, pago: 0, pagamentos: [], entrega,
+        descontoPct: pctPedido, descontoLiberado: acimaLimite ? (isAdmin ? { por: user?.displayName, em: stamp(), pct: pctPedido } : approval) : undefined,
         interno, registro: asQuote ? "Orçamento" : "Venda", plano, documento: documentoLabel, vendedorCodigo: vendCode, operador: seller,
         ajudante: staff.find((u) => u.id === ajudanteId)?.displayName || undefined, outras,
         enviadaAs: nowTime(),
@@ -599,9 +630,9 @@ export default function Vendas() {
                 <div className="op-f grow"><span>Produto</span>
                   <div className="op-search">
                     <ScanBarcode />
-                    <input ref={prodRef} className="op-in lg" placeholder={svcMode ? "Buscar serviço: consulta, banho, vacina…" : "Nome, código ou código de barras (leitor F4)"} value={pq} onChange={(e) => { setPq(e.target.value); setPIdx(0) }} onKeyDown={onProdKey} />
+                    <input ref={prodRef} className="op-in lg" placeholder={svcMode ? "Buscar serviço: consulta, banho, vacina…" : "Nome, código ou código de barras (leitor F4)"} value={pq} onFocus={measureDrop} onChange={(e) => { setPq(e.target.value); setPIdx(0); measureDrop() }} onKeyDown={onProdKey} />
                     {prodHits.length > 0 && (
-                      <div className="op-drop">
+                      <div className={`op-drop ${dropUp ? "up" : ""}`}>
                         <div className="op-tr op-th" style={{ gridTemplateColumns: "70px minmax(0,1fr) 120px 80px 90px" }}><span>Código</span><span>Produto</span><span>Lote · validade</span><span className="r">Disp.</span><span className="r">Preço</span></div>
                         {prodHits.map((item, i) => {
                           if (svcMode) return (
@@ -692,12 +723,14 @@ export default function Vendas() {
                   <span style={{ display: "flex", alignItems: "center", gap: 6 }}>Desconto
                     <span className="op-tabs" style={{ padding: 2 }}>{(["%", "R$"] as const).map((m) => <button key={m} style={{ height: 22, padding: "0 7px" }} className={descMode === m ? "on" : ""} onClick={() => setDescMode(m)}>{m}</button>)}</span>
                   </span>
-                  <input className="op-in r" style={{ width: 92, height: 30 }} placeholder="0" value={descValue} onChange={(e) => { setDescValue(e.target.value); setApproved(false) }} aria-label="Desconto geral" />
+                  <input className="op-in r" style={{ width: 92, height: 30 }} placeholder="0" value={descValue} onChange={(e) => setDescValue(e.target.value)} aria-label="Desconto geral" />
                 </div>
                 {desconto > 0 && <div><span className="muted">Desconto aplicado ({descPct.toFixed(1).replace(".", ",")}%)</span><b>− {brl(desconto)}</b></div>}
                 {tipo === "Entrega" && <div><span>Taxa de entrega</span><b>{brl(taxa)}</b></div>}
-                {needApproval && <div className="op-note warn"><AlertTriangle /> Desconto acima de {LIMITE_DESCONTO}%: precisa de liberação do gerente.</div>}
-                {approved && <div className="op-note ok"><Check /> Desconto liberado pelo gerente.</div>}
+                {pctPedido > 0 && <div className="op-desc-meter"><span>Desconto total {pctPedido.toFixed(1).replace(".", ",")}%</span><span className="bar"><i className={acimaLimite ? "over" : ""} style={{ width: `${Math.min(100, (pctPedido / (LIMITE_DESCONTO * 2)) * 100)}%` }} /><em style={{ left: "50%" }} title={`Limite ${LIMITE_DESCONTO}%`} /></span><small>limite {LIMITE_DESCONTO}%</small></div>}
+                {needApproval && <div className="op-note warn" style={{ alignItems: "center" }}><Lock size={14} /> Desconto acima de {LIMITE_DESCONTO}%: precisa da senha do administrador. <button className="op-link" onClick={openApproval}>Liberar agora</button></div>}
+                {acimaLimite && isAdmin && <div className="op-note ok"><Check /> Você é administrador: desconto acima de {LIMITE_DESCONTO}% permitido.</div>}
+                {approved && acimaLimite && !isAdmin && <div className="op-note ok"><Check /> Liberado por {approval!.por} até {approval!.pct.toFixed(1).replace(".", ",")}%.</div>}
               </div>
               <div className="op-total"><span>Total</span><b>{brl(total)}</b></div>
             </div>
@@ -846,13 +879,18 @@ export default function Vendas() {
 
       {askApproval && (
         <Layer className="op-modal-layer" onMouseDown={() => setAskApproval(false)}>
-          <div className="op-modal" onMouseDown={(e) => e.stopPropagation()}>
-            <div className="op-ch"><h2>Liberação de desconto</h2></div>
-            <div className="op-cb">
-              <p style={{ margin: 0 }}>O desconto passa de {LIMITE_DESCONTO}%. Peça ao gerente para digitar a senha de liberação.</p>
-              <label className="op-f"><span>Senha do gerente</span><input className="op-in" type="password" autoFocus placeholder="••••" onKeyDown={(e) => { if (e.key === "Enter") { setApproved(true); setAskApproval(false) } }} /></label>
+          <div className="op-modal" style={{ width: 400 }} onMouseDown={(e) => e.stopPropagation()}>
+            <div className="op-ch"><h2><Lock /> Liberação de desconto</h2></div>
+            <div className="op-cb" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div className="op-desc-ask"><b>{pctPedido.toFixed(1).replace(".", ",")}%</b><span>de desconto pedido<br />limite do vendedor: {LIMITE_DESCONTO}%</span></div>
+              <p className="muted" style={{ margin: 0, fontSize: 13 }}>Desconto de {brl(bruto - (subtotal - desconto))} nesta venda. Para liberar, um administrador precisa digitar a própria senha.</p>
+              <label className="op-f"><span>Administrador</span>
+                <select className="op-in" value={adminUser} onChange={(e) => setAdminUser(e.target.value)}>{admins.map((u) => <option key={u.id} value={u.id}>{u.displayName}</option>)}</select>
+              </label>
+              <label className="op-f"><span>Senha do administrador</span><input className="op-in" type="password" autoFocus autoComplete="off" placeholder="••••••" value={adminPass} onChange={(e) => { setAdminPass(e.target.value); setApprovalErr("") }} onKeyDown={(e) => { if (e.key === "Enter") confirmApproval() }} /></label>
+              {approvalErr && <div className="op-note bad"><AlertTriangle /> {approvalErr}</div>}
             </div>
-            <div className="foot"><button className="op-btn" onClick={() => setAskApproval(false)}>Voltar</button><button className="op-btn pri" onClick={() => { setApproved(true); setAskApproval(false) }}>Liberar desconto</button></div>
+            <div className="foot"><button className="op-btn" onClick={() => setAskApproval(false)}>Voltar e ajustar desconto</button><button className="op-btn pri" disabled={!adminPass} onClick={confirmApproval}>Liberar desconto</button></div>
           </div>
         </Layer>
       )}
