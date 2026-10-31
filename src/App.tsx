@@ -732,8 +732,20 @@ function Header({ openMobile }: { openMobile: () => void }) {
             <img src="/assets/vetflow-wordmark-dark.png" alt="VetFlow" className="bc-word bc-word-light" />
             <img src="/assets/vetflow-wordmark-light.png" alt="VetFlow" className="bc-word bc-word-dark" />
           </button>
-          <ChevronRight size={13} />
-          <strong>{title}</strong>
+          <ChevronRight size={13} className="bc-chev" />
+          {(() => {
+            const PageIcon = (location.pathname === "/" ? LayoutDashboard : moduleIcons[slug as ModuleSlug]) || LayoutDashboard
+            const h = new Date().getHours()
+            return (
+              <span className="bc-page" key={location.pathname}>
+                <span className="bc-page-ico"><PageIcon size={19} /></span>
+                <span className="bc-page-txt">
+                  <small>{h < 12 ? "Bom dia" : h < 18 ? "Boa tarde" : "Boa noite"}, {(profile.displayName || "").replace(/^(Dr\.?|Dra\.?)\s+/i, "")}</small>
+                  <strong>{title}</strong>
+                </span>
+              </span>
+            )
+          })()}
         </div>
         <button className="global-search" onClick={() => setSearchOpen(true)}>
           <Search size={17} />
@@ -1202,7 +1214,7 @@ function moduleIndicators(
       total,
       metric(
         "Hoje",
-        (item) => item.date === "2026-10-09",
+        (item) => item.date === new Date().toISOString().slice(0, 10),
         "agenda do dia",
         "blue",
       ),
@@ -1432,7 +1444,7 @@ function Dashboard() {
       const age = Math.max(
         0,
         Math.floor(
-          (new Date("2026-10-09T12:00:00").getTime() -
+          (new Date().getTime() -
             new Date(`${item.date}T12:00:00`).getTime()) /
             86_400_000,
         ),

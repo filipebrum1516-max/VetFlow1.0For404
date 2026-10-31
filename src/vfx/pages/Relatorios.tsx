@@ -7,7 +7,7 @@ import { brl, fmtDate, itemDate, matches, StatusPill } from "../ui"
 type ReportDef = {
   slug: string
   title: string
-  group: "Clínico" | "Financeiro" | "Operacional" | "Cadastros"
+  group: "Vendas" | "Clínico" | "Financeiro" | "Operacional" | "Cadastros"
   description: string
   modules: ModuleSlug[]
   filter?: (item: Item) => boolean
@@ -15,6 +15,10 @@ type ReportDef = {
 }
 
 export const REPORTS: ReportDef[] = [
+  { slug: "vendas", title: "Vendas", group: "Vendas", description: "Vendas do balcão por cliente, vendedor, tipo e situação de pagamento.", modules: ["vendas"], filter: (item) => item.kind === "Venda", money: true },
+  { slug: "orcamentos", title: "Orçamentos", group: "Vendas", description: "Orçamentos abertos, convertidos em venda e vencidos.", modules: ["vendas"], filter: (item) => item.kind === "Orçamento", money: true },
+  { slug: "entregas", title: "Entregas", group: "Vendas", description: "Vendas para entrega com endereço, entregador e situação.", modules: ["vendas"], filter: (item) => item.kind === "Venda" && !!item.extra?.entrega, money: true },
+  { slug: "caixas", title: "Caixas e fechamentos", group: "Vendas", description: "Aberturas, fechamentos, operador e diferença de cada caixa.", modules: ["vendas"], filter: (item) => item.kind === "Caixa", money: true },
   { slug: "atendimentos", title: "Atendimentos", group: "Clínico", description: "Consultas realizadas, faltas e cancelamentos por período e profissional.", modules: ["consultas"], money: true },
   { slug: "prontuarios", title: "Prontuários", group: "Clínico", description: "Evoluções clínicas registradas por paciente e veterinário.", modules: ["prontuarios"] },
   { slug: "vacinas", title: "Vacinas aplicadas e atrasadas", group: "Clínico", description: "Doses aplicadas, a vencer e em atraso com contato do tutor.", modules: ["vacinas"] },
@@ -48,7 +52,9 @@ const rowsOf = (report: ReportDef, data: UnitData) =>
 const latestDate = (data: UnitData) => {
   let max = ""
   for (const slug of ["consultas", "financeiro", "agendas"] as ModuleSlug[]) for (const item of data[slug]) if ((item.date || "") > max) max = item.date || ""
-  return max || new Date().toISOString().slice(0, 10)
+  const today = new Date().toISOString().slice(0, 10)
+  /* nunca usa datas futuras (agendamentos marcados) como fim do período */
+  return !max || max > today ? today : max
 }
 const since = (end: string, days: string) => {
   if (days === "all") return ""
@@ -100,7 +106,7 @@ export default function Relatorios() {
       </div>
 
       <div className="vx-rep-tabs" role="tablist">
-        {["Todos", "Clínico", "Financeiro", "Operacional", "Cadastros"].map((name) => (
+        {["Todos", "Vendas", "Clínico", "Financeiro", "Operacional", "Cadastros"].map((name) => (
           <button key={name} role="tab" aria-selected={group === name} className={group === name ? "on" : ""} onClick={() => setGroup(name)}>{name}</button>
         ))}
       </div>

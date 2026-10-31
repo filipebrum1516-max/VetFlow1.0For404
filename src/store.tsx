@@ -132,7 +132,8 @@ export const modules = [
 export type ModuleSlug = typeof modules[number][0]
 export type UnitData = Record<ModuleSlug, Item[]>
 
-const TODAY = new Date("2026-10-09T12:00:00")
+/* "hoje" dos dados de exemplo acompanha a data real, para os relatórios e painéis sempre terem movimento recente */
+const TODAY = (() => { const d = new Date(); d.setHours(12, 0, 0, 0); return d })()
 const START = new Date("2024-10-01T12:00:00")
 const DAY = 86_400_000
 
@@ -812,7 +813,7 @@ function generateUnit(unit: Unit, unitIndex: number): UnitData {
   ).sort((a, b) => b.date!.localeCompare(a.date!))
 
   // agenda variada: de 3 a 14 horários por dia, espalhados entre 7h e 19h30
-  const agendaFirst = new Date("2026-09-21T12:00:00")
+  const agendaFirst = new Date(TODAY.getTime() - 18 * DAY)
   const agendas: Item[] = []
   for (let day = 0; day < 56; day++) {
     const date = new Date(agendaFirst.getTime() + day * DAY)

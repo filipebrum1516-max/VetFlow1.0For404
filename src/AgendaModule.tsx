@@ -94,7 +94,7 @@ const catalog = [
 const emptyAppointment = {
   service: "Banho e tosa",
   duration: "60",
-  date: "2026-10-17",
+  date: new Date().toISOString().slice(0, 10),
   professional: "",
   time: "08:00",
   notes: "",
