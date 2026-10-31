@@ -98,7 +98,11 @@ import {
   type UnitData,
 } from "./store"
 import "./vfx.css"
+import "./vfx/motion.css"
+import { startMotion } from "./vfx/motion"
 import Detail from "./vfx/Detail"
+
+startMotion()
 
 const TutorsModule = lazy(() => import("./TutorsModule"))
 const AgendaModule = lazy(() => import("./AgendaModule"))
@@ -711,7 +715,7 @@ function Header({ openMobile }: { openMobile: () => void }) {
   const title =
     location.pathname === "/"
       ? "Dashboard"
-      : modules.find(([key]) => key === slug)?.[1] || "VetFlow"
+      : EXTRA_TITLES[slug] || modules.find(([key]) => key === slug)?.[1] || "VetFlow"
   return (
     <>
       <header className="header vx-header">
@@ -919,12 +923,14 @@ function Header({ openMobile }: { openMobile: () => void }) {
   )
 }
 
+const EXTRA_TITLES: Record<string, string> = { "usuarios-permissoes": "Permissões detalhadas", "painel-classico": "Painel clássico", "dashboard-proposta": "Dashboard" }
+
 function PrintHead() {
   const { activeUnit, profile } = useVetFlow()
   const location = useLocation()
   const slug = location.pathname.split("/")[1]
   const title =
-    location.pathname === "/" ? "Dashboard" : modules.find(([key]) => key === slug)?.[1] || "VetFlow"
+    location.pathname === "/" ? "Dashboard" : EXTRA_TITLES[slug] || modules.find(([key]) => key === slug)?.[1] || "VetFlow"
   const now = new Date().toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })
   return (
     <div className="vx-print-head" aria-hidden="true">

@@ -446,3 +446,34 @@ a.op-btn { text-decoration: none; color: inherit; }
 .op-desc-ask b { font-size: 30px; letter-spacing: -.03em; }
 .op-desc-ask span { font-size: 12.5px; line-height: 1.4; }
 [data-theme="dark"] .op-desc-ask { background: rgba(198,47,34,.18); color: #ffb4ab; }
+.op-fkeys button small.alt { font: 600 10px Inter, sans-serif; opacity: .55; margin-left: 2px; }
+.op-fkeys button.pri small.alt { opacity: .8; }
+@media (max-width: 900px) { .op-fkeys button small.alt { display: none; } }
+.op-tr.sel { box-shadow: inset 3px 0 0 var(--or, #e94f17); }
+
+/* ---------- cabeçalho ERP da venda: responde à largura do próprio card ---------- */
+.op-erp { container-type: inline-size; container-name: erp; }
+.op-erp-f > span, .op-erp-row .op-f > span { white-space: nowrap; }
+.op-erp-top { flex-wrap: wrap; }
+.op-erp-f.grow { flex: 1 1 300px; min-width: 0; }
+.op-erp-f.grow .op-tabs { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+.op-erp-row > * { min-width: 0; }
+.op-erp-row .op-tabs { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+@container erp (max-width: 1000px) {
+  .op-erp-row { grid-template-columns: 1fr 1fr !important; }
+  .op-erp-row > :nth-child(3) { grid-column: 1 / -1; }
+  .op-erp-f.grow { margin-left: 0; flex-basis: 100%; }
+}
+@container erp (max-width: 520px) {
+  .op-erp-row { grid-template-columns: 1fr !important; }
+  .op-erp-top { gap: 10px 16px; }
+  .op-erp-f > b { font-size: 14px; }
+}
+
+/* ---------- grade da venda: só fica em duas colunas quando há espaço de verdade ---------- */
+.op.op-vx:not(.op-portal) { container-type: inline-size; container-name: opwrap; }
+@container opwrap (max-width: 1180px) {
+  .op-grid[style*="360px"] { grid-template-columns: minmax(0, 1fr) !important; }
+  .op-grid[style*="360px"] > .op-col.op-sticky { position: static; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; align-items: start; }
+  .op-grid[style*="360px"] > .op-col.op-sticky > :is(.op-btn, div:not(.op-card)) { grid-column: 1 / -1; }
+}

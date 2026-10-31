@@ -89,9 +89,7 @@ export function addMonths(iso: string, months: number, days = 0) {
 }
 
 export function printHtml(title: string, body: string, a4 = false) {
-  const win = window.open("", "_blank", a4 ? "width=900,height=1000" : "width=480,height=720")
-  if (!win) return
-  win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${title}</title><style>
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title><style>
   body{font:12px/1.45 "Courier New",monospace;margin:18px;color:#111;max-width:${a4 ? "none" : "340px"}}
   ${a4 ? A4_CSS : ""}
   h1{font-size:15px;margin:0 0 2px}h2{font-size:12px;margin:12px 0 4px;text-transform:uppercase}
@@ -100,8 +98,34 @@ export function printHtml(title: string, body: string, a4 = false) {
   .bar{font:34px/1 "Libre Barcode 39",monospace;letter-spacing:2px;text-align:center;margin:10px 0 0}
   .code{letter-spacing:6px;text-align:center;font-weight:700}
   .sig{margin-top:28px;border-top:1px solid #111;padding-top:4px;text-align:center}
-  </style></head><body>${body}<script>window.onload=()=>window.print()</script></body></html>`)
-  win.document.close()
+  @page{margin:${a4 ? "12mm" : "4mm"}}
+  </style></head><body>${body}</body></html>`
+  /* imprime por um iframe invisível na própria página: funciona mesmo quando o navegador
+     ou o preview bloqueiam janelas pop-up. Se não der, cai para uma nova janela. */
+  try {
+    document.getElementById("vf-print-frame")?.remove()
+    const frame = document.createElement("iframe")
+    frame.id = "vf-print-frame"
+    frame.setAttribute("aria-hidden", "true")
+    frame.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden"
+    document.body.appendChild(frame)
+    const doc = frame.contentDocument || frame.contentWindow?.document
+    if (!doc || !frame.contentWindow) throw new Error("sem iframe")
+    doc.open(); doc.write(html); doc.close()
+    const go = () => {
+      try { frame.contentWindow!.focus(); frame.contentWindow!.print() } catch { openWindow() }
+    }
+    window.setTimeout(go, 250)
+    window.setTimeout(() => frame.remove(), 60_000)
+  } catch {
+    openWindow()
+  }
+  function openWindow() {
+    const win = window.open("", "_blank", a4 ? "width=900,height=1000" : "width=480,height=720")
+    if (!win) { window.alert("Não foi possível abrir a impressão. Libere pop-ups para este site e tente de novo."); return }
+    win.document.write(html.replace("</body>", "<script>window.onload=()=>window.print()</script></body>"))
+    win.document.close()
+  }
 }
 
 export function saleSlipHtml(sale: Item, unitName: string, kind: "pre" | "comprovante" | "romaneio") {

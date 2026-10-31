@@ -6,14 +6,7 @@ import { permLevels, permModules, rolePerms } from "../FormDrawer"
 import { usePageForms } from "../hooks"
 import { fmtDate, hash, initials, itemDate, matches, Page, SearchBox, Seg, StatusPill } from "../ui"
 
-const roleColor: Record<string, string> = {
-  Administrador: "#c98a1b",
-  Veterinário: "#0f766e",
-  "Enfermagem / auxiliar": "#2457c5",
-  Recepção: "#b4325e",
-  Financeiro: "#6d4bc2",
-  Personalizado: "#5b6474",
-}
+const roleColor: Record<string, string> = { Administrador: "#6b4fbb", Vendedor: "#2b7a4b", Caixa: "#1d5fbf", Estoque: "#c27b0e", "Veterinário": "#b42318", Entregador: "#0f766e" }
 const levelStyle: Record<string, { background: string; color: string }> = {
   Fechado: { background: "rgba(120,130,150,.14)", color: "#6b7280" },
   Ver: { background: "#e2ecff", color: "#2457c5" },
@@ -31,14 +24,20 @@ const roleOf = (item: Item) => {
 }
 
 export default function Usuarios() {
-  const { data, updateItem, profile } = useVetFlow()
+  const { profile, staff, saveStaff } = useVetFlow()
+  /* o chaveiro mostra exatamente a mesma equipe de "Equipe e acessos" */
+  const keys = useMemo(() => staff.map((u) => ({
+    id: u.id, name: u.displayName, subtitle: u.role, email: u.email, category: u.role, createdAt: "", unitId: "",
+    status: u.active ? "Ativo" : "Bloqueado", date: new Date().toISOString().slice(0, 10),
+    extra: { papel: u.role, permissoes: u.perms, log: u.log },
+  }) as unknown as Item), [staff])
   const navigate = useNavigate()
-  const forms = usePageForms("usuarios", (saved) => setSelectedId(saved.id))
+  const forms = usePageForms("usuarios")
   const [query, setQuery] = useState("")
   const [status, setStatus] = useState("Todos")
   const [page, setPage] = useState(0)
   const [selectedId, setSelectedId] = useState("")
-  const list = useMemo(() => data.usuarios.filter((item) => matches(item, query) && (status === "Todos" || item.status === status)), [data.usuarios, query, status])
+  const list = useMemo(() => keys.filter((item) => matches(item, query) && (status === "Todos" || item.status === status)), [keys, query, status])
   const perRing = 7
   const pages = Math.max(1, Math.ceil(list.length / perRing))
   const ring = list.slice(page * perRing, page * perRing + perRing)
@@ -63,14 +62,14 @@ export default function Usuarios() {
   const savePerms = () => {
     if (!selected) return
     const log = [...(selected.extra?.log || []), { quando: new Date().toISOString(), quem: profile.displayName, acao: "Permissões alteradas" }]
-    updateItem("usuarios", selected.id, { extra: { ...(selected.extra || {}), permissoes: perms, papel: roleOf(selected), log } })
+    const u = staff.find((x) => x.id === selected.id); if (u) saveStaff({ ...u, perms, log })
     setDirty(false)
     forms.toast(`Permissões de ${selected.name} salvas.`)
   }
   const setUserStatus = (next: string, action: string) => {
     if (!selected) return
     const log = [...(selected.extra?.log || []), { quando: new Date().toISOString(), quem: profile.displayName, acao: action }]
-    updateItem("usuarios", selected.id, { status: next, extra: { ...(selected.extra || {}), log } })
+    const u = staff.find((x) => x.id === selected.id); if (u) saveStaff({ ...u, active: next !== "Bloqueado", log })
     forms.toast(`${selected.name}: ${action.toLowerCase()}.`)
   }
   const log: { quando: string; quem: string; acao: string }[] = selected
@@ -80,7 +79,7 @@ export default function Usuarios() {
         { quando: selected.createdAt || `${itemDate(selected)}T08:00:00`, quem: "Sistema", acao: "Chave criada" },
       ]
     : []
-  const counts = { Ativo: data.usuarios.filter((item) => item.status === "Ativo").length, pend: data.usuarios.filter((item) => item.status === "Convite pendente").length, bloq: data.usuarios.filter((item) => item.status === "Bloqueado").length }
+  const counts = { Ativo: keys.filter((item) => item.status === "Ativo").length, pend: 0, bloq: keys.filter((item) => item.status === "Bloqueado").length }
 
   return (
     <Page
@@ -92,8 +91,8 @@ export default function Usuarios() {
       actions={
         <>
           <SearchBox value={query} onChange={setQuery} placeholder="Buscar pessoa ou e-mail" />
-          <Seg options={["Todos", "Ativo", "Convite pendente", "Bloqueado"]} value={status} onChange={setStatus} />
-          <button className="vx-btn vx-btn-p" onClick={() => forms.open()}>
+          <Seg options={["Todos", "Ativo", "Bloqueado"]} value={status} onChange={setStatus} />
+          <button className="vx-btn vx-btn-p" onClick={() => navigate("/usuarios")}>
             <Plus /> Nova chave
           </button>
         </>
@@ -102,7 +101,7 @@ export default function Usuarios() {
       <div className="vx-keys-grid" style={{ display: "grid", gridTemplateColumns: "minmax(0,440px) minmax(0,1fr)", gap: 24, alignItems: "start" }}>
         <div className="vx-glass" style={{ padding: 18, borderRadius: 28 }}>
           <div className="vx-row" style={{ justifyContent: "space-between", gap: 8 }}>
-            <span className="vx-lbl">{counts.Ativo} ativas · {counts.pend} convites · {counts.bloq} bloqueadas</span>
+            <span className="vx-lbl">{counts.Ativo} ativas · {counts.bloq} bloqueadas</span>
             <span className="vx-row" style={{ gap: 6 }}>
               <button className="vx-icon-btn" aria-label="Chaves anteriores" disabled={page === 0} onClick={() => setPage(page - 1)}><ChevronLeft /></button>
               <span style={{ fontSize: 12, fontWeight: 700 }}>{page + 1}/{pages}</span>
@@ -153,12 +152,12 @@ export default function Usuarios() {
                 <span className="vx-av" style={{ width: 56, height: 56, fontSize: 18, background: roleColor[roleOf(selected)] }}>{initials(selected.name)}</span>
                 <span style={{ flex: 1, minWidth: 160 }}>
                   <strong style={{ fontSize: 20, display: "block" }}>{selected.name}</strong>
-                  <small style={{ color: "var(--vx-muted)", fontSize: 13 }}>{roleOf(selected)} · {selected.email || `${selected.name.split(" ")[0].toLowerCase()}@vetflow.com.br`}</small>
+                  <small style={{ color: "var(--vx-muted)", fontSize: 13 }}>{roleOf(selected)} · {(selected as Item & { email?: string }).email}</small>
                 </span>
                 <StatusPill status={selected.status} />
               </div>
               <div className="vx-row" style={{ gap: 8, marginTop: 14, flexWrap: "wrap" }}>
-                <button className="vx-btn vx-btn-g vx-btn-sm" onClick={() => forms.open("usuarios", selected)}><Edit3 /> Editar chave</button>
+                <button className="vx-btn vx-btn-g vx-btn-sm" onClick={() => navigate(`/usuarios?u=${selected.id}`)}><Edit3 /> Editar chave</button>
                 {selected.status === "Bloqueado" ? (
                   <button className="vx-btn vx-btn-g vx-btn-sm" onClick={() => setUserStatus("Ativo", "Acesso desbloqueado")}><Unlock /> Desbloquear</button>
                 ) : (
@@ -166,8 +165,8 @@ export default function Usuarios() {
                 )}
                 {selected.status === "Convite pendente" && <button className="vx-btn vx-btn-p vx-btn-sm" onClick={() => setUserStatus("Convite pendente", "Convite reenviado")}>Reenviar convite</button>}
                 {selected.status === "Convite pendente" && <button className="vx-btn vx-btn-g vx-btn-sm" onClick={() => setUserStatus("Ativo", "Convite aceito manualmente")}>Ativar</button>}
-                <button className="vx-btn vx-btn-g vx-btn-sm" onClick={() => setUserStatus(selected.status, "Senha redefinida — link enviado")}><RotateCcw /> Redefinir senha</button>
-                <button className="vx-btn vx-btn-g vx-btn-sm" onClick={() => navigate(`/usuarios/${selected.id}`)}>Ficha</button>
+                <button className="vx-btn vx-btn-g vx-btn-sm" onClick={() => navigate(`/usuarios?u=${selected.id}`)}><RotateCcw /> Redefinir senha</button>
+                <button className="vx-btn vx-btn-g vx-btn-sm" onClick={() => navigate(`/usuarios?u=${selected.id}`)}>Ficha</button>
               </div>
             </div>
 

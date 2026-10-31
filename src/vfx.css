@@ -1005,8 +1005,8 @@ textarea.vx-in { height: auto; min-height: 84px; padding: 10px 12px; line-height
 /* logo do VetFlow no topo, antes do título da página */
 .bc-brand { gap: 10px !important; }
 .bc-logo { display: inline-flex; align-items: center; gap: 6px; padding: 0; border: 0; background: none; cursor: pointer; }
-.bc-cat { height: 24px; width: auto; display: block; }
-.bc-word { height: 17px; width: auto; display: block; }
+.bc-cat { height: 32px; width: auto; display: block; }
+.bc-word { height: 23px; width: auto; display: block; }
 .bc-word-dark { display: none; }
 [data-theme="dark"] .bc-word-light { display: none; }
 [data-theme="dark"] .bc-word-dark { display: block; }
@@ -1029,3 +1029,8 @@ textarea.vx-in { height: auto; min-height: 84px; padding: 10px 12px; line-height
 .vx-aisle-chips button.on i { background: #f6c744; color: #1a2233; }
 .vx-aisle-chips button.on b { color: #c7cfdb; }
 [data-theme="dark"] .vx-aisle-chips button { background: rgba(22,28,38,.75); color: #eef2f7; border-color: #263041; }
+/* impressão do centro cirúrgico (tela escura): troca para texto escuro no papel */
+@media print {
+  .vx-page.vx-or, .vx-page.vx-or * { color: #1a2233 !important; text-shadow: none !important; }
+  .vx-page.vx-or .vx-glass, .vx-page.vx-or [class*="vx-or-"] { background: #fff !important; border-color: #D5D9DF !important; }
+}

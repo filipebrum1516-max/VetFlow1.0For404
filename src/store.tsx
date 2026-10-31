@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react"
@@ -1581,7 +1582,7 @@ type StoreValue = {
 }
 
 export type Role = "Administrador" | "Vendedor" | "Caixa" | "Estoque" | "Veterinário" | "Entregador"
-export type StaffUser = { id: string; name: string; displayName: string; username: string; email: string; cpf: string; password: string; role: Role; crmv?: string; code?: string; active: boolean }
+export type StaffUser = { id: string; name: string; displayName: string; username: string; email: string; cpf: string; password: string; role: Role; crmv?: string; code?: string; active: boolean; perms?: Record<string, string>; log?: { quando: string; quem: string; acao: string }[] }
 export const STAFF: StaffUser[] = [
   { id: "u-admin", name: "Rafael Souza", displayName: "Dr. Rafael", username: "admin", email: "admin@vetflow.com", cpf: "482.315.770-10", password: "admin123", role: "Administrador", crmv: "CRMV-SP 28.410", code: "001", active: true },
   { id: "u-vend", name: "Felipe Brum", displayName: "Felipe Brum", username: "vendedor", email: "vendedor@vetflow.com", cpf: "041.115.882-02", password: "vendedor123", role: "Vendedor", code: "026", active: true },
@@ -1589,6 +1590,8 @@ export const STAFF: StaffUser[] = [
   { id: "u-est", name: "João Matias", displayName: "João Matias", username: "estoque", email: "estoque@vetflow.com", cpf: "660.218.497-31", password: "estoque123", role: "Estoque", code: "037", active: true },
   { id: "u-vet", name: "Ana Martins", displayName: "Dra. Ana Martins", username: "veterinario", email: "veterinario@vetflow.com", cpf: "448.902.115-19", password: "vet123", role: "Veterinário", crmv: "CRMV-RO 4.215", active: true },
   { id: "u-vet2", name: "Marcos Nunes", displayName: "Dr. Marcos Nunes", username: "veterinario2", email: "marcos@vetflow.com", cpf: "519.337.204-66", password: "vet123", role: "Veterinário", crmv: "CRMV-RO 3.870", active: true },
+  { id: "u-vet3", name: "João Lima", displayName: "Dr. João Lima", username: "veterinario3", email: "joao@vetflow.com", cpf: "284.661.093-12", password: "vet123", role: "Veterinário", crmv: "CRMV-SP 29044", active: true },
+  { id: "u-vet4", name: "Luísa Paiva", displayName: "Dra. Luísa Paiva", username: "veterinario4", email: "luisa@vetflow.com", cpf: "371.905.448-20", password: "vet123", role: "Veterinário", crmv: "CRMV-SP 29361", active: true },
   { id: "u-ent", name: "Cauã Torres", displayName: "Cauã Torres", username: "entregador", email: "entregador@vetflow.com", cpf: "032.774.519-77", password: "entrega123", role: "Entregador", active: true },
 ]
 /** Abas liberadas para cada perfil ("*" = todas). */
@@ -1751,6 +1754,31 @@ export function VetFlowProvider({ children }: { children: ReactNode }) {
   const [timeZone, setTimeZone] = useState<string>(
     persisted?.timeZone || "America/Manaus",
   )
+
+  /* sincroniza entre abas do navegador: venda salva numa aba aparece na hora no Caixa e em Entregas abertos em outra */
+  const changesRef = useRef(changes)
+  changesRef.current = changes
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      try {
+        if (e.key === STORAGE_KEY && e.newValue) {
+          const next = JSON.parse(e.newValue)
+          const nextChanges: DataChange[] = next?.changes || []
+          if (JSON.stringify(nextChanges) === JSON.stringify(changesRef.current)) return
+          const custom = Object.fromEntries((next?.customUnits || []).map((u: Unit) => [u.id, emptyUnitData()]))
+          setCustomUnits(next?.customUnits || [])
+          setChanges(nextChanges)
+          setAllData(applyChanges({ ...seed, ...custom, minha: emptyUnitData() }, nextChanges))
+        }
+        if (e.key === "vetflow-staff" && e.newValue) {
+          const list = JSON.parse(e.newValue)
+          if (Array.isArray(list) && list.length) setStaff(list)
+        }
+      } catch { /* ignora dados inválidos de outra aba */ }
+    }
+    window.addEventListener("storage", onStorage)
+    return () => window.removeEventListener("storage", onStorage)
+  }, [seed])
 
   useEffect(() => {
     try {

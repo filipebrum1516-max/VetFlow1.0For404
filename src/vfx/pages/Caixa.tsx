@@ -305,6 +305,21 @@ export default function Caixa() {
             {outros.length > 0 && <div className="op-note info"><Wallet /> Outros caixas abertos: {outros.map((c) => `${c.name} (${c.professional}, desde ${c.time})`).join(", ")}.</div>}
           </div>
         </div>
+        {fila.length > 0 && (
+          <div className="op-card" style={{ maxWidth: 760, margin: "0 auto 16px" }}>
+            <div className="op-ch"><h2><Clock /> Fila do caixa · {fila.length} {fila.length === 1 ? "venda aguardando" : "vendas aguardando"}</h2><span className="muted" style={{ fontSize: 12 }}>abra o caixa para receber</span></div>
+            <div className="op-table">
+              {fila.slice(-8).reverse().map((s) => (
+                <div key={s.id} className="op-tr" style={{ gridTemplateColumns: "120px minmax(0,1fr) 110px 110px" }}>
+                  <span className="mono" style={{ fontWeight: 700 }}>{s.name}</span>
+                  <span>{s.owner || "Consumidor final"}<small>{s.professional} · {minutesSince(itemDate(s), s.extra?.enviadaAs || s.time)}</small></span>
+                  <span>{s.extra?.tipo === "Entrega" ? <span className="op-tag blue plain"><Truck size={12} /> Entrega</span> : <span className="muted">{s.extra?.tipo || "Balcão"}</span>}</span>
+                  <b className="r num">{brl(s.amountValue || 0)}</b>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         {historicoCard}
         {toast && <Layer className="op-toast"><Check /> {toast}</Layer>}
       </div>

@@ -892,6 +892,14 @@ export function rolePerms(role: string): Record<string, string> {
     return { ...all("Editar"), Prescrições: "Ver", "Consultas e agenda": "Ver", Financeiro: "Fechado", Relatórios: "Fechado", "Sistema e usuários": "Fechado" }
   if (/recep/i.test(role))
     return { ...all("Ver"), "Animais e tutores": "Editar", "Consultas e agenda": "Editar", Prontuários: "Fechado", Financeiro: "Ver", "Sistema e usuários": "Fechado" }
+  if (/vendedor/i.test(role))
+    return { ...all("Fechado"), "Animais e tutores": "Editar", Estoque: "Ver", "Consultas e agenda": "Ver", Relatórios: "Ver" }
+  if (/caixa/i.test(role))
+    return { ...all("Fechado"), "Animais e tutores": "Editar", Estoque: "Ver", Financeiro: "Editar", Relatórios: "Ver" }
+  if (/estoque/i.test(role))
+    return { ...all("Fechado"), Estoque: "Total", Relatórios: "Ver" }
+  if (/entregador/i.test(role))
+    return { ...all("Fechado"), "Animais e tutores": "Ver" }
   if (/financ/i.test(role))
     return { ...all("Fechado"), Financeiro: "Total", Relatórios: "Editar", Estoque: "Ver", "Animais e tutores": "Ver" }
   return all("Ver")

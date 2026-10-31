@@ -3,7 +3,7 @@ import { useNavigate } from "react-router"
 import { AlertTriangle, Check, Clock, FileText, Lock, MapPin, Package, Pencil, ScanBarcode, Search, Send, ShoppingCart, Trash2, Truck, User, UserPlus, X } from "lucide-react"
 import { useVetFlow, type Item } from "../../store"
 import { brl, fmtDate, initials, itemDate, normalizeText, parseMoney, todayISO, Page } from "../ui"
-import { codeOf, DOCUMENTOS, editInfo, planoInfo, PLANOS, LIMITE_DESCONTO, LIMITE_FIADO, lineTotal, minutesSince, mmss, nextNumber, nowTime, priceOf, saleTone, shortCode, stamp, type Entrega, type Line } from "../vendasShared"
+import { codeOf, DOCUMENTOS, orcamentoHtml, printHtml, editInfo, planoInfo, PLANOS, LIMITE_DESCONTO, LIMITE_FIADO, lineTotal, minutesSince, mmss, nextNumber, nowTime, priceOf, saleTone, shortCode, stamp, type Entrega, type Line } from "../vendasShared"
 import { PrintBar } from "../PrintMenu"
 import "../ops.css"
 import Layer from "../OpLayer"
@@ -378,33 +378,60 @@ export default function Vendas() {
     if (cart.length && !window.confirm("Sair e descartar esta venda?")) return
     reset()
   }
-  const imprimir = () => { if (!cart.length) return showToast("Inclua itens para imprimir."); printRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }); printRef.current?.querySelector("button")?.focus() }
-  const FKEYS: [string, string, () => void][] = [
-    ["F5", "Incluir", () => focusProd(false)],
-    ["F3", "Apagar", deleteLine],
-    ["F4", "Leitura", () => focusProd(false)],
-    ["F6", "Vendedor", () => vendRef.current?.focus()],
-    ["F7", "Ajudante", () => ajudRef.current?.focus()],
-    ["F8", "Serviços", () => focusProd(true)],
-    ["F9", "Obs. item", obsItem],
-    ["F11", "Cliente", focusClient],
-    ["F10", "Salvar", () => finalize(true)],
-    ["F2", "Finaliza", () => finalize()],
-    ["Ctrl+P", "Imprimir", imprimir],
-    ["Esc", "Sair", sair],
+  /* Ctrl+P: com itens, imprime a pré-venda em A4 (orçamento/conferência); sem itens, imprime a tela */
+  const imprimir = () => {
+    if (!cart.length) { window.print(); return }
+    const due = (() => { const d = new Date(); d.setDate(d.getDate() + 7); return d.toISOString().slice(0, 10) })()
+    const draft = { id: "draft", name: numero, subtitle: "", status: "Rascunho", createdAt: new Date().toISOString(), kind: "Venda", date: todayISO(), time: nowTime(), dueDate: due, owner: client?.name || "Consumidor final", ownerId: client?.id, professional: vendName, amountValue: total, extra: { itens: cart, subtotal, desconto, taxaEntrega: taxa, tipo, formaSugerida: sugerida, plano, entrega: tipo === "Entrega" ? { ...addr, taxa, aCobrar: 0, status: "", entregador: "" } : undefined } } as Item
+    printHtml(numero, orcamentoHtml(draft, activeUnit.name, client || undefined), true)
+  }
+  /* atalhos: tecla F do ERP + alternativa com Alt (algumas teclas F são presas pelo navegador ou pelo Windows) */
+  const [picker, setPicker] = useState<"vendedor" | "ajudante" | null>(null)
+  const [pickQ, setPickQ] = useState("")
+  const [pickIdx, setPickIdx] = useState(0)
+  const openPicker = (k: "vendedor" | "ajudante") => { setPickQ(""); setPickIdx(0); setPicker(k) }
+  const pickList = useMemo(() => {
+    const base = picker === "ajudante" ? [{ id: "", displayName: "Nenhum", code: "—", role: "" }, ...staff.filter((u) => u.active && u.id !== vendedorId)] : vendedores
+    const q = normalizeText(pickQ.trim())
+    return base.filter((u) => !q || normalizeText(`${u.code || ""} ${u.displayName} ${u.role}`).includes(q))
+  }, [picker, pickQ, staff, vendedores, vendedorId])
+  const choose = (id: string) => {
+    if (picker === "vendedor") { setVendedorId(id); showToast(`Vendedor: ${staff.find((u) => u.id === id)?.displayName}`) }
+    else { setAjudanteId(id); showToast(id ? `Ajudante: ${staff.find((u) => u.id === id)?.displayName}` : "Sem ajudante") }
+    setPicker(null)
+  }
+  const FKEYS: [string, string, () => void, string][] = [
+    ["F5", "Incluir", () => focusProd(false), "Alt+I"],
+    ["F3", "Apagar", deleteLine, "Alt+A"],
+    ["F4", "Leitura", () => focusProd(false), "Alt+L"],
+    ["F6", "Vendedor", () => openPicker("vendedor"), "Alt+V"],
+    ["F7", "Ajudante", () => openPicker("ajudante"), "Alt+J"],
+    ["F8", "Serviços", () => focusProd(true), "Alt+S"],
+    ["F9", "Obs. item", obsItem, "Alt+O"],
+    ["F11", "Cliente", focusClient, "Alt+C"],
+    ["F10", "Salvar", () => finalize(), "Alt+G"],
+    ["F2", "Finaliza", () => finalize(), "Ctrl+Enter"],
+    ["Ctrl+P", "Imprimir", imprimir, "Alt+P"],
+    ["Esc", "Sair", sair, "Esc"],
   ]
   useEffect(() => {
     if (tab !== "nova") return undefined
     const onKey = (event: KeyboardEvent) => {
       if (sent) { if (event.key === "Enter" || event.key === "Escape") { event.preventDefault(); setSent(null) } return }
-      if (cadastro || askApproval) return
-      const k = event.ctrlKey && event.key.toLowerCase() === "p" ? "Ctrl+P" : event.altKey && event.key.toLowerCase() === "c" ? "F11" : event.key === "Escape" ? "Esc" : event.key
-      if (k === "Esc" && (event.target as HTMLElement)?.closest?.(".op-drop, .op-search") && pq) { setPq(""); return }
-      const hit = FKEYS.find(([key]) => key === k)
-      if (hit) { event.preventDefault(); hit[2]() }
+      if (cadastro || askApproval || picker) return
+      const key = event.key.length === 1 ? event.key.toUpperCase() : event.key
+      const k = event.ctrlKey && key === "P" ? "Ctrl+P"
+        : event.ctrlKey && key === "Enter" ? "Ctrl+Enter"
+        : event.altKey && !event.ctrlKey && key.length === 1 ? `Alt+${key}`
+        : key === "Escape" ? "Esc" : key
+      const tgt = event.target as HTMLElement
+      if (k === "Esc" && tgt?.closest?.(".op-drop, .op-search") && pq) { setPq(""); return }
+      if (k === "Esc" && tgt && /INPUT|TEXTAREA/.test(tgt.tagName) && (tgt as HTMLInputElement).value && tgt !== prodRef.current) return
+      const hit = FKEYS.find(([f, , , alt]) => f === k || alt === k)
+      if (hit) { event.preventDefault(); event.stopPropagation(); hit[2]() }
     }
-    window.addEventListener("keydown", onKey)
-    return () => window.removeEventListener("keydown", onKey)
+    window.addEventListener("keydown", onKey, true)
+    return () => window.removeEventListener("keydown", onKey, true)
   })
 
   /* ---------------- vendas realizadas ---------------- */
@@ -742,9 +769,9 @@ export default function Vendas() {
               </div>
             </div>
             {errors.length > 0 && <div className="op-note bad" style={{ flexDirection: "column", gap: 4 }}>{errors.map((e) => <span key={e}>• {e}</span>)}</div>}
-            <button className="op-btn pri lg" onClick={() => finalize()}><Send /> {registro === "Orçamento" ? "Salvar orçamento" : registro === "Transferência" ? "Confirmar transferência" : "Finalizar e enviar ao caixa"} <kbd>F2</kbd></button>
+            <button className="op-btn pri lg" onClick={() => finalize()}><Send /> {registro === "Orçamento" ? "Salvar orçamento" : registro === "Transferência" ? "Confirmar transferência" : "Salvar e enviar ao caixa"} <kbd>F10</kbd></button>
             <div style={{ display: "flex", gap: 8 }}>
-              <button className="op-btn grow" onClick={() => finalize(true)}><FileText /> Salvar como orçamento <kbd>F10</kbd></button>
+              <button className="op-btn grow" onClick={() => finalize(true)}><FileText /> Salvar como orçamento</button>
               <button className="op-btn dan" onClick={() => reset()}><X /> {editing ? "Descartar edição" : "Limpar"}</button>
             </div>
             {cart.length > 0 && (
@@ -755,7 +782,7 @@ export default function Vendas() {
             )}
           </div>
           <div className="op-fkeys" role="toolbar" aria-label="Atalhos">
-            {FKEYS.map(([k, l, fn]) => <button key={k} className={k === "F2" ? "pri" : k === "Esc" ? "k-esc" : ""} onClick={fn}><kbd>{k}</kbd>{l}</button>)}
+            {FKEYS.map(([k, l, fn, alt]) => <button key={k} className={k === "F2" ? "pri" : k === "Esc" ? "k-esc" : ""} title={alt !== k ? `${k} ou ${alt}` : k} onClick={fn}><kbd>{k}</kbd>{l}{alt !== k && <small className="alt">{alt}</small>}</button>)}
           </div>
         </div>
       )}
@@ -873,6 +900,32 @@ export default function Vendas() {
               <label className="op-f"><span>Motivo</span><input className="op-in" autoFocus value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Ex.: cliente desistiu" /></label>
             </div>
             <div className="foot"><button className="op-btn" onClick={() => setCancelSale(null)}>Voltar</button><button className="op-btn pri" style={{ background: "var(--red)", borderColor: "var(--red)" }} onClick={doCancel}>Cancelar venda</button></div>
+          </div>
+        </Layer>
+      )}
+
+      {picker && (
+        <Layer className="op-modal-layer" onMouseDown={() => setPicker(null)}>
+          <div className="op-modal" style={{ width: 380 }} onMouseDown={(e) => e.stopPropagation()}>
+            <div className="op-ch"><h2><User /> Escolher {picker === "vendedor" ? "vendedor" : "ajudante"} <kbd>{picker === "vendedor" ? "F6" : "F7"}</kbd></h2></div>
+            <div className="op-cb" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <input className="op-in" autoFocus placeholder="Código ou nome" value={pickQ} onChange={(e) => { setPickQ(e.target.value); setPickIdx(0) }}
+                onKeyDown={(e) => {
+                  if (e.key === "ArrowDown") { e.preventDefault(); setPickIdx((i) => Math.min(pickList.length - 1, i + 1)) }
+                  if (e.key === "ArrowUp") { e.preventDefault(); setPickIdx((i) => Math.max(0, i - 1)) }
+                  if (e.key === "Enter" && pickList[pickIdx]) { e.preventDefault(); choose(pickList[pickIdx].id) }
+                  if (e.key === "Escape") { e.preventDefault(); setPicker(null) }
+                }} />
+              <div className="op-table" style={{ maxHeight: 300, overflowY: "auto" }}>
+                {pickList.map((u, i) => (
+                  <div key={u.id || "none"} className={`op-tr click ${i === pickIdx ? "act" : ""} ${(picker === "vendedor" ? vendedorId : ajudanteId) === u.id ? "sel" : ""}`} style={{ gridTemplateColumns: "56px minmax(0,1fr) auto" }} onMouseEnter={() => setPickIdx(i)} onClick={() => choose(u.id)}>
+                    <span className="mono muted">{u.code || "—"}</span><strong>{u.displayName}</strong><span className="muted" style={{ fontSize: 12 }}>{u.role}</span>
+                  </div>
+                ))}
+                {!pickList.length && <div className="op-empty">Ninguém encontrado.</div>}
+              </div>
+              <p className="muted" style={{ margin: 0, fontSize: 12 }}>↑ ↓ para escolher · Enter confirma · Esc fecha</p>
+            </div>
           </div>
         </Layer>
       )}
