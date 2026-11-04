@@ -91,10 +91,12 @@ export function addMonths(iso: string, months: number, days = 0) {
 
 export function printHtml(title: string, body: string, a4 = false) {
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title><style>
-  body{font:12px/1.45 "Courier New",monospace;margin:18px;color:#111;max-width:${a4 ? "none" : "340px"}}
+  *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  body{font:12px/1.5 Arial,Helvetica,sans-serif;margin:18px;color:#111;max-width:${a4 ? "none" : "320px"}}
   ${a4 ? A4_CSS : ""}
-  h1{font-size:15px;margin:0 0 2px}h2{font-size:12px;margin:12px 0 4px;text-transform:uppercase}
-  table{width:100%;border-collapse:collapse;margin:8px 0}td,th{padding:3px 0;border-bottom:1px dashed #999;text-align:left;vertical-align:top}
+  h1{font-size:15px;margin:0 0 4px;text-align:${a4 ? "left" : "center"}}h2{font-size:11.5px;margin:14px 0 4px;text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid #111;padding-bottom:2px}
+  body>div{margin:1px 0}
+  table{width:100%;border-collapse:collapse;margin:8px 0}td,th{padding:4px 0;border-bottom:1px dashed #bbb;text-align:left;vertical-align:top}th{font-size:10.5px;text-transform:uppercase;color:#444}
   td:last-child,th:last-child{text-align:right}.t{font-weight:700;font-size:14px}.c{text-align:center}
   .bar{font:34px/1 "Libre Barcode 39",monospace;letter-spacing:2px;text-align:center;margin:10px 0 0}
   .code{letter-spacing:6px;text-align:center;font-weight:700}

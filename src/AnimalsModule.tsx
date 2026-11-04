@@ -1,4 +1,6 @@
+import RowActions, { RowButton } from "./vfx/RowActions"
 import { clinicMetrics } from "./metrics"
+import { CadastroDrawer, CadSec, Campo, cadInput } from "./vfx/CadastroDrawer"
 import { localISO } from "./date"
 import {
   ArrowLeft,
@@ -447,12 +449,15 @@ export default function AnimalsModule() {
                     <small>{animal.doctor}</small>
                   </div>
                   <div className="animal-actions">
-                    <button title="Visualizar ficha" aria-label={`Ver ficha de ${animal.name}`} onClick={() => navigate(`/animais/${animal.id}`)}>
-                      <Eye />
-                    </button>
-                    <button title="Agendar" aria-label={`Agendar para ${animal.name}`} onClick={() => navigate(`/agendas?locate=1&pet=${encodeURIComponent(animal.name)}&client=${encodeURIComponent(animal.owner)}`)}>
+                    <RowActions
+                      name={animal.name}
+                      onView={() => navigate(`/animais/${animal.id}`)}
+                      onEdit={() => navigate(`/animais/${animal.id}?editar=1`)}
+                      onDelete={() => setConfirmDelete(animal)}
+                    >
+                    <RowButton title="Agendar" onClick={() => navigate(`/agendas?locate=1&pet=${encodeURIComponent(animal.name)}&client=${encodeURIComponent(animal.owner)}`)}>
                       <CalendarDays />
-                    </button>
+                    </RowButton>
                     <span style={{ position: "relative", display: "inline-flex" }}>
                       <button title="Mais opções" aria-label="Mais opções" aria-expanded={menuId === animal.id} onClick={(event) => { event.stopPropagation(); setMenuId(menuId === animal.id ? "" : animal.id) }}>
                         <CircleEllipsis />
@@ -471,6 +476,7 @@ export default function AnimalsModule() {
                         </span>
                       )}
                     </span>
+                    </RowActions>
                   </div>
                 </div>
               ))
@@ -604,12 +610,9 @@ function AnimalDrawer({
 }) {
   const [tutorQuery, setTutorQuery] = useState("")
   const [selectedTutor, setSelectedTutor] = useState<TutorOption | null>(() => tutors.find((t) => t.id === presetTutor) || null)
-  const [formError, setFormError] = useState("")
-  const [tutorError, setTutorError] = useState(false)
-  const [nameError, setNameError] = useState(false)
+  const [errors, setErrors] = useState<Record<string, string>>({})
   const [sex, setSex] = useState("")
   const [species, setSpecies] = useState("")
-  const [more, setMore] = useState(false)
   const digitCount = tutorQuery.replace(/\D/g, "").length
   const letterCount = tutorQuery.replace(/[^A-Za-zÀ-ÿ]/g, "").length
   const qualifies = digitCount >= 3 || letterCount >= 2
@@ -618,38 +621,29 @@ function AnimalDrawer({
     const term = normalize(tutorQuery)
     const digits = tutorQuery.replace(/\D/g, "")
     return tutors
-      .filter(
-        (tutor) =>
-          normalize(tutor.name).includes(term) ||
-          (digits && tutor.cpf.replace(/\D/g, "").includes(digits)) ||
-          (digits && tutor.rg.replace(/\D/g, "").includes(digits)),
-      )
+      .filter((tutor) => normalize(tutor.name).includes(term) || (digits && tutor.cpf.replace(/\D/g, "").includes(digits)) || (digits && tutor.rg.replace(/\D/g, "").includes(digits)))
       .slice(0, 6)
   }, [qualifies, tutorQuery, tutors])
 
-  const submit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    const values = Object.fromEntries(new FormData(event.currentTarget)) as Record<
-      string,
-      string
-    >
-    const missingTutor = !selectedTutor
-    const missingName = !values.name?.trim()
-    setTutorError(missingTutor)
-    setNameError(missingName)
-    if (missingTutor || missingName || !values.species || !values.breed) return
-    if (values.birthDate && values.birthDate > localISO()) return setFormError("A data de nascimento não pode ser no futuro.")
+  const submit = (form: HTMLFormElement) => {
+    const values = Object.fromEntries(new FormData(form)) as Record<string, string>
+    const next: Record<string, string> = {}
+    if (!selectedTutor) next.tutor = "Escolha o tutor responsável. Pesquise pelo nome, CPF ou RG."
+    if (!values.name?.trim()) next.name = "Informe o nome do animal."
+    if (!values.species) next.species = "Escolha a espécie."
+    if (!values.breed) next.breed = "Escolha a raça. Se não souber, use “Sem raça definida”."
+    if (values.birthDate && values.birthDate > localISO()) next.birthDate = "A data de nascimento não pode ser no futuro."
     let weight = ""
     if (values.weight) {
       const kg = Number(values.weight.replace(",", "."))
-      if (!Number.isFinite(kg) || kg <= 0 || kg > 150) return setFormError("Peso inválido: use apenas números, em quilos (ex.: 12,5).")
-      weight = `${kg.toLocaleString("pt-BR")} kg`
+      if (!Number.isFinite(kg) || kg <= 0 || kg > 150) next.weight = "Use só números, em quilos. Exemplo: 12,5"
+      else weight = `${kg.toLocaleString("pt-BR")} kg`
     }
-    setFormError("")
-    const id = `created-${Date.now()}`
+    setErrors(next)
+    if (Object.keys(next).length || !selectedTutor) return
     save(
       {
-        id,
+        id: `created-${Date.now()}`,
         name: values.name.trim(),
         code: `#ANM-${String(nextCode).padStart(4, "0")}`,
         species: values.species,
@@ -665,182 +659,111 @@ function AnimalDrawer({
       { sex: values.sex || "", birthDate: values.birthDate || "", weight, date: localISO(), extra: { castrado: values.sterilization || "", pelagem: values.coat || "", pedigree: values.pedigree || "", pedigreeNumero: values.pedigreeNumber || "" } },
     )
   }
+  const firstError = Object.values(errors)[0]
 
   return (
-    <div className="animal-drawer-backdrop" onMouseDown={close}>
-      <aside className="animal-drawer" onMouseDown={(event) => event.stopPropagation()}>
-        <header>
-          <button type="button" onClick={close}>
-            <ArrowLeft />
-          </button>
-          <span>
-            <small>Adicionar</small>
-            <strong>Animal</strong>
-          </span>
-          <button type="button" onClick={close}>
-            <X />
-          </button>
-        </header>
-        <form onSubmit={submit}>
-          <div className="animal-form-scroll">
-            <section className={`tutor-search-box ${tutorError ? "error" : ""}`}>
-              <span className="form-section-label">Tutor responsável *</span>
-              {selectedTutor ? (
-                <div className="selected-tutor">
-                  <i>{selectedTutor.name[0]}</i>
-                  <span>
-                    <strong>{selectedTutor.name}</strong>
-                    <small>
-                      CPF {selectedTutor.cpf} · RG {selectedTutor.rg}
-                    </small>
-                  </span>
-                  <button
-                    type="button"
-                    aria-label="Trocar tutor"
-                    onClick={() => {
-                      setSelectedTutor(null)
-                      setTutorQuery("")
-                    }}
-                  >
-                    <X />
-                  </button>
-                </div>
-              ) : (
-                <div className="tutor-search-control">
-                  <Search />
-                  <input
-                    value={tutorQuery}
-                    onChange={(event) => {
-                      setTutorQuery(event.target.value)
-                      setTutorError(false)
-                    }}
-                    placeholder="Pesquisar tutor por nome, CPF ou RG *"
-                  />
-                  {qualifies && (
-                    <div className="tutor-results">
-                      {tutorResults.length ? (
-                        tutorResults.map((tutor) => (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSelectedTutor(tutor)
-                              setTutorQuery("")
-                            }}
-                            key={tutor.id}
-                          >
-                            <i>{tutor.name[0]}</i>
-                            <span>
-                              <strong>
-                                <Highlight text={tutor.name} term={tutorQuery} />
-                              </strong>
-                              <small>
-                                CPF <Highlight text={tutor.cpf} term={tutorQuery} /> ·
-                                RG <Highlight text={tutor.rg} term={tutorQuery} />
-                              </small>
-                            </span>
-                          </button>
-                        ))
-                      ) : (
-                        <p>Nenhum tutor encontrado. Cadastre o tutor primeiro.</p>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-              {tutorError && <em>Selecione um tutor responsável.</em>}
-            </section>
-
-            <div className="animal-form-grid">
-              <Field
-                label="Nome do animal"
-                required
-                className={`wide ${nameError ? "error" : ""}`}
-              >
-                <input
-                  name="name"
-                  placeholder="Digite o nome do animal"
-                  onChange={() => setNameError(false)}
-                />
-              </Field>
-              <Field label="Sexo">
-                <select name="sex" value={sex} onChange={(event) => setSex(event.target.value)}>
-                  <option value="">Selecione</option>
-                  <option>Macho</option>
-                  <option>Fêmea</option>
-                </select>
-                {sex === "Macho" ? <Mars /> : sex === "Fêmea" ? <Venus /> : <ChevronDown />}
-              </Field>
-              <Field label="Esterilização">
-                <select name="sterilization" disabled={!sex}>
-                  <option value="">Selecione</option>
-                  <option>Castrado</option>
-                  <option>Não castrado</option>
-                </select>
-                <ChevronDown />
-              </Field>
-              <Field label="Nascimento" className="wide">
-                <input name="birthDate" type="date" max={localISO()} />
-                <CalendarDays />
-              </Field>
-              <Field label="Espécie" required>
-                <select
-                  name="species"
-                  value={species}
-                  onChange={(event) => setSpecies(event.target.value)}
-                  required
-                >
-                  <option value="">Selecione</option>
-                  {Object.keys(speciesBreeds).map((value) => (
-                    <option key={value}>{value}</option>
-                  ))}
-                </select>
-                <ChevronDown />
-              </Field>
-              <Field label="Raça" required>
-                <select name="breed" disabled={!species} required>
-                  <option value="">Selecione</option>
-                  {(speciesBreeds[species] || []).map((value) => (
-                    <option key={value}>{value}</option>
-                  ))}
-                </select>
-                <ChevronDown />
-              </Field>
-              <Field label="Peso (kg)">
-                <input name="weight" inputMode="decimal" placeholder="Ex.: 12,5" />
-              </Field>
-              <Field label="Pelagem">
-                <input name="coat" placeholder="Cor e características da pelagem" />
-              </Field>
-              <Field label="Microchip" className="wide">
-                <input name="microchip" placeholder="Número de identificação do microchip" />
-              </Field>
-            </div>
-            <button className="more-animal-fields" type="button" onClick={() => setMore(!more)}>
-              Mais campos <ChevronDown className={more ? "open" : ""} />
-            </button>
-            {more && (
-              <div className="animal-extra-fields">
-                <div className="animal-form-grid">
-                  <Field label="Pedigree">
-                    <select name="pedigree">
-                      <option>Não possui</option>
-                      <option>Possui</option>
-                    </select>
-                    <ChevronDown />
-                  </Field>
-                  <Field label="Nº do Pedigree">
-                    <input name="pedigreeNumber" placeholder="Registro" />
-                  </Field>
-                </div>
+    <CadastroDrawer
+      title="Novo animal"
+      sub="Cadastre o paciente e vincule ao tutor. Campos com * são obrigatórios."
+      onClose={close}
+      onSubmit={submit}
+      submitLabel="Cadastrar animal"
+      error={firstError ? "Revise os campos destacados em vermelho." : undefined}
+    >
+      <>
+        <CadSec n={1} title="Tutor responsável" desc="Quem cuida do animal">
+          <div className="vx-c6" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {selectedTutor ? (
+              <div className="vx-row" style={{ gap: 10, padding: 12, borderRadius: 12, background: "var(--vx-soft)", justifyContent: "space-between" }}>
+                <span>
+                  <b>{selectedTutor.name}</b>
+                  <span className="vx-hint" style={{ display: "block" }}>CPF {selectedTutor.cpf} · RG {selectedTutor.rg}</span>
+                </span>
+                <button type="button" className="vx-btn vx-btn-g vx-btn-sm" onClick={() => { setSelectedTutor(null); setTutorQuery("") }}>Trocar</button>
               </div>
+            ) : (
+              <>
+                <Campo label="Buscar tutor" req span={6} error={errors.tutor} hint="Digite pelo menos 3 números do CPF/RG ou 2 letras do nome.">
+                  <input className={cadInput(errors.tutor)} value={tutorQuery} placeholder="Nome, CPF ou RG" onChange={(e) => { setTutorQuery(e.target.value); setErrors((c) => ({ ...c, tutor: "" })) }} />
+                </Campo>
+                {qualifies && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {tutorResults.length ? (
+                      tutorResults.map((tutor) => (
+                        <button key={tutor.id} type="button" className="vx-chip" style={{ justifyContent: "flex-start", minHeight: 44, padding: "0 12px" }} onClick={() => { setSelectedTutor(tutor); setTutorQuery("") }}>
+                          <b>{tutor.name}</b> <span className="vx-hint">· CPF {tutor.cpf}</span>
+                        </button>
+                      ))
+                    ) : (
+                      <p className="vx-hint" style={{ margin: 0 }}>Nenhum tutor encontrado. Cadastre o tutor primeiro, na tela Tutores.</p>
+                    )}
+                  </div>
+                )}
+              </>
             )}
           </div>
-          <footer>
-            {formError && <em role="alert" style={{ color: "#c0392b", fontSize: 13, marginRight: "auto" }}>{formError}</em>}
-            <button type="submit">Salvar animal</button>
-          </footer>
-        </form>
-      </aside>
-    </div>
+        </CadSec>
+
+        <CadSec n={2} title="Dados do animal">
+          <Campo label="Nome do animal" req span={3} error={errors.name}>
+            <input className={cadInput(errors.name)} name="name" placeholder="Ex.: Thor" />
+          </Campo>
+          <Campo label="Espécie" req span={3} error={errors.species}>
+            <select className={cadInput(errors.species)} name="species" value={species} onChange={(e) => { setSpecies(e.target.value); setErrors((c) => ({ ...c, species: "", breed: "" })) }}>
+              <option value="">Escolha</option>
+              {Object.keys(speciesBreeds).map((value) => (
+                <option key={value}>{value}</option>
+              ))}
+            </select>
+          </Campo>
+          <Campo label="Raça" req span={3} error={errors.breed}>
+            <select className={cadInput(errors.breed)} name="breed" disabled={!species}>
+              <option value="">{species ? "Escolha" : "Escolha a espécie primeiro"}</option>
+              {(speciesBreeds[species] || []).map((value) => (
+                <option key={value}>{value}</option>
+              ))}
+            </select>
+          </Campo>
+          <Campo label="Sexo" span={3}>
+            <select className="vx-in" name="sex" value={sex} onChange={(e) => setSex(e.target.value)}>
+              <option value="">Não sei / não informado</option>
+              <option>Macho</option>
+              <option>Fêmea</option>
+            </select>
+          </Campo>
+          <Campo label="Castrado?" span={3} hint={sex ? undefined : "Escolha o sexo para liberar."}>
+            <select className="vx-in" name="sterilization" disabled={!sex}>
+              <option value="">Não informado</option>
+              <option>Castrado</option>
+              <option>Não castrado</option>
+            </select>
+          </Campo>
+          <Campo label="Data de nascimento" span={3} error={errors.birthDate} hint="Se não souber, deixe em branco.">
+            <input className={cadInput(errors.birthDate)} name="birthDate" type="date" max={localISO()} />
+          </Campo>
+          <Campo label="Peso (kg)" span={3} error={errors.weight} hint="Exemplo: 12,5">
+            <input className={cadInput(errors.weight)} name="weight" inputMode="decimal" placeholder="0,0" />
+          </Campo>
+        </CadSec>
+
+        <CadSec n={3} title="Identificação" desc="Opcional">
+          <Campo label="Pelagem" span={3}>
+            <input className="vx-in" name="coat" placeholder="Cor e marcas" />
+          </Campo>
+          <Campo label="Número do microchip" span={3}>
+            <input className="vx-in" name="microchip" placeholder="Só se o animal tiver" />
+          </Campo>
+          <Campo label="Pedigree" span={3}>
+            <select className="vx-in" name="pedigree">
+              <option>Não possui</option>
+              <option>Possui</option>
+            </select>
+          </Campo>
+          <Campo label="Número do pedigree" span={3}>
+            <input className="vx-in" name="pedigreeNumber" placeholder="Registro" />
+          </Campo>
+        </CadSec>
+      </>
+    </CadastroDrawer>
   )
 }

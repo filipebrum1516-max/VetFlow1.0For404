@@ -1,3 +1,4 @@
+import RowActions from "./vfx/RowActions"
 import {
   ArrowDownToLine,
   ArrowLeft,
@@ -296,9 +297,7 @@ export default function TutorsModule() {
   const [sort, setSort] = useState("Mais recentes")
   const [addedRows, setAddedRows] = useState<TutorRow[]>([])
   const [page, setPage] = useState(1)
-  const [drawerOpen, setDrawerOpen] = useState(
-    () => new URLSearchParams(window.location.search).get("novo") === "1",
-  )
+  const [drawerOpen, setDrawerOpen] = useState(false)
   const [step, setStep] = useState(1)
   const [form, setForm] = useState({ ...emptyTutor })
   const [draftPets, setDraftPets] = useState<Pet[]>([])
@@ -775,6 +774,13 @@ export default function TutorsModule() {
                 <span className={`tutor-status ${tutor.status.toLowerCase()}`}>
                   {tutor.status}
                 </span>
+                <RowActions
+                  name={tutor.name}
+                  onView={() => openTutor(tutor)}
+                  onEdit={() => openTutor(tutor, true)}
+                  onDelete={() => setConfirmTutor({ kind: "excluir", tutor })}
+                  deleteDisabled={historyOf(tutor.id) === 0 && !tutor.pets.length ? undefined : "Tem animais ou histórico: use Inativar no menu"}
+                >
                 <span className="row-menu-wrap">
                   <button
                     className="row-menu-trigger"
@@ -824,6 +830,7 @@ export default function TutorsModule() {
                     </span>
                   )}
                 </span>
+                </RowActions>
               </div>
             ))}
             <footer className="tutors-pagination">
@@ -993,7 +1000,7 @@ export default function TutorsModule() {
                       )}
                       <button
                         className="tf-outline-wide"
-                        onClick={() => setAnimalScreen(true)}
+                        onClick={() => navigate(`/animais?novo=1&tutor=${selectedTutor?.id ?? ""}`)}
                       >
                         Adicionar novo animal
                       </button>
@@ -1073,11 +1080,11 @@ export default function TutorsModule() {
                 <div className="tutor-record-actions">
                   <button
                     onClick={() => {
-                      setTutorDraft({ ...selectedTutor })
-                      setEditingTutor(!editingTutor)
+                      const item = data.tutores.find((t) => t.id === selectedTutor.id)
+                      if (item) setClienteForm({ item })
                     }}
                   >
-                    {editingTutor ? "Cancelar edição" : "Editar dados"}
+                    Editar dados
                   </button>
                   <button
                     className={

@@ -3,6 +3,7 @@ import { useNavigate } from "react-router"
 import { AlertTriangle, ArrowDownToLine, ArrowUpFromLine, Banknote, Check, Clock, History, ListOrdered, Lock, Package, Pencil, Printer, RotateCcw, ScanBarcode, Truck, Undo2, Unlock, Wallet, X } from "lucide-react"
 import { useVetFlow, type Item } from "../../store"
 import { brl, fmtDate, itemDate, parseMoney, todayISO, Page } from "../ui"
+import { docHtml, printDoc, printRaw } from "../printDoc"
 import { A_PRAZO, planoInfo, addMonths, FORMAS, PARCELADAS, LIMITE_FIADO, lineTotal, minutesSince, nowTime, printHtml, stamp, type Entrega, type Line, type Pay } from "../vendasShared"
 import { PrintBar } from "../PrintMenu"
 import "../ops.css"
@@ -211,7 +212,38 @@ export default function Caixa() {
     printHtml(mov.tipo, `<h1>VetFlow · ${activeUnit.name}</h1><div>COMPROVANTE DE ${mov.tipo.toUpperCase()}</div><div>Caixa ${caixa.name} · ${fmtDate(todayISO())} ${m.hora}</div><div class="t">${brl(v)}</div><div>Motivo: ${m.motivo}</div><div>Operador: ${operador}</div><div class="sig">${mov.tipo === "Sangria" ? "Recebido por (gerente)" : "Entregue por"}</div>`)
     showToast(`${mov.tipo} de ${brl(v)} registrada.`); setMov(null)
   }
-  const relatorioHtml = (informado: number) => `<h1>VetFlow · ${activeUnit.name}</h1><div>FECHAMENTO DE CAIXA ${caixa?.name}</div><div>Operador: ${caixa?.professional} · Aberto ${fmtDate(caixa ? itemDate(caixa) : todayISO())} ${caixa?.time}</div><div>Fechado ${fmtDate(todayISO())} ${nowTime()}</div><h2>Conferência</h2><table><tr><th>Forma</th><th>Esperado</th><th>Contado</th><th>Dif.</th></tr>${esperadoForma.map(([f, e]) => { const c = contadoDe(f); return `<tr><td>${f}</td><td>${brl(e)}</td><td>${Number.isNaN(c) ? "—" : brl(c)}</td><td>${Number.isNaN(c) ? "—" : brl(c - e)}</td></tr>` }).join("")}</table><h2>Recebido por forma</h2><table>${resumo.porForma.map(([f, v]) => `<tr><td>${f}</td><td>${brl(v)}</td></tr>`).join("")}<tr><td><b>Total</b></td><td><b>${brl(totalRecebido)}</b></td></tr></table><h2>Gaveta (dinheiro)</h2><table><tr><td>Troco inicial</td><td>${brl(caixa?.amountValue || 0)}</td></tr>${movs.map((m) => `<tr><td>${m.tipo} · ${m.motivo}</td><td>${m.tipo === "Sangria" ? "-" : "+"}${brl(m.valor)}</td></tr>`).join("")}<tr><td>Esperado</td><td>${brl(dinheiroEsperado)}</td></tr><tr><td>Contado</td><td>${brl(informado)}</td></tr><tr><td><b>Diferença</b></td><td><b>${brl(informado - dinheiroEsperado)}</b></td></tr></table><div class="sig">Conferido por (gerente)</div>`
+  const relatorioHtml = (informado: number) => {
+    const linhas = esperadoForma.map(([f, e]) => {
+      const c = contadoDe(f)
+      return [f, brl(e), Number.isNaN(c) ? "não conferido" : brl(c), Number.isNaN(c) ? "—" : brl(c - e)]
+    })
+    const difTotal = esperadoForma.reduce((acc, [f, e]) => { const c = contadoDe(f); return acc + (Number.isNaN(c) ? 0 : c - e) }, 0)
+    return docHtml({
+      title: `Fechamento do caixa ${caixa?.name || ""}`,
+      subtitle: `Aberto em ${fmtDate(caixa ? itemDate(caixa) : todayISO())} às ${caixa?.time || "—"} · fechado em ${fmtDate(todayISO())} às ${nowTime()}`,
+      unit: activeUnit,
+      issuedBy: operador,
+      meta: [["Operador", caixa?.professional || "—"], ["Vendas recebidas", String(resumo.n)]],
+      kpis: [
+        ["Total recebido", brl(totalRecebido), `${resumo.n} vendas`],
+        ["Dinheiro esperado na gaveta", brl(dinheiroEsperado)],
+        ["Dinheiro contado", brl(informado)],
+        ["Diferença", brl(difTotal), Math.abs(difTotal) < 0.01 ? "caixa conferido sem diferença" : difTotal > 0 ? "sobra" : "falta"],
+      ],
+      sections: [
+        { title: "Conferência por forma de pagamento", head: ["Forma", "Esperado", "Contado", "Diferença"], align: ["l", "r", "r", "r"], rows: linhas, total: ["Total", brl(esperadoForma.reduce((acc, [, e]) => acc + e, 0)), "", brl(difTotal)] },
+        { title: "Recebido por forma", head: ["Forma", "Valor"], align: ["l", "r"], rows: resumo.porForma.filter(([, v]) => v).map(([f, v]) => [f, brl(v)]), total: ["Total", brl(totalRecebido)] },
+        {
+          title: "Movimento da gaveta (dinheiro)",
+          head: ["Movimento", "Valor"],
+          align: ["l", "r"],
+          rows: [["Troco inicial", brl(caixa?.amountValue || 0)], ...movs.map((m) => [`${m.tipo} · ${m.motivo} (${m.hora})`, `${m.tipo === "Sangria" || m.tipo === "Estorno" ? "−" : "+"} ${brl(m.valor)}`])],
+          total: ["Esperado na gaveta", brl(dinheiroEsperado)],
+        },
+      ],
+      signatures: ["Operador do caixa", "Conferido por (gerente)"],
+    })
+  }
   const fechar = () => {
     if (!caixa) return
     const informado = parseMoney(contado)
@@ -219,7 +251,7 @@ export default function Caixa() {
     const conferencia = Object.fromEntries(esperadoForma.map(([f, e]) => [f, { esperado: e, contado: contadoDe(f) }]))
     const difTotal = esperadoForma.reduce((a, [f, e]) => { const c = contadoDe(f); return a + (Number.isNaN(c) ? 0 : c - e) }, 0)
     updateItem("vendas", caixa.id, { status: "Fechado", extra: { ...caixa.extra, fechamento: `${todayISO()} ${nowTime()}`, esperado: dinheiroEsperado, informado, diferenca: difTotal, total: totalRecebido, vendas: resumo.n, conferencia, relatorio: html } })
-    printHtml(`Fechamento ${caixa.name}`, html)
+    printRaw(html)
     setFechando(false); setContado(""); setConf({ Pix: "", Débito: "", Crédito: "", Transferência: "", Cheque: "" }); showToast(`Caixa ${caixa.name} fechado.`)
   }
 
@@ -257,7 +289,15 @@ export default function Caixa() {
     setEstorno(null); setEstMotivo(""); setEstSenha("")
   }
   const historico = useMemo(() => all.filter((i) => i.kind === "Caixa").sort((a, b) => `${itemDate(b)}${b.time}`.localeCompare(`${itemDate(a)}${a.time}`)), [all])
-  const extratoHtml = () => `<h1>VetFlow · ${activeUnit.name}</h1><div>EXTRATO DO CAIXA ${caixa?.name}</div><div>${fmtDate(todayISO())} · Operador ${caixa?.professional}</div><table><tr><th>Hora</th><th>Movimento</th><th>Valor</th></tr>${extrato.map((r) => `<tr><td>${r.hora}</td><td>${r.tipo}<br><small>${r.desc}</small></td><td>${brl(r.valor)}</td></tr>`).join("")}</table><div class="t">Na gaveta: ${brl(dinheiroEsperado)}</div>`
+  const imprimirExtrato = () =>
+    printDoc({
+      title: `Extrato do caixa ${caixa?.name || ""}`,
+      subtitle: `${fmtDate(todayISO())} · operador ${caixa?.professional || "—"}`,
+      unit: activeUnit,
+      issuedBy: operador,
+      kpis: [["Movimentos", String(extrato.length)], ["Total recebido", brl(totalRecebido)], ["Na gaveta agora", brl(dinheiroEsperado)]],
+      sections: [{ title: "Movimentos do dia", head: ["Hora", "Movimento", "Descrição", "Por", "Valor"], align: ["l", "l", "l", "l", "r"], rows: extrato.map((r) => [r.hora, r.tipo, r.desc, r.por || "—", brl(r.valor)]) }],
+    })
 
   /* atalhos */
   useEffect(() => {
@@ -285,7 +325,7 @@ export default function Caixa() {
             <span className="num">{c.status === "Aberto" ? <span className="op-tag green">Aberto</span> : c.extra?.fechamento ? `${fmtDate(c.extra.fechamento.slice(0, 10), { day: "2-digit", month: "2-digit" })} ${c.extra.fechamento.slice(11)}` : "—"}</span>
             <b className="r num">{c.status === "Aberto" ? "—" : brl(c.extra?.total || 0)}</b>
             <span className="r">{c.status === "Aberto" ? "—" : <span className={`op-tag ${Math.abs(c.extra?.diferenca || 0) < 0.01 ? "green" : "red"} plain`}>{brl(c.extra?.diferenca || 0)}</span>}</span>
-            <span className="r">{c.extra?.relatorio && <button className="op-btn sm" onClick={() => printHtml(`Fechamento ${c.name}`, c.extra.relatorio)}><Printer /> Relatório</button>}</span>
+            <span className="r">{c.extra?.relatorio && <button className="op-btn sm" onClick={() => (String(c.extra.relatorio).startsWith("<!doctype") ? printRaw(c.extra.relatorio) : printHtml(`Fechamento ${c.name}`, c.extra.relatorio))}><Printer /> Relatório</button>}</span>
           </div>
         ))}
       </div>
@@ -361,7 +401,7 @@ export default function Caixa() {
       {dinheiroEsperado > LIMITE_GAVETA && <div className="op-note warn" style={{ marginBottom: 14 }}><AlertTriangle /> Há {brl(dinheiroEsperado)} em dinheiro na gaveta, acima do limite de {brl(LIMITE_GAVETA)}. Faça uma sangria.</div>}
       {view === "extrato" && (
         <div className="op-card">
-          <div className="op-ch"><h2><ListOrdered /> Extrato do caixa {caixa.name}</h2><button className="op-btn sm" onClick={() => printHtml(`Extrato ${caixa.name}`, extratoHtml())}><Printer /> Imprimir extrato</button></div>
+          <div className="op-ch"><h2><ListOrdered /> Extrato do caixa {caixa.name}</h2><button className="op-btn sm" onClick={imprimirExtrato}><Printer /> Imprimir extrato</button></div>
           <div className="op-table">
             <div className="op-tr op-th" style={{ gridTemplateColumns: "64px 150px minmax(0,1fr) 120px 120px 110px" }}><span>Hora</span><span>Movimento</span><span>Descrição</span><span>Operador</span><span className="r">Valor</span><span /></div>
             {extrato.map((r, i) => (
@@ -417,7 +457,7 @@ export default function Caixa() {
         {/* recebimento */}
         <div className="op-col">
           {!sale ? (
-            <div className="op-card"><div className="op-empty" style={{ padding: "70px 20px" }}><ScanBarcode size={30} style={{ opacity: .5 }} /><p style={{ margin: "10px 0 4px", fontWeight: 600, color: "var(--ink)" }}>Selecione uma venda da fila</p><p style={{ margin: 0 }}>ou leia o código de barras da pré-venda com o leitor (<kbd>F2</kbd>).</p></div></div>
+            <div className="op-card"><div className="op-empty" style={{ padding: "70px 20px" }}><ScanBarcode size={30} style={{ opacity: .5 }} /><p style={{ margin: "10px 0 0", fontWeight: 700, fontSize: 16, color: "var(--ink)" }}>Selecione uma venda</p></div></div>
           ) : (
             <>
               <div className="op-card">
@@ -586,7 +626,7 @@ export default function Caixa() {
               {contado && (() => { const d = esperadoForma.reduce((a, [f, e]) => { const c = contadoDe(f); return a + (Number.isNaN(c) ? 0 : c - e) }, 0); return <div className={`op-note ${Math.abs(d) < 0.01 ? "ok" : "bad"}`}>{Math.abs(d) < 0.01 ? <Check /> : <AlertTriangle />} {Math.abs(d) < 0.01 ? "Caixa conferido, sem diferença." : `${d > 0 ? "Sobra" : "Falta"} total de ${brl(Math.abs(d))}. Fica registrada no fechamento.`}</div> })()}
               {fila.length > 0 && <div className="op-note warn"><AlertTriangle /> {fila.length} vendas continuam aguardando pagamento e ficam para o próximo caixa.</div>}
             </div>
-            <div className="foot"><button className="op-btn" onClick={() => printHtml("Prévia", relatorioHtml(parseMoney(contado)))}><Printer /> Prévia</button><button className="op-btn pri" disabled={!contado} onClick={fechar}><Lock /> Fechar e imprimir</button></div>
+            <div className="foot"><button className="op-btn" onClick={() => printRaw(relatorioHtml(parseMoney(contado)))}><Printer /> Prévia</button><button className="op-btn pri" disabled={!contado} onClick={fechar}><Lock /> Fechar e imprimir</button></div>
           </div>
         </Layer>
       )}

@@ -1522,9 +1522,167 @@ function generateUnit(unit: Unit, unitIndex: number): UnitData {
 
 function makeSeed(): Record<string, UnitData> {
   return Object.fromEntries(
-    seedUnits.map((unit, index) => [unit.id, noFutureFacts(generateUnit(unit, index))]),
+    seedUnits.map((unit, index) => [unit.id, fillToday(noFutureFacts(generateUnit(unit, index)), unit.id, index)]),
   )
 }
+
+/* Movimento do dia para os dados de exemplo: consultas, cirurgias, procedimentos, exames, vacinas,
+   receitas e lançamentos com horários em volta da hora atual, para todas as telas terem o dia cheio. */
+function fillToday(data: UnitData, unitId: string, unitIndex: number): UnitData {
+  const now = new Date()
+  const today = localISO(now)
+  const nowMin = now.getHours() * 60 + now.getMinutes()
+  const hm = (offset: number) => {
+    const m = Math.min(23 * 60 + 30, Math.max(7 * 60, nowMin + offset))
+    return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`
+  }
+  const iso = (offset: number) => new Date(now.getTime() + offset * 60000).toISOString()
+  const pets = data.animais.filter((a) => a.ownerId && !/inativ|óbito/i.test(a.status)).slice(unitIndex * 7, unitIndex * 7 + 40)
+  const vets = data.profissionais.filter((p) => /^dra?\./i.test(p.name)).slice(0, 5)
+  if (!pets.length || !vets.length) return data
+  let k = 0
+  const pet = () => pets[(k++ * 7) % pets.length]
+  const vet = (i: number) => vets[i % vets.length]
+  const make = (slug: ModuleSlug, i: number, offset: number, patch: Partial<Item>): Item => {
+    const a = pet()
+    const v = vet(i)
+    return {
+      id: `${unitId}-${slug}-hoje-${i + 1}`,
+      name: "Registro",
+      subtitle: `${a.name} • ${a.owner}`,
+      status: "Agendado",
+      unitId,
+      createdAt: iso(Math.min(0, offset) - 30),
+      date: today,
+      time: hm(offset),
+      animalId: a.id,
+      animal: a.name,
+      owner: a.owner,
+      ownerId: a.ownerId,
+      species: a.species,
+      breed: a.breed,
+      phone: a.phone,
+      professionalId: v.id,
+      professional: v.name,
+      ...patch,
+    }
+  }
+  const consultas: [number, string, string, number][] = [
+    [-230, "Consulta clínica", "Concluído", 180], [-190, "Retorno", "Concluído", 120], [-150, "Consulta dermatológica", "Concluído", 220],
+    [-120, "Consulta clínica", "Faltou", 180], [-100, "Vacinação", "Concluído", 150], [-70, "Consulta de felinos", "Concluído", 200],
+    [-35, "Consulta clínica", "Em atendimento", 180], [-18, "Retorno", "Triagem", 120], [-6, "Consulta cardiológica", "Chegou", 260],
+    [15, "Consulta clínica", "Confirmado", 180], [45, "Consulta dermatológica", "Agendado", 220], [80, "Retorno", "Agendado", 120],
+    [120, "Consulta clínica", "Agendado", 180], [170, "Vacinação", "Agendado", 150],
+  ]
+  const novasConsultas = consultas.map(([off, name, status, valor], i) =>
+    make("consultas", i, off, { name, status, amountValue: valor, amount: money(valor), service: name, extra: { prioridade: i === 8 ? "Preferencial" : "Normal", sala: `Consultório ${(i % 3) + 1}` } }),
+  )
+  const cir: [number, string, string, number, Record<string, unknown>][] = [
+    [-260, "Castração", "Concluída", 650, { fase: 3, inicio: iso(-250), fim: iso(-180), checklist: { signin: true, timeout: true, signout: true } }],
+    [-45, "Ovariohisterectomia", "Em andamento", 980, { fase: 2, inicio: iso(-40), checklist: { signin: true, timeout: true } }],
+    [95, "Profilaxia dentária", "Agendada", 540, {}],
+    [180, "Retirada de nódulo", "Agendada", 1200, {}],
+  ]
+  const novasCir = cir.map(([off, name, status, valor, extra], i) =>
+    make("cirurgias", i, off, { name, status, amountValue: valor, amount: money(valor), extra: { sala: i % 2 ? "Sala 2" : "Sala 1", duracao: "1 h 30", anestesista: vet(i + 2).name, ...extra } }),
+  )
+  const catalogo = [...new Set(data.procedimentos.map((p) => p.name))]
+  const proc: [number, string][] = [[-210, "Concluído"], [-160, "Concluído"], [-110, "Concluído"], [-60, "Concluído"], [-20, "Em andamento"], [40, "Agendado"], [110, "Agendado"]]
+  const novosProc = proc.map(([off, status], i) => {
+    const name = catalogo[i % catalogo.length] || "Curativo simples"
+    const ref = data.procedimentos.find((p) => p.name === name && p.amountValue)
+    const valor = ref?.amountValue || 120
+    return make("procedimentos", i, off, { name, status, amountValue: valor, amount: money(valor) })
+  })
+  const exames: [number, string, string][] = [[-200, "Hemograma completo", "Concluído"], [-140, "Bioquímico renal", "Concluído"], [-90, "Ultrassonografia abdominal", "Aguardando resultado"], [-40, "Raio-X de tórax", "Aguardando resultado"], [-10, "Urinálise", "Solicitado"], [60, "Ecocardiograma", "Solicitado"]]
+  const RES: Record<string, { n: string; u: string; min: number; max: number; v: number }[]> = {
+    "Hemograma completo": [
+      { n: "Hemácias", u: "milhões/µL", min: 5.5, max: 8.5, v: 6.8 }, { n: "Hemoglobina", u: "g/dL", min: 12, max: 18, v: 15.2 },
+      { n: "Hematócrito", u: "%", min: 37, max: 55, v: 44 }, { n: "Leucócitos", u: "mil/µL", min: 6, max: 17, v: 18.4 }, { n: "Plaquetas", u: "mil/µL", min: 200, max: 500, v: 310 },
+    ],
+    "Bioquímico renal": [{ n: "Ureia", u: "mg/dL", min: 21, max: 60, v: 48 }, { n: "Creatinina", u: "mg/dL", min: 0.5, max: 1.5, v: 1.2 }],
+  }
+  const novosExames = exames.map(([off, name, status], i) =>
+    make("exames", i, off, {
+      name, status, amountValue: 90 + i * 35, amount: money(90 + i * 35), urgency: i === 4,
+      extra: RES[name] && status === "Concluído" ? { resultados: RES[name], lancadoEm: iso(off + 60), assinado: true, assinadoEm: today, assinadoPor: vet(i).name, laudo: name === "Hemograma completo" ? "Leucocitose discreta, compatível com processo inflamatório. Demais parâmetros dentro da referência." : "Função renal dentro da referência para a espécie." } : {},
+    }),
+  )
+  const vac: [number, string, string][] = [[-180, "V10 (polivalente)", "Aplicada"], [-100, "Antirrábica", "Aplicada"], [-50, "V4 felina", "Aplicada"], [30, "Gripe canina", "A vencer"], [90, "V10 (polivalente)", "A vencer"]]
+  const novasVac = vac.map(([off, name, status], i) => make("vacinas", i, off, { name, status, dueDate: status === "Aplicada" ? localISO(new Date(now.getTime() + 365 * DAY)) : today, amountValue: 95, amount: money(95) }))
+  const v0 = vets[0].name
+  const novasRec = [-170, -90, -30].map((off, i) =>
+    make("prescricoes", i, off, {
+      name: ["Amoxicilina + clavulanato 250 mg", "Tramadol 50 mg", "Meloxicam 0,5 mg/mL"][i],
+      status: "Ativa",
+      category: i === 1 ? "Controle especial" : "Simples",
+      extra: {
+        ...(i === 2 ? {} : { assinadoPor: v0, assinadoEm: today }),
+        itens: [
+          [{ med: "Amoxicilina + clavulanato 250 mg", dose: "1 comprimido", via: "oral", freq: "12 horas", dur: "10 dias" }, { med: "Probiótico pet", dose: "1 sachê", via: "oral", freq: "24 horas", dur: "10 dias" }],
+          [{ med: "Tramadol 50 mg", dose: "1/2 comprimido", via: "oral", freq: "8 horas", dur: "5 dias" }],
+          [{ med: "Meloxicam 0,5 mg/mL", dose: "0,2 mL/kg", via: "oral", freq: "24 horas", dur: "3 dias" }, { med: "Omeprazol 10 mg", dose: "1 cápsula", via: "oral", freq: "24 horas", dur: "5 dias" }],
+        ][i],
+      },
+    }),
+  )
+  const novasTele = [[-80, "Concluído"], [25, "Agendado"]].map(([off, status], i) => make("teleatendimentos", i, Number(off), { name: "Teleconsulta de retorno", status: String(status), amountValue: 120, amount: money(120) }))
+  const fin = [...novasConsultas, ...novasCir, ...novosProc]
+    .filter((it) => /conclu/i.test(it.status) && it.amountValue)
+    .map((it, i) => ({
+      id: `${unitId}-financeiro-hoje-${i + 1}`,
+      name: `${it.name} • Receita`,
+      subtitle: `${it.animal} • ${it.owner}`,
+      status: "Recebido",
+      unitId,
+      createdAt: it.createdAt,
+      date: today,
+      time: it.time,
+      category: "Receita",
+      owner: it.owner,
+      animal: it.animal,
+      professional: it.professional,
+      amountValue: it.amountValue,
+      amount: it.amount,
+    }) as Item)
+  const vit = (fc: string, fr: string, temp: string, off: number, por: string) => ({ fc, fr, temp, em: iso(off), por })
+  const presc = [
+    { item: "Dipirona 500 mg/mL", dose: "25 mg/kg", via: "IV", freq: "8/8 h", inicio: hm(-300) },
+    { item: "Ceftriaxona", dose: "30 mg/kg", via: "IV", freq: "12/12 h", inicio: hm(-240) },
+    { item: "Omeprazol", dose: "1 mg/kg", via: "IV", freq: "24/24 h", inicio: hm(-180) },
+    { item: "Ringer lactato", dose: "5 mL/kg/h", via: "IV contínua", freq: "contínuo", inicio: hm(-360) },
+  ]
+  const internAtivas = data.internacoes.map((it, i) =>
+    ["Em andamento", "Em observação"].includes(it.status) && !it.extra?.parametrosAtuais
+      ? { ...it, extra: { ...(it.extra || {}), parametrosAtuais: vit(String(96 + i * 7), String(22 + (i % 4) * 2), `38,${(i * 3) % 10}`, -25 - i * 10, vet(i).name), historicoParametros: [vit(String(104 + i * 5), String(26), "38,9", -240, vet(i).name), vit(String(96 + i * 7), String(22 + (i % 4) * 2), `38,${(i * 3) % 10}`, -25 - i * 10, vet(i).name)], prescricao: presc.slice(0, 2 + (i % 3)), administrados: ["0"] } }
+      : it,
+  )
+  const novasIntern = [
+    { box: "U-01", name: "Gastroenterite hemorrágica", cat: "UTI", grav: "Crítico", off: -420, v: ["148", "38", "39,8"] },
+    { box: "G-01", name: "Obstrução uretral", cat: "Clínica", grav: "Atenção", off: -300, v: ["188", "34", "38,4"] },
+    { box: "G-02", name: "Pós-operatório de castração", cat: "Clínica", grav: "Estável", off: -200, v: ["170", "28", "38,2"] },
+  ].map((b, i) =>
+    make("internacoes", i, b.off, {
+      name: b.name, category: b.cat, status: b.grav === "Estável" ? "Em observação" : "Em andamento", urgency: b.grav === "Crítico",
+      amountValue: 380, amount: money(380),
+      extra: { box: b.box, gravidade: b.grav, parametrosAtuais: vit(b.v[0], b.v[1], b.v[2], -20, vet(i).name), historicoParametros: [vit(b.v[0], b.v[1], b.v[2], -20, vet(i).name)], prescricao: presc.slice(i % 2, 4 - (i % 2)), administrados: ["0"] },
+    }),
+  )
+  const add = (slug: ModuleSlug, list: Item[]) => [...list, ...(data[slug] || []).filter((it) => !(itemIsToday(it, today) && list.some((n) => n.animalId === it.animalId && n.name === it.name)))]
+  return {
+    ...data,
+    consultas: add("consultas", novasConsultas),
+    cirurgias: add("cirurgias", novasCir),
+    procedimentos: add("procedimentos", novosProc),
+    exames: add("exames", novosExames),
+    vacinas: add("vacinas", novasVac),
+    prescricoes: add("prescricoes", novasRec),
+    teleatendimentos: add("teleatendimentos", novasTele),
+    financeiro: add("financeiro", fin),
+    internacoes: [...novasIntern, ...internAtivas],
+  }
+}
+const itemIsToday = (it: Item, today: string) => (it.date || "").slice(0, 10) === today
 
 /** E-01: dados de exemplo nunca mostram como já feito algo que ainda não aconteceu (venda às 22:56 quando são 06:30, tele "ao vivo" de dias atrás). */
 function noFutureFacts(data: UnitData): UnitData {
@@ -1618,6 +1776,8 @@ type StoreValue = {
   user: StaffUser | null
   staff: StaffUser[]
   saveStaff: (user: StaffUser) => void
+  /** Propaga o novo nome do profissional para agenda, consultas, prontuários etc. e para o usuário ligado a ele. */
+  renameProfessional: (id: string, oldName: string, newName: string) => void
   clinic: Clinic | ""
   chooseClinic: (clinic: Clinic) => void
   theme: "light" | "dark"
@@ -2131,6 +2291,29 @@ export function VetFlowProvider({ children }: { children: ReactNode }) {
       user,
       staff,
       saveStaff: (u) => setStaff((cur) => (cur.some((x) => x.id === u.id) ? cur.map((x) => (x.id === u.id ? u : x)) : [...cur, u])),
+      renameProfessional: (id, oldName, newName) => {
+        if (!newName || oldName === newName) return
+        const norm = (t: string) => t.toLowerCase().replace(/^(dra?\.)\s*/, "").trim()
+        setAllData((current) => {
+          const next = { ...current }
+          for (const unitId of Object.keys(next)) {
+            const unit = { ...next[unitId] } as Record<string, Item[]>
+            for (const mod of Object.keys(unit)) {
+              const list = unit[mod]
+              if (!Array.isArray(list)) continue
+              let touched = false
+              const mapped = list.map((it) => {
+                if (it.professionalId === id || (it.professional && norm(it.professional) === norm(oldName))) { touched = true; return { ...it, professional: newName } }
+                return it
+              })
+              if (touched) unit[mod] = mapped
+            }
+            next[unitId] = unit as unknown as typeof next[string]
+          }
+          return next
+        })
+        setStaff((cur) => cur.map((x) => (norm(x.displayName) === norm(oldName) || norm(x.name) === norm(oldName) ? { ...x, displayName: newName, name: newName.replace(/^(Dra?\.)\s*/, "") } : x)))
+      },
       clinic,
       chooseClinic: (c) => {
         setSession((cur) => (cur ? { ...cur, clinic: c } : cur))

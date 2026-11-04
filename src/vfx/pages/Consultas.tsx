@@ -1,243 +1,174 @@
-import { useMemo, useState, type DragEvent } from "react"
+import { useMemo, useState } from "react"
 import { useNavigate } from "react-router"
-import { ArrowRight, ChevronLeft, ChevronRight, History, Megaphone, Plus } from "lucide-react"
+import { Check, ChevronLeft, ChevronRight, Plus } from "lucide-react"
 import { useVetFlow, type Item } from "../../store"
 import { usePageForms } from "../hooks"
-import { addDays, colorFor, fmtLong, initials, itemDate, matches, Page, Pager, SearchBox, Seg, StatusPill, todayISO, usePaged } from "../ui"
+import RowActions from "../RowActions"
+import { addDays, fmtDate, fmtLong, itemDate, matches, Page, Pager, SearchBox, StatusPill, todayISO, usePaged } from "../ui"
 
-const lanes = [
-  { key: "Chegou", label: "Chegou", hint: "Na recepção, aguardando triagem", statuses: ["Chegou", "Agendado", "Confirmado"], color: "#c2410c", bg: "#ffe7d2" },
-  { key: "Triagem", label: "Triagem", hint: "Peso, temperatura e queixa", statuses: ["Triagem"], color: "#9a6212", bg: "#fff1c9" },
-  { key: "Em atendimento", label: "No consultório", hint: "Em atendimento com o veterinário", statuses: ["Em atendimento", "Em andamento"], color: "#0f766e", bg: "#d5f3ec" },
-  { key: "Concluído", label: "Finalizado", hint: "Atendimento encerrado hoje", statuses: ["Concluído"], color: "#2457c5", bg: "#dce7ff" },
+/* Consultas: o dia em ordem de horário. Cada linha mostra a etapa e um único botão para a próxima. */
+const ETAPAS = [
+  { key: "Chegou", label: "Chegou", statuses: ["Chegou", "Agendado", "Confirmado"], next: "Triagem" },
+  { key: "Triagem", label: "Triagem", statuses: ["Triagem"], next: "Chamar" },
+  { key: "Em atendimento", label: "Consultório", statuses: ["Em atendimento", "Em andamento"], next: "Finalizar" },
+  { key: "Concluído", label: "Finalizado", statuses: ["Concluído"], next: "" },
 ]
-const flow = ["Chegou", "Triagem", "Em atendimento", "Concluído"]
-
-function laneOf(item: Item) {
-  return lanes.find((lane) => lane.statuses.includes(item.status))
-}
+const etapaIdx = (item: Item) => ETAPAS.findIndex((e) => e.statuses.includes(item.status))
+const COLS_DIA = "76px minmax(0,1.3fr) minmax(0,1fr) minmax(0,1fr) minmax(300px,1.6fr) 140px 128px"
+const COLS_HIST = "110px 70px minmax(0,1.3fr) minmax(0,1.1fr) minmax(0,1fr) 140px 128px"
 
 export default function Consultas() {
   const { data, updateItem } = useVetFlow()
   const navigate = useNavigate()
   const forms = usePageForms("consultas")
-  const [view, setView] = useState<"fila" | "historico">("fila")
+  const [aba, setAba] = useState<"dia" | "historico">("dia")
   const [query, setQuery] = useState("")
-  const [statusFilter, setStatusFilter] = useState("Todos")
-  const [calledId, setCalledId] = useState("")
-  const [dragOver, setDragOver] = useState("")
   const [day, setDay] = useState(() => todayISO())
 
-  const dayItems = useMemo(
+  const doDia = useMemo(
     () => data.consultas.filter((item) => itemDate(item) === day && matches(item, query)).sort((a, b) => (a.time || "").localeCompare(b.time || "")),
     [data.consultas, day, query],
   )
-  const senha = (item: Item) => {
-    const index = dayItems.findIndex((candidate) => candidate.id === item.id)
-    const prefix = item.urgency || item.extra?.prioridade === "Urgente" ? "U" : item.extra?.prioridade === "Preferencial" ? "P" : "A"
-    return `${prefix}·${String(index + 1).padStart(3, "0")}`
-  }
-  const waiting = dayItems.filter((item) => ["Chegou", "Agendado", "Confirmado", "Triagem"].includes(item.status))
-  const absent = dayItems.filter((item) => ["Faltou", "Cancelado"].includes(item.status))
-  const called = dayItems.find((item) => item.id === calledId) || dayItems.find((item) => laneOf(item)?.key === "Em atendimento")
-
-  const move = (item: Item, status: string) => {
-    updateItem("consultas", item.id, { status })
-    forms.toast(`${item.animal || item.name} → ${lanes.find((lane) => lane.key === status)?.label || status}`)
-  }
-  const advance = (item: Item) => {
-    const current = laneOf(item)?.key || "Chegou"
-    const next = flow[Math.min(flow.length - 1, flow.indexOf(current) + 1)]
-    if (next === "Em atendimento") setCalledId(item.id)
-    move(item, next)
-  }
-  const callNext = () => {
-    const next =
-      waiting.find((item) => item.urgency || item.extra?.prioridade === "Urgente") ||
-      waiting.find((item) => item.extra?.prioridade === "Preferencial") ||
-      waiting[0]
-    if (!next) return forms.toast("Ninguém aguardando na fila deste dia.")
-    setCalledId(next.id)
-    move(next, "Em atendimento")
-  }
-  const onDrop = (event: DragEvent, status: string) => {
-    event.preventDefault()
-    setDragOver("")
-    const id = event.dataTransfer.getData("text/plain")
-    const item = data.consultas.find((candidate) => candidate.id === id)
-    if (item && laneOf(item)?.key !== status) {
-      if (status === "Em atendimento") setCalledId(item.id)
-      move(item, status)
-    }
-  }
-
-  const history = useMemo(
-    () => data.consultas.filter((item) => matches(item, query) && (statusFilter === "Todos" || item.status === statusFilter)),
-    [data.consultas, query, statusFilter],
+  const ativos = doDia.filter((item) => !/falt|cancel/i.test(item.status))
+  const ausentes = doDia.filter((item) => /falt|cancel/i.test(item.status))
+  const historico = useMemo(
+    () => data.consultas.filter((item) => matches(item, query)).sort((a, b) => `${itemDate(b)}${b.time}`.localeCompare(`${itemDate(a)}${a.time}`)),
+    [data.consultas, query],
   )
-  const paged = usePaged(history, 12, [query, statusFilter, view])
+  const paged = usePaged(historico, 15, [query, aba])
+  const contar = (i: number) => ativos.filter((item) => etapaIdx(item) === i).length
 
-  const Ticket = ({ item, lane }: { item: Item; lane?: (typeof lanes)[number] }) => (
-    <div style={{ position: "relative" }}>
-      <button
-        className="vx-ticket"
-        draggable
-        onDragStart={(event) => event.dataTransfer.setData("text/plain", item.id)}
-        onClick={() => navigate(`/consultas/${item.id}`)}
-        aria-label={`Senha ${senha(item)}, ${item.animal}, ${item.name}`}
-      >
-        <span className="stub" style={{ background: lane?.bg || "#eef0f4" }}>
-          <small>SENHA</small>
-          <b>{senha(item)}</b>
-        </span>
-        <span className="body">
-          <span className="vx-row" style={{ justifyContent: "space-between", gap: 6 }}>
-            <strong>{item.animal || item.name}</strong>
-            <span style={{ fontSize: 12, fontWeight: 700, color: "var(--vx-muted)" }}>{item.time}</span>
-          </span>
-          <small>
-            {item.name} · {item.owner}
-          </small>
-          <span className="vx-row" style={{ gap: 6, marginTop: 8 }}>
-            <span className="vx-av" style={{ width: 22, height: 22, fontSize: 9, background: colorFor(item.professional || "") }}>
-              {initials(item.professional)}
-            </span>
-            <span style={{ fontSize: 12, fontWeight: 600, color: "var(--vx-ink2)" }}>{item.professional}</span>
-          </span>
-        </span>
-      </button>
-      {lane && lane.key !== "Concluído" && (
-        <button className="adv vx-ticket-adv" aria-label={`Avançar ${item.animal} para a próxima etapa`} onClick={() => advance(item)} style={{ position: "absolute", right: 8, bottom: 8, width: 30, height: 30, borderRadius: "50%", border: 0, background: "var(--vx-soft)", color: "var(--vx-ink)", display: "grid", placeItems: "center", cursor: "pointer" }}>
-          <ArrowRight size={15} />
-        </button>
-      )}
-    </div>
-  )
+  const avancar = (item: Item) => {
+    const i = Math.max(0, etapaIdx(item))
+    const prox = ETAPAS[Math.min(3, i + 1)]
+    updateItem("consultas", item.id, { status: prox.key })
+    forms.toast(`${item.animal || item.name}: ${prox.label}`)
+  }
+  const botao = (item: Item) => {
+    const i = etapaIdx(item)
+    if (i === 3) return null
+    const label = i <= 0 ? "Iniciar triagem" : i === 1 ? "Chamar ao consultório" : "Finalizar"
+    return <button className="vx-btn vx-btn-p vx-btn-sm" onClick={() => avancar(item)}>{label}</button>
+  }
 
   return (
     <Page
-      bg="#fbf3e6"
-      blobs={[["#ffd39a", -120, 260, 520, 420], ["#ffb27a", "78%", 360, 480, 420], ["#9fe3c6", "45%", -120, 300, 300]]}
+      bg="#f4f6f9"
       crumb="Consultas"
       title="Consultas"
-      sub="Fila do dia por etapa: Chegou → Triagem → No consultório → Finalizado. Arraste o cartão ou use a seta para avançar."
       actions={
         <>
-          <SearchBox value={query} onChange={setQuery} placeholder="Buscar pet, tutor ou serviço" />
-          <Seg options={[["fila", "Fila do dia"], ["historico", "Histórico"]]} value={view} onChange={setView} />
+          <SearchBox value={query} onChange={setQuery} placeholder="Buscar" />
           <button className="vx-btn vx-btn-p" onClick={() => forms.open("consultas", undefined, { date: day })}>
             <Plus /> Nova consulta
           </button>
         </>
       }
     >
-      {view === "fila" ? (
+      <div className="pc-tabs" role="tablist">
+        <button role="tab" aria-selected={aba === "dia"} className={aba === "dia" ? "on" : ""} onClick={() => setAba("dia")}>
+          Consultas do dia <b>{ativos.length}</b>
+        </button>
+        <button role="tab" aria-selected={aba === "historico"} className={aba === "historico" ? "on" : ""} onClick={() => setAba("historico")}>
+          Histórico <b>{historico.length}</b>
+        </button>
+      </div>
+
+      {aba === "dia" ? (
         <>
-          <div className="vx-dark vx-call">
-            <div className="vx-row" style={{ gap: 10 }}>
-              <span className="vx-dot" style={{ width: 10, height: 10, background: "#5ee0b0", boxShadow: "0 0 0 6px rgba(94,224,176,.2)" }} />
-              <span className="vx-lbl" style={{ color: "rgba(255,255,255,.75)" }}>Chamando agora</span>
-            </div>
-            <div className="senha">{called ? senha(called) : "—"}</div>
-            <div style={{ flex: 1, minWidth: 200 }}>
-              <div style={{ fontSize: 19, fontWeight: 750 }}>{called ? `${called.animal} → ${called.extra?.sala || "Consultório"}` : "Ninguém chamado"}</div>
-              <div style={{ fontSize: 13, color: "rgba(255,255,255,.7)" }}>{called ? `${called.professional} · ${called.name} · tutor ${called.owner}` : "Use “Chamar próxima” para puxar a fila"}</div>
-            </div>
-            <div className="vx-row" style={{ gap: 22, fontSize: 13, color: "rgba(255,255,255,.75)" }}>
-              <div>
-                <div className="vx-num" style={{ fontSize: 24, color: "#fff" }}>{waiting.length}</div>na fila
-              </div>
-              <div>
-                <div className="vx-num" style={{ fontSize: 24, color: "#fff" }}>{dayItems.length}</div>no dia
-              </div>
-            </div>
-            <div className="vx-row" style={{ gap: 6 }}>
-              <button className="vx-icon-btn" aria-label="Dia anterior" onClick={() => setDay(addDays(day, -1))} style={{ background: "rgba(255,255,255,.12)", color: "#fff", borderColor: "rgba(255,255,255,.2)" }}>
-                <ChevronLeft />
-              </button>
-              <span style={{ fontSize: 13, fontWeight: 700, minWidth: 110, textAlign: "center" }}>{fmtLong(day)}</span>
-              <button className="vx-icon-btn" aria-label="Próximo dia" onClick={() => setDay(addDays(day, 1))} style={{ background: "rgba(255,255,255,.12)", color: "#fff", borderColor: "rgba(255,255,255,.2)" }}>
-                <ChevronRight />
-              </button>
-            </div>
-            <button className="vx-btn" onClick={callNext} title="Leva direto ao consultório o próximo da fila (urgente, depois preferencial, depois por ordem de chegada), sem passar pela triagem." style={{ background: "rgba(255,255,255,.14)", color: "#fff", border: "1px solid rgba(255,255,255,.25)" }}>
-              <Megaphone /> Chamar próxima
-            </button>
+          <div className="vx-row cx-daybar">
+            <button className="vx-icon-btn" aria-label="Dia anterior" onClick={() => setDay(addDays(day, -1))}><ChevronLeft /></button>
+            <strong>{fmtLong(day)}</strong>
+            <button className="vx-icon-btn" aria-label="Próximo dia" onClick={() => setDay(addDays(day, 1))}><ChevronRight /></button>
+            {day !== todayISO() && <button className="vx-btn vx-btn-g vx-btn-sm" onClick={() => setDay(todayISO())}>Hoje</button>}
           </div>
-          <div className="vx-lanes">
-            {lanes.map((lane) => {
-              const items = dayItems.filter((item) => laneOf(item)?.key === lane.key)
+
+          <div className="cs-count">
+            {ETAPAS.map((etapa, i) => (
+              <div key={etapa.key}><strong>{contar(i)}</strong><span>{etapa.label}</span></div>
+            ))}
+          </div>
+
+          <div className="vx-table">
+            <div className="vx-tr vx-th" style={{ gridTemplateColumns: COLS_DIA }}>
+              <span>Hora</span><span>Paciente</span><span>Tipo</span><span>Veterinário</span><span>Etapa</span><span /><span className="r">Ações</span>
+            </div>
+            {ativos.map((item) => {
+              const i = etapaIdx(item)
               return (
-                <section
-                  key={lane.key}
-                  className={`vx-glass vx-lane ${dragOver === lane.key ? "drop" : ""}`}
-                  onDragOver={(event) => {
-                    event.preventDefault()
-                    setDragOver(lane.key)
-                  }}
-                  onDragLeave={() => setDragOver("")}
-                  onDrop={(event) => onDrop(event, lane.key)}
-                  aria-label={lane.label}
-                >
-                  <div className="vx-row" style={{ justifyContent: "space-between", padding: "2px 4px" }}>
-                    <div className="vx-row" style={{ gap: 8 }}>
-                      <span className="vx-dot" style={{ background: lane.color, width: 10, height: 10 }} />
-                      <strong style={{ fontSize: 15 }}>{lane.label}</strong>
-                      <small style={{ display: "block", fontSize: 12, color: "var(--vx-muted)", fontWeight: 500 }}>{lane.hint}</small>
-                    </div>
-                    <span className="vx-chip" style={{ minHeight: 24 }}>{items.length}</span>
-                  </div>
-                  {items.map((item) => (
-                    <Ticket key={item.id} item={item} lane={lane} />
-                  ))}
-                  {!items.length && <div className="vx-hint" style={{ textAlign: "center", padding: 18 }}>Solte uma senha aqui</div>}
-                </section>
+                <div key={item.id} className="vx-tr" style={{ gridTemplateColumns: COLS_DIA }}>
+                  <span className="vx-mono" style={{ fontSize: 16 }}>{item.time || "—"}</span>
+                  <span><strong>{item.animal || "—"}</strong><small className="vx-muted" style={{ display: "block" }}>{item.owner || ""}</small></span>
+                  <span>{item.name}</span>
+                  <span>{item.professional || "—"}</span>
+                  <ol className="cs-steps">
+                    {ETAPAS.map((etapa, n) => (
+                      <li key={etapa.key} className={i === 3 && n === 3 ? "done on" : n < i ? "done" : n === i ? "on" : ""}>
+                        <i>{n < i || (i === 3 && n === 3) ? <Check size={12} /> : n + 1}</i>{etapa.label}
+                      </li>
+                    ))}
+                  </ol>
+                  <span>{botao(item)}</span>
+                  <span className="r">
+                    <RowActions
+                      name={`consulta de ${item.animal || item.name}`}
+                      onView={() => navigate(`/consultas/${item.id}`)}
+                      onEdit={() => forms.open("consultas", item)}
+                      onDelete={() => navigate(`/consultas/${item.id}?excluir=1`)}
+                    />
+                  </span>
+                </div>
               )
             })}
+            {!ativos.length && <div className="vx-empty">Nenhuma consulta neste dia.</div>}
           </div>
-          {absent.length > 0 && (
-            <section className="vx-glass" style={{ padding: 16, marginTop: 16 }}>
-              <div className="vx-lbl" style={{ marginBottom: 10 }}>Ausências e cancelamentos do dia · {absent.length}</div>
-              <div className="vx-row" style={{ gap: 8, flexWrap: "wrap" }}>
-                {absent.map((item) => (
-                  <button key={item.id} className="vx-chip" onClick={() => navigate(`/consultas/${item.id}`)}>
-                    {senha(item)} · {item.animal} · {item.status}
-                  </button>
+
+          {ausentes.length > 0 && (
+            <>
+              <h2 className="cx-h2">Faltas e cancelamentos</h2>
+              <div className="vx-table">
+                {ausentes.map((item) => (
+                  <div key={item.id} className="vx-tr" style={{ gridTemplateColumns: "76px minmax(0,1.3fr) minmax(0,1fr) 140px 128px" }}>
+                    <span className="vx-mono">{item.time || "—"}</span>
+                    <span><strong>{item.animal || "—"}</strong><small className="vx-muted" style={{ display: "block" }}>{item.owner || ""}</small></span>
+                    <span>{item.name}</span>
+                    <span><StatusPill status={item.status} /></span>
+                    <span className="r">
+                      <RowActions name={`consulta de ${item.animal}`} onView={() => navigate(`/consultas/${item.id}`)} onEdit={() => forms.open("consultas", item)} onDelete={() => navigate(`/consultas/${item.id}?excluir=1`)} />
+                    </span>
+                  </div>
                 ))}
               </div>
-            </section>
+            </>
           )}
         </>
       ) : (
-        <section className="vx-glass" style={{ padding: 18 }}>
-          <div className="vx-row" style={{ justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
-            <div className="vx-row" style={{ gap: 8 }}>
-              <History size={18} />
-              <strong>{history.length} consultas</strong>
+        <>
+          <div className="vx-table">
+            <div className="vx-tr vx-th" style={{ gridTemplateColumns: COLS_HIST }}>
+              <span>Data</span><span>Hora</span><span>Paciente</span><span>Tipo</span><span>Veterinário</span><span>Situação</span><span className="r">Ações</span>
             </div>
-            <Seg options={["Todos", "Concluído", "Em atendimento", "Chegou", "Faltou", "Cancelado"]} value={statusFilter} onChange={setStatusFilter} />
-          </div>
-          <div className="vx-ticket-grid">
             {paged.visible.map((item) => (
-              <button key={item.id} className="vx-ticket" onClick={() => navigate(`/consultas/${item.id}`)}>
-                <span className="stub" style={{ background: laneOf(item)?.bg || "#eef0f4" }}>
-                  <small>{itemDate(item).slice(8, 10)}/{itemDate(item).slice(5, 7)}</small>
-                  <b style={{ fontSize: 14 }}>{item.time}</b>
+              <div key={item.id} className="vx-tr" style={{ gridTemplateColumns: COLS_HIST, cursor: "pointer" }} onClick={() => navigate(`/consultas/${item.id}`)}>
+                <span className="vx-mono">{fmtDate(itemDate(item))}</span>
+                <span className="vx-mono">{item.time || "—"}</span>
+                <span><strong>{item.animal || "—"}</strong><small className="vx-muted" style={{ display: "block" }}>{item.owner || ""}</small></span>
+                <span>{item.name}</span>
+                <span>{item.professional || "—"}</span>
+                <span><StatusPill status={item.status} /></span>
+                <span className="r">
+                  <RowActions name={`consulta de ${item.animal}`} onView={() => navigate(`/consultas/${item.id}`)} onEdit={() => forms.open("consultas", item)} onDelete={() => navigate(`/consultas/${item.id}?excluir=1`)} />
                 </span>
-                <span className="body">
-                  <strong>{item.animal}</strong>
-                  <small>{item.name} · {item.professional}</small>
-                  <span style={{ display: "block", marginTop: 6 }}>
-                    <StatusPill status={item.status} />
-                  </span>
-                </span>
-              </button>
+              </div>
             ))}
+            {!historico.length && <div className="vx-empty">Nenhuma consulta.</div>}
           </div>
-          <div className="vx-row" style={{ justifyContent: "flex-end", marginTop: 14 }}>
-            <Pager page={paged.page} pages={paged.pages} onPage={paged.setPage} label={`Página ${paged.page} de ${paged.pages}`} />
-          </div>
-        </section>
+          {paged.pages > 1 && (
+            <div className="vx-row" style={{ justifyContent: "center", marginTop: 12 }}>
+              <Pager page={paged.page} pages={paged.pages} onPage={paged.setPage} />
+            </div>
+          )}
+        </>
       )}
       {forms.node}
     </Page>

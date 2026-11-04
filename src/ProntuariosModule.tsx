@@ -1,3 +1,4 @@
+import RowActions, { RowButton } from "./vfx/RowActions"
 import {
   useEffect,
   useMemo,
@@ -749,20 +750,9 @@ export default function ProntuariosModule() {
                             onChange={(value) => changeStatus(item.id, value)}
                           />
                         </span>
-                        <span className="pr-actions" onClick={(event) => event.stopPropagation()}>
-                          <button type="button" title="Ver prontuário completo" onClick={() => openDetail(item.id)}>
-                            <Eye size={15} />
-                          </button>
-                          <button type="button" title="Editar prontuário" onClick={() => openEdit(item.id)}>
-                            <Pencil size={15} />
-                          </button>
-                          <button type="button" title="Imprimir" onClick={() => openDetail(item.id, true)}>
-                            <Printer size={15} />
-                          </button>
-                          <button type="button" className="danger" title="Cancelar prontuário" onClick={() => setDeleteId(item.id)}>
-                            <Trash2 size={15} />
-                          </button>
-                        </span>
+                        <RowActions name={`prontuário de ${name}`} onView={() => openDetail(item.id)} onEdit={() => openEdit(item.id)} onDelete={() => setDeleteId(item.id)} deleteLabel="Cancelar">
+                          <RowButton title="Imprimir" onClick={() => openDetail(item.id, true)}><Printer /></RowButton>
+                        </RowActions>
                       </div>
                     )
                   })
@@ -1141,15 +1131,11 @@ function RecordDrawer({
     <div className="animals-page" style={{ display: "contents" }}>
       <div className="animal-drawer-backdrop" onMouseDown={close}>
         <aside className="animal-drawer pv-drawer" onMouseDown={(event) => event.stopPropagation()}>
-          <header>
-            <button type="button" onClick={close} aria-label="Voltar">
-              <ArrowLeft />
-            </button>
+          <header className="pv-cad-head">
             <span>
-              <small>{isEdit ? "Editar" : "Adicionar"}</small>
-              <strong>Prontuário</strong>
+              <strong>{isEdit ? "Editar prontuário" : "Novo prontuário"}</strong>
             </span>
-            <button type="button" onClick={close} aria-label="Fechar">
+            <button type="button" className="vx-xb" onClick={close} aria-label="Fechar">
               <X />
             </button>
           </header>
@@ -1511,8 +1497,10 @@ function RecordDrawer({
                 </>
               )}
             </div>
-            <footer>
-              <button type="submit">{isEdit ? "Salvar alterações" : "Salvar"}</button>
+            <footer className="pv-cad-foot">
+              <span className="sp">Campos com * são obrigatórios</span>
+              <button type="button" className="vx-btn vx-btn-g" onClick={close}>Cancelar</button>
+              <button type="submit" className="vx-btn vx-btn-p">{isEdit ? "Salvar alterações" : "Salvar prontuário"}</button>
             </footer>
           </form>
         </aside>

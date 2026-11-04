@@ -1,8 +1,7 @@
-import { useState, type ReactNode } from "react"
-import { AlertTriangle, Check, MapPin, UserPlus, X } from "lucide-react"
+import { useState } from "react"
 import type { Item } from "../store"
 import { brl, parseMoney } from "./ui"
-import Layer from "./OpLayer"
+import { CadastroDrawer, CadSec, Campo, cadInput } from "./CadastroDrawer"
 import { LIMITE_FIADO } from "./vendasShared"
 
 /* ---------------- máscaras e validações ---------------- */
@@ -14,7 +13,7 @@ export const maskPhone = (v: string) => {
   if (d.length <= 10) return d.replace(/^(\d{2})(\d)/, "($1) $2").replace(/(\d{4})(\d)/, "$1-$2")
   return d.replace(/^(\d{2})(\d)/, "($1) $2").replace(/(\d{5})(\d)/, "$1-$2")
 }
-const maskCep = (v: string) => dig(v).slice(0, 8).replace(/^(\d{5})(\d)/, "$1-$2")
+export const maskCep = (v: string) => dig(v).slice(0, 8).replace(/^(\d{5})(\d)/, "$1-$2")
 export function validCpf(v: string) {
   const c = dig(v)
   if (c.length !== 11 || /^(\d)\1+$/.test(c)) return false
@@ -108,10 +107,10 @@ export function toItem(d: ClienteData, unitCity: string): Partial<Item> {
   }
 }
 
-/** Gaveta de cadastro completo do cliente (nova ou edição). */
+/** Cadastro completo do cliente/tutor (novo ou edição): mesmo padrão de todos os cadastros. */
 export default function ClienteForm({ initial, existing, tutores, unitCity, onClose, onSave }: { initial: ClienteData; existing?: Item | null; tutores: Item[]; unitCity: string; onClose: () => void; onSave: (d: ClienteData) => void }) {
   const [d, setD] = useState<ClienteData>(initial)
-  const [errors, setErrors] = useState<string[]>([])
+  const [errors, setErrors] = useState<Record<string, string>>({})
   const [cepMsg, setCepMsg] = useState("")
   const set = (patch: Partial<ClienteData>) => setD((x) => ({ ...x, ...patch }))
   const pj = d.tipo === "Jurídica"
@@ -136,84 +135,138 @@ export default function ClienteForm({ initial, existing, tutores, unitCity, onCl
   }
 
   const save = () => {
-    const errs: string[] = []
-    if (d.nome.trim().length < 3) errs.push(pj ? "Informe a razão social." : "Informe o nome completo.")
-    if (!d.telefone && !d.whatsapp) errs.push("Informe pelo menos um telefone.")
-    if (d.doc && !docOk) errs.push(pj ? "CNPJ inválido." : "CPF inválido.")
-    if (dupe) errs.push(`Já existe um cliente com este ${pj ? "CNPJ" : "CPF"}: ${dupe.name}.`)
-    if (d.nascimento && d.nascimento > new Date().toISOString().slice(0, 10)) errs.push("A data de nascimento não pode ser no futuro.")
-    if (d.nascimento && d.nascimento < "1900-01-01") errs.push("Data de nascimento inválida.")
-    if (d.telefone && d.telefone.replace(/\D/g, "").length < 10) errs.push("Telefone incompleto: informe DDD e número.")
-    if (d.cep && d.cep.replace(/\D/g, "").length !== 8) errs.push("CEP incompleto.")
-    if (d.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(d.email)) errs.push("E-mail inválido.")
+    const errs: Record<string, string> = {}
+    if (d.nome.trim().length < 3) errs.nome = pj ? "Informe a razão social (mínimo 3 letras)." : "Informe o nome completo (mínimo 3 letras)."
+    if (d.doc && !docOk) errs.doc = pj ? "CNPJ inválido. Confira os 14 números." : "CPF inválido. Confira os 11 números."
+    if (dupe) errs.doc = `Já existe um cliente com este ${pj ? "CNPJ" : "CPF"}: ${dupe.name}.`
+    if (!d.telefone && !d.whatsapp) errs.telefone = "Informe pelo menos um telefone com DDD."
+    else if (d.telefone && dig(d.telefone).length < 10) errs.telefone = "Telefone incompleto: informe DDD e número."
+    if (d.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(d.email)) errs.email = "E-mail inválido. Exemplo: nome@email.com."
+    if (d.nascimento && d.nascimento > new Date().toISOString().slice(0, 10)) errs.nascimento = "A data de nascimento não pode ser no futuro."
+    if (d.cep && dig(d.cep).length !== 8) errs.cep = "CEP incompleto: são 8 números."
     setErrors(errs)
-    if (!errs.length) onSave(d)
+    if (!Object.keys(errs).length) onSave(d)
   }
-
-  const F = ({ label, children, span }: { label: string; children: ReactNode; span?: number }) => (
-    <label className="op-f" style={span ? { gridColumn: `span ${span}` } : undefined}><span>{label}</span>{children}</label>
-  )
+  const firstError = Object.values(errors)[0]
 
   return (
-    <Layer className="op-drawer-layer" onMouseDown={onClose}>
-      <aside className="op-drawer op-drawer-wide" onMouseDown={(e) => e.stopPropagation()}>
-        <div className="op-ch"><h2 style={{ fontSize: 14, textTransform: "none", letterSpacing: 0 }}><UserPlus size={16} /> {existing ? `Editar cliente · ${existing.name}` : "Novo cliente"}</h2><button className="op-x" onClick={onClose} aria-label="Fechar"><X /></button></div>
-        <div className="body">
-          <div className="op-tabs" style={{ alignSelf: "flex-start" }}>{(["Física", "Jurídica"] as const).map((t) => <button key={t} className={d.tipo === t ? "on" : ""} onClick={() => set({ tipo: t, doc: "" })}>Pessoa {t.toLowerCase()}</button>)}</div>
-
-          <div className="op-sec">Identificação</div>
-          <div className="op-fields op-grid4">
-            {F({ label: pj ? "Razão social *" : "Nome completo *", span: 2, children: <input className="op-in" autoFocus value={d.nome} onChange={(e) => set({ nome: e.target.value })} /> })}
-            {pj
-              ? F({ label: "Nome fantasia", span: 2, children: <input className="op-in" value={d.fantasia} onChange={(e) => set({ fantasia: e.target.value })} /> })
-              : F({ label: "Apelido / como chamar", span: 2, children: <input className="op-in" value={d.fantasia} onChange={(e) => set({ fantasia: e.target.value })} /> })}
-            {F({ label: pj ? "CNPJ" : "CPF", children: <input className={`op-in ${d.doc && !docOk ? "bad" : ""}`} inputMode="numeric" placeholder={pj ? "00.000.000/0000-00" : "000.000.000-00"} value={d.doc} onChange={(e) => set({ doc: pj ? maskCnpj(e.target.value) : maskCpf(e.target.value) })} /> })}
-            {F({ label: pj ? "Inscrição estadual" : "RG", children: <input className="op-in" value={d.rgIe} onChange={(e) => set({ rgIe: e.target.value })} /> })}
-            {!pj && F({ label: "Data de nascimento", children: <input className="op-in" type="date" max={new Date().toISOString().slice(0, 10)} value={d.nascimento} onChange={(e) => set({ nascimento: e.target.value })} /> })}
-            {!pj && F({ label: "Sexo", children: <select className="op-in" value={d.sexo} onChange={(e) => set({ sexo: e.target.value })}><option value="">—</option><option>Feminino</option><option>Masculino</option><option>Outro</option></select> })}
-          </div>
-          {d.doc && !docOk && <div className="op-note bad"><AlertTriangle /> {pj ? "CNPJ" : "CPF"} com dígitos inválidos.</div>}
-          {dupe && <div className="op-note warn"><AlertTriangle /> Já existe um cliente com este documento: <b>{dupe.name}</b>.</div>}
-
-          <div className="op-sec">Contato</div>
-          <div className="op-fields op-grid4">
-            {F({ label: "Telefone *", children: <input className="op-in" inputMode="tel" placeholder="(00) 00000-0000" value={d.telefone} onChange={(e) => set({ telefone: maskPhone(e.target.value) })} /> })}
-            {F({ label: "WhatsApp", children: <input className="op-in" inputMode="tel" placeholder="(00) 00000-0000" value={d.whatsapp} onChange={(e) => set({ whatsapp: maskPhone(e.target.value) })} /> })}
-            {F({ label: "E-mail", span: 2, children: <input className="op-in" type="email" value={d.email} onChange={(e) => set({ email: e.target.value })} /> })}
-          </div>
-          <label className="op-check"><input type="checkbox" checked={d.contatoWhats} onChange={(e) => set({ contatoWhats: e.target.checked })} /> Aceita receber avisos, comprovantes e lembretes pelo WhatsApp</label>
-
-          <div className="op-sec"><MapPin size={12} /> Endereço</div>
-          <div className="op-fields op-grid4">
-            {F({ label: "CEP", children: <input className="op-in" inputMode="numeric" placeholder="00000-000" value={d.cep} onChange={(e) => { const v = maskCep(e.target.value); set({ cep: v }); if (dig(v).length === 8) lookupCep(v) }} /> })}
-            {F({ label: "Rua", span: 2, children: <input className="op-in" value={d.rua} onChange={(e) => set({ rua: e.target.value })} /> })}
-            {F({ label: "Número", children: <input className="op-in" value={d.numero} onChange={(e) => set({ numero: e.target.value })} /> })}
-            {F({ label: "Complemento", children: <input className="op-in" value={d.complemento} onChange={(e) => set({ complemento: e.target.value })} /> })}
-            {F({ label: "Bairro", children: <input className="op-in" value={d.bairro} onChange={(e) => set({ bairro: e.target.value })} /> })}
-            {F({ label: "Cidade", children: <input className="op-in" placeholder={unitCity} value={d.cidade} onChange={(e) => set({ cidade: e.target.value })} /> })}
-            {F({ label: "UF", children: <input className="op-in" maxLength={2} value={d.uf} onChange={(e) => set({ uf: e.target.value.toUpperCase() })} /> })}
-            {F({ label: "Ponto de referência", span: 4, children: <input className="op-in" value={d.referencia} onChange={(e) => set({ referencia: e.target.value })} /> })}
-          </div>
-          {cepMsg && <p className="muted" style={{ margin: 0, fontSize: 12 }}>{cepMsg}</p>}
-
-          <div className="op-sec">Crédito (vendas anotadas)</div>
-          <div className="op-fields op-grid4">
-            {F({ label: "Limite de crédito (R$)", children: <input className="op-in r" inputMode="decimal" value={d.limite} onChange={(e) => set({ limite: e.target.value })} /> })}
-            {F({ label: "Dia de vencimento", children: <select className="op-in" value={d.vencimentoDia} onChange={(e) => set({ vencimentoDia: e.target.value })}>{["5", "10", "15", "20", "25", "30"].map((x) => <option key={x}>{x}</option>)}</select> })}
-            <label className="op-check" style={{ gridColumn: "span 2", alignSelf: "end", paddingBottom: 10 }}><input type="checkbox" checked={d.bloqueado} onChange={(e) => set({ bloqueado: e.target.checked })} /> Bloquear vendas anotadas (fiado)</label>
-          </div>
-          <p className="muted" style={{ margin: 0, fontSize: 12 }}>Limite atual: {brl(parseMoney(d.limite))}. O caixa recusa vendas anotadas acima desse valor.</p>
-
-          <div className="op-sec">Observações</div>
-          <textarea className="op-in" placeholder="Preferências, restrições, como prefere ser atendido…" value={d.obs} onChange={(e) => set({ obs: e.target.value })} />
-
-          {errors.length > 0 && <div className="op-note bad" style={{ flexDirection: "column", gap: 4 }}>{errors.map((x) => <span key={x}>• {x}</span>)}</div>}
+    <CadastroDrawer
+      title={existing ? `Editar tutor · ${existing.name}` : "Novo tutor"}
+      sub={existing ? "Altere os dados e salve. O histórico do tutor não muda." : "Preencha os dados do tutor. Você poderá cadastrar os animais depois."}
+      onClose={onClose}
+      onSubmit={() => save()}
+      submitLabel={existing ? "Salvar alterações" : "Cadastrar tutor"}
+      error={firstError ? "Revise os campos destacados em vermelho." : undefined}
+    >
+      <CadSec n={1} title="Quem é" desc={pj ? "Empresa" : "Pessoa física"}>
+        <div className="vx-c6" style={{ display: "flex", gap: 8 }}>
+          {(["Física", "Jurídica"] as const).map((t) => (
+            <button key={t} type="button" className={`vx-chip ${d.tipo === t ? "on" : ""}`} aria-pressed={d.tipo === t} onClick={() => set({ tipo: t, doc: "" })} style={{ minHeight: 40 }}>
+              {t === "Física" ? "Pessoa física (CPF)" : "Pessoa jurídica (CNPJ)"}
+            </button>
+          ))}
         </div>
-        <div className="foot">
-          <button className="op-btn" onClick={onClose}>Cancelar</button>
-          <button className="op-btn pri" onClick={save}><Check /> {existing ? "Salvar alterações" : "Cadastrar e usar na venda"}</button>
-        </div>
-      </aside>
-    </Layer>
+        <Campo label={pj ? "Razão social" : "Nome completo"} req span={4} error={errors.nome}>
+          <input className={cadInput(errors.nome)} autoFocus value={d.nome} placeholder={pj ? "Nome da empresa" : "Ex.: Maria Souza Lima"} onChange={(e) => set({ nome: e.target.value })} />
+        </Campo>
+        <Campo label={pj ? "Nome fantasia" : "Como prefere ser chamado"} span={2}>
+          <input className="vx-in" value={d.fantasia} placeholder="Opcional" onChange={(e) => set({ fantasia: e.target.value })} />
+        </Campo>
+        <Campo label={pj ? "CNPJ" : "CPF"} span={3} error={errors.doc} hint={!errors.doc && d.doc ? (docOk ? "Documento válido." : undefined) : "Usado para evitar cadastro repetido."}>
+          <input className={cadInput(errors.doc)} inputMode="numeric" placeholder={pj ? "00.000.000/0000-00" : "000.000.000-00"} value={d.doc} onChange={(e) => set({ doc: pj ? maskCnpj(e.target.value) : maskCpf(e.target.value) })} />
+        </Campo>
+        <Campo label={pj ? "Inscrição estadual" : "RG"} span={3}>
+          <input className="vx-in" value={d.rgIe} onChange={(e) => set({ rgIe: e.target.value })} />
+        </Campo>
+        {!pj && (
+          <>
+            <Campo label="Data de nascimento" span={3} error={errors.nascimento}>
+              <input className={cadInput(errors.nascimento)} type="date" max={new Date().toISOString().slice(0, 10)} value={d.nascimento} onChange={(e) => set({ nascimento: e.target.value })} />
+            </Campo>
+            <Campo label="Sexo" span={3}>
+              <select className="vx-in" value={d.sexo} onChange={(e) => set({ sexo: e.target.value })}>
+                <option value="">Prefere não informar</option>
+                <option>Feminino</option>
+                <option>Masculino</option>
+                <option>Outro</option>
+              </select>
+            </Campo>
+          </>
+        )}
+      </CadSec>
+
+      <CadSec n={2} title="Como falar com a pessoa" desc="Pelo menos um telefone">
+        <Campo label="Telefone" req span={3} error={errors.telefone}>
+          <input className={cadInput(errors.telefone)} inputMode="tel" placeholder="(69) 90000-0000" value={d.telefone} onChange={(e) => set({ telefone: maskPhone(e.target.value) })} />
+        </Campo>
+        <Campo label="WhatsApp" span={3} hint="Se for o mesmo número, pode deixar em branco.">
+          <input className="vx-in" inputMode="tel" placeholder="(69) 90000-0000" value={d.whatsapp} onChange={(e) => set({ whatsapp: maskPhone(e.target.value) })} />
+        </Campo>
+        <Campo label="E-mail" span={4} error={errors.email}>
+          <input className={cadInput(errors.email)} type="email" placeholder="nome@email.com" value={d.email} onChange={(e) => set({ email: e.target.value })} />
+        </Campo>
+        <label className="vx-c6" style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13 }}>
+          <input type="checkbox" checked={d.contatoWhats} onChange={(e) => set({ contatoWhats: e.target.checked })} />
+          Aceita receber avisos, comprovantes e lembretes pelo WhatsApp
+        </label>
+      </CadSec>
+
+      <CadSec n={3} title="Endereço" desc="Digite o CEP para preencher sozinho">
+        <Campo label="CEP" span={2} error={errors.cep} hint={cepMsg || undefined}>
+          <input
+            className={cadInput(errors.cep)}
+            inputMode="numeric"
+            placeholder="00000-000"
+            value={d.cep}
+            onChange={(e) => {
+              const v = maskCep(e.target.value)
+              set({ cep: v })
+              if (dig(v).length === 8) lookupCep(v)
+            }}
+          />
+        </Campo>
+        <Campo label="Rua" span={4}>
+          <input className="vx-in" value={d.rua} onChange={(e) => set({ rua: e.target.value })} />
+        </Campo>
+        <Campo label="Número" span={2}>
+          <input className="vx-in" value={d.numero} onChange={(e) => set({ numero: e.target.value })} />
+        </Campo>
+        <Campo label="Complemento" span={2}>
+          <input className="vx-in" value={d.complemento} onChange={(e) => set({ complemento: e.target.value })} />
+        </Campo>
+        <Campo label="Bairro" span={2}>
+          <input className="vx-in" value={d.bairro} onChange={(e) => set({ bairro: e.target.value })} />
+        </Campo>
+        <Campo label="Cidade" span={3}>
+          <input className="vx-in" placeholder={unitCity} value={d.cidade} onChange={(e) => set({ cidade: e.target.value })} />
+        </Campo>
+        <Campo label="UF" span={1}>
+          <input className="vx-in" maxLength={2} value={d.uf} onChange={(e) => set({ uf: e.target.value.toUpperCase() })} />
+        </Campo>
+        <Campo label="Ponto de referência" span={6}>
+          <input className="vx-in" value={d.referencia} onChange={(e) => set({ referencia: e.target.value })} />
+        </Campo>
+      </CadSec>
+
+      <CadSec n={4} title="Crédito e observações" desc="Opcional">
+        <Campo label="Limite para vendas anotadas (R$)" span={3} hint={`Limite atual: ${brl(parseMoney(d.limite))}. O caixa recusa vendas anotadas acima disso.`}>
+          <input className="vx-in" inputMode="decimal" value={d.limite} onChange={(e) => set({ limite: e.target.value })} />
+        </Campo>
+        <Campo label="Dia de vencimento" span={3}>
+          <select className="vx-in" value={d.vencimentoDia} onChange={(e) => set({ vencimentoDia: e.target.value })}>
+            {["5", "10", "15", "20", "25", "30"].map((x) => (
+              <option key={x}>{x}</option>
+            ))}
+          </select>
+        </Campo>
+        <label className="vx-c6" style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13 }}>
+          <input type="checkbox" checked={d.bloqueado} onChange={(e) => set({ bloqueado: e.target.checked })} />
+          Bloquear vendas anotadas para este cliente
+        </label>
+        <Campo label="Observações" span={6}>
+          <textarea className="vx-in" placeholder="Preferências, restrições, como prefere ser atendido…" value={d.obs} onChange={(e) => set({ obs: e.target.value })} />
+        </Campo>
+      </CadSec>
+    </CadastroDrawer>
   )
 }

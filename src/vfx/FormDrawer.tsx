@@ -8,8 +8,6 @@ import {
 } from "react"
 import {
   AlertTriangle,
-  ChevronLeft,
-  ChevronRight,
   Paperclip,
   Plus,
   Search,
@@ -38,6 +36,7 @@ export type Ctx = {
   updateItem: (module: ModuleSlug, id: string, patch: Partial<Item>) => void
   addUnit: (unit: Omit<Unit, "id" | "shortName" | "profile">) => Unit
   updateUnit: (id: string, patch: Partial<Unit>) => void
+  renameProfessional: (id: string, oldName: string, newName: string) => void
 }
 
 export type Values = Record<string, any>
@@ -143,6 +142,7 @@ export function useCtx(): Ctx {
     profile: store.profile,
     addItem: store.addItem,
     updateItem: store.updateItem,
+    renameProfessional: store.renameProfessional,
     addUnit: store.addUnit,
     updateUnit: store.updateUnit,
   }
@@ -321,6 +321,7 @@ export default function FormDrawer({
     let saved: Item
     if (item) {
       ctx.updateItem(def.slug, item.id, patch)
+      if (def.slug === "profissionais" && patch.name && patch.name !== item.name) ctx.renameProfessional(item.id, item.name, patch.name)
       saved = { ...item, ...patch } as Item
     } else {
       saved = ctx.addItem(def.slug, patch)
@@ -330,8 +331,6 @@ export default function FormDrawer({
     onClose()
   }
 
-  const last = def.sections.length - 1
-  const Icon = def.icon
   return createPortal(
 
     <div className="vx-drawer-layer" onMouseDown={onClose}>
@@ -343,39 +342,15 @@ export default function FormDrawer({
         onMouseDown={(event) => event.stopPropagation()}
       >
         <div className="vx-dh">
-          <div className="vx-dico" style={{ background: def.color }}>
-            <Icon />
-          </div>
-          <div>
+          <div style={{ flex: 1, minWidth: 0 }}>
             <h2 className="vx-dt">
               {item ? def.editTitle || `Editar · ${item.name}` : def.title}
             </h2>
-            <div className="vx-ds">{def.sub}</div>
           </div>
           <button className="vx-xb" aria-label="Fechar" onClick={onClose} type="button">
             <X />
           </button>
         </div>
-        <nav className="vx-steps" aria-label="Etapas do cadastro">
-          {def.sections.map((section, index) => (
-            <button
-              key={section.title}
-              type="button"
-              className={`vx-step ${
-                step === index
-                  ? "on"
-                  : sectionHasError(index)
-                    ? "err"
-                    : sectionComplete(index) && index < step
-                      ? "ok"
-                      : ""
-              }`}
-              onClick={() => goTo(index)}
-            >
-              {index + 1} {section.title}
-            </button>
-          ))}
-        </nav>
         <div className="vx-db" ref={bodyRef} onScroll={onScroll}>
           {def.sections.map((section, index) => (
             <section
@@ -423,19 +398,9 @@ export default function FormDrawer({
           <span className="sp">
             {def.footer ? def.footer(values, ctx) : "Campos com * são obrigatórios"}
           </span>
-          <button
-            className="vx-btn vx-btn-g"
-            type="button"
-            disabled={step === 0}
-            onClick={() => goTo(Math.max(0, step - 1))}
-          >
-            <ChevronLeft /> Voltar
+          <button className="vx-btn vx-btn-g" type="button" onClick={onClose}>
+            Cancelar
           </button>
-          {step < last && (
-            <button className="vx-btn vx-btn-g" type="button" onClick={() => goTo(step + 1)}>
-              Próximo <ChevronRight />
-            </button>
-          )}
           <button className="vx-btn vx-btn-p" type="button" onClick={save}>
             {item ? "Salvar alterações" : def.submit}
           </button>

@@ -4516,3 +4516,11 @@ body { font-size: 14px; }
   .tutors-actions > * { flex: 1 1 140px; }
   .tutors-pagination { min-width: 0 !important; width: 100% !important; flex-wrap: wrap !important; gap: 8px !important; }
 }
+
+/* Cadastros de outros módulos: mesmo visual da gaveta padrão */
+.cad-drawer .cad-legacy { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.cad-drawer .cad-legacy > label { display: flex; flex-direction: column; gap: 6px; min-width: 0; font-size: 12px; font-weight: 700; color: var(--vx-ink2, #1a2233); }
+.cad-drawer .cad-legacy > label input, .cad-drawer .cad-legacy > label select, .cad-drawer .cad-legacy > label textarea { height: 42px; width: 100%; box-sizing: border-box; border-radius: 12px; border: 1px solid rgba(26,34,51,.16); background: var(--vx-field, #fff); padding: 0 12px; font: 500 14px Inter, sans-serif; color: var(--vx-ink, #1a2233); }
+.cad-drawer .cad-legacy > label textarea { height: auto; min-height: 84px; padding: 10px 12px; }
+.cad-drawer .cad-legacy .full-field { grid-column: 1 / -1; }
+@media (max-width: 640px) { .cad-drawer .cad-legacy { grid-template-columns: 1fr; } }

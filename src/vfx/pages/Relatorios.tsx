@@ -4,6 +4,7 @@ import { useNavigate, useParams } from "react-router"
 import { ArrowLeft, ChevronRight, Download, FileText, Printer, Search } from "lucide-react"
 import { useVetFlow, type Item, type ModuleSlug, type UnitData } from "../../store"
 import { brl, fmtDate, itemDate, matches, StatusPill } from "../ui"
+import { printDoc } from "../printDoc"
 
 type ReportDef = {
   slug: string
@@ -70,10 +71,9 @@ export default function Relatorios() {
   const { data, activeUnit } = useVetFlow()
   const navigate = useNavigate()
   const [query, setQuery] = useState("")
-  const [group, setGroup] = useState("Todos")
   const end = latestDate(data)
   const start30 = since(end, "30")
-  const list = REPORTS.filter((report) => (group === "Todos" || report.group === group) && `${report.title} ${report.description}`.toLowerCase().includes(query.toLowerCase()))
+  const list = REPORTS.filter((report) => `${report.title} ${report.description}`.toLowerCase().includes(query.toLowerCase()))
   const receita = data.financeiro.filter((item) => item.category !== "Despesa" && itemDate(item) >= start30).reduce((sum, item) => sum + (item.amountValue || 0), 0)
   const despesa = data.financeiro.filter((item) => item.category === "Despesa" && itemDate(item) >= start30).reduce((sum, item) => sum + (item.amountValue || 0), 0)
   const consultas = data.consultas.filter((item) => itemDate(item) >= start30)
@@ -96,7 +96,6 @@ export default function Relatorios() {
         </div>
         <div className="vx-actions">
           <label className="vx-search"><Search /><input aria-label="Buscar relatório" placeholder="Buscar relatório" value={query} onChange={(event) => setQuery(event.target.value)} /></label>
-          <button className="vx-btn vx-btn-g" onClick={() => window.print()}><Printer /> Imprimir índice</button>
         </div>
       </div>
 
@@ -106,30 +105,32 @@ export default function Relatorios() {
         ))}
       </div>
 
-      <div className="vx-rep-tabs" role="tablist">
-        {["Todos", "Vendas", "Clínico", "Financeiro", "Operacional", "Cadastros"].map((name) => (
-          <button key={name} role="tab" aria-selected={group === name} className={group === name ? "on" : ""} onClick={() => setGroup(name)}>{name}</button>
-        ))}
-      </div>
-
-      <div className="vx-table">
-        <div className="vx-tr vx-th" style={{ gridTemplateColumns: "minmax(0,1.3fr) minmax(0,2fr) 120px 110px 150px" }}>
-          <span>Relatório</span><span>Conteúdo</span><span>Área</span><span>Registros</span><span />
-        </div>
-        {list.map((report) => (
-          <div key={report.slug} className="vx-tr" style={{ gridTemplateColumns: "minmax(0,1.3fr) minmax(0,2fr) 120px 110px 150px" }} role="button" tabIndex={0} onClick={() => navigate(`/relatorios/${report.slug}`)} onKeyDown={(event) => event.key === "Enter" && navigate(`/relatorios/${report.slug}`)}>
-            <strong className="vx-rep-name"><FileText size={16} /> {report.title}</strong>
-            <span className="vx-muted">{report.description}</span>
-            <span><span className="vx-tag">{report.group}</span></span>
-            <span className="vx-mono">{rowsOf(report, data).length.toLocaleString("pt-BR")}</span>
-            <span className="vx-rep-act" onClick={(event) => event.stopPropagation()}>
-              <button onClick={() => navigate(`/relatorios/${report.slug}`)}>Abrir <ChevronRight size={14} /></button>
-              <button aria-label={`Imprimir ${report.title}`} title="Imprimir" onClick={() => navigate(`/relatorios/${report.slug}?imprimir=1`)}><Printer size={15} /></button>
-            </span>
-          </div>
-        ))}
-        {!list.length && <div className="vx-empty">Nenhum relatório encontrado.</div>}
-      </div>
+      {(["Vendas", "Financeiro", "Clínico", "Operacional", "Cadastros"] as const).map((area) => {
+        const items = list.filter((report) => report.group === area)
+        if (!items.length) return null
+        return (
+          <section key={area} className="rp-group">
+            <h2 className="cx-h2">{area}</h2>
+            <div className="rp-cards">
+              {items.map((report) => (
+                <article key={report.slug} className="rp-card" role="button" tabIndex={0} onClick={() => navigate(`/relatorios/${report.slug}`)} onKeyDown={(event) => event.key === "Enter" && navigate(`/relatorios/${report.slug}`)}>
+                  <div className="rp-ico"><FileText size={18} /></div>
+                  <div className="rp-txt">
+                    <strong>{report.title}</strong>
+                    <span>{report.description}</span>
+                    <small>{rowsOf(report, data).length.toLocaleString("pt-BR")} registros</small>
+                  </div>
+                  <div className="rp-act" onClick={(event) => event.stopPropagation()}>
+                    <button className="vx-btn vx-btn-g vx-btn-sm" onClick={() => navigate(`/relatorios/${report.slug}`)}>Abrir <ChevronRight size={14} /></button>
+                    <button className="vx-btn vx-btn-g vx-btn-sm" aria-label={`Imprimir ${report.title}`} title="Imprimir" onClick={() => navigate(`/relatorios/${report.slug}?imprimir=1`)}><Printer size={15} /></button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+        )
+      })}
+      {!list.length && <div className="vx-empty">Nenhum relatório encontrado.</div>}
     </div>
   )
 }
@@ -146,7 +147,6 @@ export function Relatorio() {
   const [pro, setPro] = useState("Todos")
   const [query, setQuery] = useState("")
   const [page, setPage] = useState(1)
-  const [printAll, setPrintAll] = useState(false)
   const all = useMemo(() => (report ? rowsOf(report, data) : []), [report, data])
   const start = since(end, period)
   const filtered = useMemo(
@@ -182,13 +182,50 @@ export function Relatorio() {
     : byStatus
   const perPage = 25
   const pages = Math.max(1, Math.ceil(filtered.length / perPage))
-  const visible = printAll ? filtered : filtered.slice((page - 1) * perPage, page * perPage)
+  const visible = filtered.slice((page - 1) * perPage, page * perPage)
   const doPrint = () => {
-    setPrintAll(true)
-    window.setTimeout(() => {
-      window.print()
-      setPrintAll(false)
-    }, 150)
+    if (!report) return
+    const periodo = start ? `${fmtDate(start)} a ${fmtDate(end)}` : "todo o histórico"
+    const maxG = Math.max(...byGroup.map(([, entry]) => (report.money ? entry.v : entry.n)), 1)
+    printDoc({
+      title: report.title,
+      subtitle: report.description,
+      unit: activeUnit,
+      issuedBy: profile.displayName,
+      meta: [
+        ["Período", periodo],
+        ["Situação", status === "Todos" ? "todas" : status],
+        ...(pros.length ? [["Profissional", pro === "Todos" ? "todos" : pro] as [string, string]] : []),
+        ...(query ? [["Busca", query] as [string, string]] : []),
+      ],
+      kpis: [
+        ["Registros", filtered.length.toLocaleString("pt-BR"), `de ${all.length.toLocaleString("pt-BR")} no total`],
+        ...(report.money ? [["Valor total", brl(total), `média ${brl(filtered.length ? total / filtered.length : 0)}`] as [string, string, string]] : []),
+        ...statusCards.map(([name, n]) => [name, n.toLocaleString("pt-BR"), `${filtered.length ? Math.round((n / filtered.length) * 100) : 0}% do período`] as [string, string, string]),
+      ],
+      sections: [
+        ...(byGroup.length > 1
+          ? [{
+              title: `Resumo por ${groupKey === "name" ? "serviço" : "profissional"}`,
+              bars: byGroup.map(([name, value]) => [name, report.money ? `${brl(value.v)} · ${value.n}` : `${value.n} registros`, (report.money ? value.v : value.n) / maxG] as [string, string, number]),
+            }]
+          : []),
+        {
+          title: "Registros do período",
+          head: ["Data", "Registro", "Paciente / tutor", "Profissional", "Situação", ...(report.money ? ["Valor"] : [])],
+          align: ["l", "l", "l", "l", "l", "r"],
+          rows: filtered.map(({ item }) => [
+            fmtDate(itemDate(item)),
+            item.name,
+            item.animal ? `${item.animal} · ${item.owner || ""}` : item.subtitle || item.phone || "—",
+            item.professional || "—",
+            item.status || "—",
+            ...(report.money ? [item.amountValue ? brl(item.amountValue) : "—"] : []),
+          ]),
+          total: report.money ? ["Total", `${filtered.length} registros`, "", "", "", brl(total)] : undefined,
+        },
+      ],
+    })
   }
   useEffect(() => {
     if (new URLSearchParams(window.location.search).get("imprimir") !== "1") return
@@ -304,7 +341,7 @@ export function Relatorio() {
         ))}
         {!visible.length && <div className="vx-empty">Nenhum registro no período e filtros escolhidos.</div>}
       </div>
-      {!printAll && pages > 1 && (
+      {pages > 1 && (
         <div className="vx-rep-pager rel-filters">
           <span>Página {page} de {pages} · {filtered.length} registros</span>
           <button className="vx-btn vx-btn-g vx-btn-sm" disabled={page === 1} onClick={() => setPage(page - 1)}>Anterior</button>

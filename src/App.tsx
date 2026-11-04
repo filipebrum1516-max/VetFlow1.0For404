@@ -1,6 +1,7 @@
 import { localDateTime, localISO } from "./date"
 import { registerUnits } from "./vfx/vendasShared"
 import ClienteForm, { fromItem, toItem } from "./vfx/ClienteForm"
+import { CadastroDrawer } from "./vfx/CadastroDrawer"
 import {
   Suspense,
   lazy,
@@ -1719,11 +1720,8 @@ function RecordForm({
     "consultas",
     "agendas",
   ].includes(module)
-  const submit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    const form = Object.fromEntries(
-      new FormData(event.currentTarget),
-    ) as Record<string, string>
+  const submit = (formEl: HTMLFormElement) => {
+    const form = Object.fromEntries(new FormData(formEl)) as Record<string, string>
     const animal = data.animais.find(
       (candidate) => candidate.id === form.animalId,
     )
@@ -1783,24 +1781,15 @@ function RecordForm({
     } else success(addItem(module, form))
   }
   return (
-    <div className="modal-backdrop" onMouseDown={close}>
-      <form
-        className="form-modal"
-        onSubmit={submit}
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <div className="modal-header">
-          <div>
-            <span className="eyebrow">
-              {item ? "EDITAR REGISTRO" : "NOVO REGISTRO"}
-            </span>
-            <h2>{item ? `Editar ${item.name}` : `Novo em ${label}`}</h2>
-            <p>Os dados serão vinculados à unidade ativa.</p>
-          </div>
-          <IconButton label="Fechar" type="button" onClick={close}>
-            <X size={19} />
-          </IconButton>
-        </div>
+    <CadastroDrawer
+      title={item ? `Editar ${item.name}` : `Novo em ${label}`}
+      sub="Os dados serão vinculados à unidade ativa. Campos com * são obrigatórios."
+      onClose={close}
+      onSubmit={submit}
+      submitLabel={item ? "Salvar alterações" : "Salvar registro"}
+      error={error || undefined}
+    >
+      <div className="cad-legacy">
         <div className={`form-grid ${hasDedicatedForm ? "dedicated-form" : ""}`}>
           {module === "tutores" && (
             <>
@@ -2110,20 +2099,8 @@ function RecordForm({
             />
           </label>}
         </div>
-        {error && (
-          <div className="form-error">
-            <AlertTriangle size={16} />
-            {error}
-          </div>
-        )}
-        <div className="modal-footer">
-          <Button type="button" variant="secondary" onClick={close}>
-            Cancelar
-          </Button>
-          <Button type="submit">Salvar registro</Button>
-        </div>
-      </form>
-    </div>
+      </div>
+    </CadastroDrawer>
   )
 }
 

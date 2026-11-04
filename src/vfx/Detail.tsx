@@ -107,8 +107,8 @@ export default function Detail({
   const { data, deleteItem, updateItem } = store
   const navigate = useNavigate()
   const [tab, setTab] = useState("Resumo")
-  const [edit, setEdit] = useState(false)
-  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [edit, setEdit] = useState(() => new URLSearchParams(window.location.search).get("editar") === "1")
+  const [confirmDelete, setConfirmDelete] = useState(() => new URLSearchParams(window.location.search).get("excluir") === "1")
   const [toast, showToast] = useToast()
   // Registros financeiros, vendas e prontuários nunca são apagados: são cancelados ou estornados com motivo (L-05, L-08, M-13).
   const keepHistory = ["financeiro", "vendas", "caixa", "prontuarios", "prescricoes", "documentos"].includes(slug)

@@ -169,13 +169,13 @@ export function useToast() {
 export type Blob = [string, number | string, number | string, number, number]
 
 /** N-12: ajuda curta de cada tela (botão "?" ao lado do título). */
-const HELP: Record<string, string> = {
+export const HELP: Record<string, string> = {
   Dashboard: "Resumo do dia: compromissos em ordem de horário, receita recebida, leitos ocupados e pendências. Clique em qualquer número para abrir a tela correspondente.",
   Consultas: "Fila do dia: arraste o cartão entre as colunas ou use a seta. “Chamar próxima” leva direto ao consultório quem tem prioridade. Em Histórico ficam todas as consultas.",
   Vacinas: "Abra a carteirinha de um paciente pela busca. Registre a aplicação escolhendo o lote do estoque; a próxima dose entra no radar de atrasadas e a vencer.",
   Exames: "Cada tubo é um pedido. Avance: amostra colhida → lançar resultado (formulário do tipo de exame) → assinar laudo. Sem resultado o exame não é concluído.",
   Prescrições: "Escolha um canhoto para ver a receita. Controle especial exige CPF e endereço do tutor e duas vias. A assinatura é um registro interno.",
-  Procedimentos: "Catálogo de procedimentos com categoria, duração e preço. Use “Visual” para ver em cartas.",
+  Procedimentos: "Na aba Catálogo ficam os procedimentos que a clínica oferece. Use “Registrar” para lançar um procedimento feito em um paciente; ele aparece na aba Realizados.",
   Protocolos: "Protocolos são roteiros clínicos da equipe. Para aplicar a um paciente, escolha o protocolo e clique em “Aplicar a um paciente”: ele entra em uso para aquele animal e gera a prescrição.",
   Internações: "Mapa dos leitos e fila de espera. Registre sinais vitais, medicações e dê alta pela janela de alta (motivo e orientações obrigatórios).",
   Cirurgias: "Salas do dia com o checklist de cirurgia segura. Inicie, acompanhe as fases e encaminhe para a internação pós-cirúrgica.",
@@ -197,7 +197,7 @@ const HELP: Record<string, string> = {
   Configurações: "Tema, fuso, unidade padrão, cópia de segurança dos dados e, para administradores, o registro de auditoria.",
 }
 
-function PageHelp({ text }: { text: string }) {
+export function PageHelp({ text }: { text: string }) {
   const [open, setOpen] = useState(false)
   return (
     <span className="vx-help">
@@ -254,8 +254,7 @@ export function Page({
           <div className="vx-crumb">
             <b>Vetflow</b> / {crumb}
           </div>
-          <h1 className="vx-h1">{title}{typeof crumb === "string" && HELP[crumb.split(" · ")[0]] && <PageHelp text={HELP[crumb.split(" · ")[0]]} />}</h1>
-          {sub && <p className="vx-sub">{sub}</p>}
+          <h1 className="vx-h1">{title}</h1>
         </div>
         {actions && <div className="vx-actions">{actions}</div>}
       </div>
