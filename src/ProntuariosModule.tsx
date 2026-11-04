@@ -436,8 +436,9 @@ function ConfirmDelete({
   animal: string
   code: string
   onCancel: () => void
-  onConfirm: () => void
+  onConfirm: (reason: string) => void
 }) {
+  const [reason, setReason] = useState("")
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") onCancel()
@@ -456,17 +457,22 @@ function ConfirmDelete({
         <span className="pv-confirm-icon">
           <Trash2 size={22} />
         </span>
-        <h2>Excluir prontuário?</h2>
+        <h2>Cancelar prontuário?</h2>
         <p>
-          O prontuário de {animal} (código {code}) e todos os arquivos anexados
-          serão removidos. Esta ação não pode ser desfeita.
+          Prontuário não é apagado (exigência do CFMV e da LGPD). O registro de {animal} (código {code})
+          fica no histórico marcado como cancelado, com o motivo, quem cancelou e quando.
         </p>
+        <label style={{ display: "flex", flexDirection: "column", gap: 6, textAlign: "left", margin: "4px 0 12px" }}>
+          <span style={{ fontWeight: 700, fontSize: 13 }}>Justificativa *</span>
+          <textarea autoFocus rows={3} value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Ex.: registro aberto no paciente errado" style={{ font: "inherit", padding: 10, borderRadius: 10, border: "1px solid #d5d9df" }} />
+          {reason.trim().length > 0 && reason.trim().length < 5 && <em role="alert" style={{ color: "#b4322a", fontSize: 12 }}>Escreva pelo menos 5 letras.</em>}
+        </label>
         <div>
           <button type="button" className="pv-confirm-cancel" onClick={onCancel}>
-            Cancelar
+            Voltar
           </button>
-          <button type="button" className="pv-confirm-delete" onClick={onConfirm}>
-            Excluir definitivamente
+          <button type="button" className="pv-confirm-delete" disabled={reason.trim().length < 5} onClick={() => onConfirm(reason.trim())}>
+            Cancelar prontuário
           </button>
         </div>
       </div>
@@ -478,8 +484,9 @@ function ConfirmDelete({
    Módulo principal
    ========================================================= */
 export default function ProntuariosModule() {
-  const { data, addItem, updateItem, deleteItem } = useVetFlow()
-  const [view, setView] = useState<"folder" | "list">("folder")
+  const { data, addItem, updateItem, user } = useVetFlow()
+  // N-06: abre direto na lista (sem a pasta de entrada).
+  const [view, setView] = useState<"folder" | "list">("list")
   const [opening, setOpening] = useState(false)
   const [query, setQuery] = useState("")
   const [status, setStatus] = useState("Todos os status")
@@ -596,16 +603,14 @@ export default function ProntuariosModule() {
     updateItem("prontuarios", id, { status: value })
     showToast(`Situação alterada para "${value}" ✓`)
   }
-  const confirmDelete = () => {
+  // M-13 / L-05: prontuário nunca é apagado; é cancelado com justificativa.
+  const confirmDelete = (reason: string) => {
     if (!toDelete) return
     const id = toDelete.id
-    deleteItem("prontuarios", id)
-    removeExtras(id)
-    setExtrasMap(loadExtras())
+    updateItem("prontuarios", id, { status: "Cancelado", extra: { ...(toDelete.extra || {}), motivoCancelamento: reason, canceladoPor: user?.displayName || "", canceladoEm: new Date().toISOString() } })
     setDeleteId(null)
-    if (detailId === id) setDetailId(null)
     if (editId === id) setEditId(null)
-    showToast("Prontuário excluído ✓")
+    showToast("Prontuário cancelado e mantido no histórico ✓")
   }
 
   return (
@@ -647,8 +652,8 @@ export default function ProntuariosModule() {
       ) : (
         <>
           <div className="pr-list-head">
-            <button className="pr-back" onClick={() => setView("folder")}>
-              <ArrowLeft size={16} /> Fechar pasta
+            <button className="pr-back" onClick={() => setView("folder")} title="Ver resumo da pasta">
+              <ArrowLeft size={16} /> Resumo
             </button>
             <div>
               <h1>Prontuários</h1>
@@ -754,7 +759,7 @@ export default function ProntuariosModule() {
                           <button type="button" title="Imprimir" onClick={() => openDetail(item.id, true)}>
                             <Printer size={15} />
                           </button>
-                          <button type="button" className="danger" title="Excluir prontuário" onClick={() => setDeleteId(item.id)}>
+                          <button type="button" className="danger" title="Cancelar prontuário" onClick={() => setDeleteId(item.id)}>
                             <Trash2 size={15} />
                           </button>
                         </span>
@@ -1638,7 +1643,7 @@ function DetailDrawer({
                 <button type="button" onClick={() => window.print()} aria-label="Imprimir prontuário" title="Imprimir">
                   <Printer size={17} />
                 </button>
-                <button type="button" className="danger" onClick={onDelete} aria-label="Excluir prontuário" title="Excluir prontuário">
+                <button type="button" className="danger" onClick={onDelete} aria-label="Cancelar prontuário" title="Cancelar prontuário">
                   <Trash2 size={17} />
                 </button>
               </span>

@@ -141,6 +141,10 @@ export default function ClienteForm({ initial, existing, tutores, unitCity, onCl
     if (!d.telefone && !d.whatsapp) errs.push("Informe pelo menos um telefone.")
     if (d.doc && !docOk) errs.push(pj ? "CNPJ inválido." : "CPF inválido.")
     if (dupe) errs.push(`Já existe um cliente com este ${pj ? "CNPJ" : "CPF"}: ${dupe.name}.`)
+    if (d.nascimento && d.nascimento > new Date().toISOString().slice(0, 10)) errs.push("A data de nascimento não pode ser no futuro.")
+    if (d.nascimento && d.nascimento < "1900-01-01") errs.push("Data de nascimento inválida.")
+    if (d.telefone && d.telefone.replace(/\D/g, "").length < 10) errs.push("Telefone incompleto: informe DDD e número.")
+    if (d.cep && d.cep.replace(/\D/g, "").length !== 8) errs.push("CEP incompleto.")
     if (d.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(d.email)) errs.push("E-mail inválido.")
     setErrors(errs)
     if (!errs.length) onSave(d)
@@ -165,7 +169,7 @@ export default function ClienteForm({ initial, existing, tutores, unitCity, onCl
               : F({ label: "Apelido / como chamar", span: 2, children: <input className="op-in" value={d.fantasia} onChange={(e) => set({ fantasia: e.target.value })} /> })}
             {F({ label: pj ? "CNPJ" : "CPF", children: <input className={`op-in ${d.doc && !docOk ? "bad" : ""}`} inputMode="numeric" placeholder={pj ? "00.000.000/0000-00" : "000.000.000-00"} value={d.doc} onChange={(e) => set({ doc: pj ? maskCnpj(e.target.value) : maskCpf(e.target.value) })} /> })}
             {F({ label: pj ? "Inscrição estadual" : "RG", children: <input className="op-in" value={d.rgIe} onChange={(e) => set({ rgIe: e.target.value })} /> })}
-            {!pj && F({ label: "Data de nascimento", children: <input className="op-in" type="date" value={d.nascimento} onChange={(e) => set({ nascimento: e.target.value })} /> })}
+            {!pj && F({ label: "Data de nascimento", children: <input className="op-in" type="date" max={new Date().toISOString().slice(0, 10)} value={d.nascimento} onChange={(e) => set({ nascimento: e.target.value })} /> })}
             {!pj && F({ label: "Sexo", children: <select className="op-in" value={d.sexo} onChange={(e) => set({ sexo: e.target.value })}><option value="">—</option><option>Feminino</option><option>Masculino</option><option>Outro</option></select> })}
           </div>
           {d.doc && !docOk && <div className="op-note bad"><AlertTriangle /> {pj ? "CNPJ" : "CPF"} com dígitos inválidos.</div>}

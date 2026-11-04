@@ -1,3 +1,4 @@
+import { localDateTime, localISO } from "../date"
 import {
   AlertTriangle,
   Archive,
@@ -24,6 +25,8 @@ import {
 import { normalize, type Item, type ModuleSlug } from "../store"
 import { type Ctx, type Field, type FormDef, type Values, rolePerms } from "./FormDrawer"
 import { addDays, brl, parseMoney, todayISO } from "./ui"
+import { validCnpj, validCpf } from "./ClienteForm"
+import { localTime } from "../date"
 
 /* ---------------- atalhos ---------------- */
 function withoutId(item: Item): Partial<Item> {
@@ -44,6 +47,35 @@ const unitNames = (ctx: Ctx) => ctx.units.map((unit) => unit.shortName)
 const colors = ["#e94f17", "#2457c5", "#0f766e", "#6d4bc2", "#b4325e", "#9a6212", "#5b6474"]
 const especies = ["Cão", "Gato", "Aves", "Roedores", "Répteis", "Equinos"]
 const today = "today"
+const nowHM = () => localTime()
+const speciesOf = (ctx: Ctx, values: Values) => ctx.data.animais.find((a) => a.id === values.animalId)?.species || ""
+const num = (v: unknown) => { const n = Number(String(v ?? "").replace(",", ".").replace(/[^\d.-]/g, "")); return Number.isFinite(n) ? n : NaN }
+const isDog = (sp: string) => /c[ãa]o|canin/i.test(sp)
+const isCat = (sp: string) => /gat|felin/i.test(sp)
+/* vacinas por espécie (V-01) */
+const VACINAS_CAO = ["Vacina V10", "Vacina V8", "Vacina antirrábica", "Vacina contra gripe canina", "Vacina contra giárdia", "Vacina contra leishmaniose"]
+const VACINAS_GATO = ["Vacina antirrábica", "Vacina quádrupla felina (V4)", "Vacina quíntupla felina (V5)", "Vacina tríplice felina (V3)", "Vacina contra leucemia felina (FeLV)"]
+const VACINAS_OUTRAS = ["Vacina antirrábica", "Vacina contra aftosa", "Vacina contra clostridioses", "Vacina contra brucelose", "Vacina contra influenza equina", "Vacina contra tétano"]
+const vaccineOptions = (ctx: Ctx, values: Values) => {
+  const sp = speciesOf(ctx, values)
+  const base = values.grupo && values.grupo !== "Vacina" ? ["Vermífugo", "Antipulgas", "Antiparasitário"] : isDog(sp) ? VACINAS_CAO : isCat(sp) ? VACINAS_GATO : sp ? VACINAS_OUTRAS : [...new Set([...VACINAS_CAO, ...VACINAS_GATO])]
+  return base
+}
+/* lotes do estoque com validade (V-02/M-19) */
+const lotOptions = (ctx: Ctx, values: Values) => {
+  const term = normalize(values.name || "").replace(/^vacina\s+/, "").split(" ").slice(0, 2).join(" ")
+  return ctx.data.estoque
+    .filter((i) => term && normalize(i.name).includes(term) && (i.quantity || 0) > 0)
+    .map((i) => [i.id, `${(i.name.match(/lote (\d+)/) || [])[1] ? `Lote ${(i.name.match(/lote (\d+)/) || [])[1]}` : i.name} · ${i.quantity} un. · val. ${i.dueDate ? i.dueDate.split("-").reverse().join("/") : "—"}${i.dueDate && i.dueDate < todayISO() ? " · VENCIDO" : ""}`] as [string, string])
+}
+const tempAlert = (values: Values) => {
+  const t = num(values.temperatura)
+  if (values.temperatura && (Number.isNaN(t) || t < 30 || t > 45)) return "Temperatura inválida. Digite em °C, por exemplo 38,5."
+  if (values.temperatura && (t < 35 || t > 43) && !window.confirm(`Temperatura de ${t} °C está fora da faixa usual (35–43 °C). Confirma o valor?`)) return "Confira a temperatura antes de salvar."
+  return undefined
+}
+const weightProblem = (v: unknown, label = "Peso") => { if (v === undefined || v === null || v === "") return undefined; const n = num(v); return Number.isNaN(n) || n <= 0 ? `${label} deve ser um número maior que zero (ex.: 12,4).` : undefined }
+const moneyNegative = (...vals: unknown[]) => vals.some((v) => v !== undefined && v !== "" && parseMoney(v) < 0)
 
 export const serviceCatalog: [string, number][] = [
   ["Consulta clínica", 190],
@@ -80,7 +112,7 @@ const consultas: FormDef = {
   sub: "Emite a senha, abre o atendimento e registra a consulta completa.",
   icon: Stethoscope,
   color: "#c2410c",
-  submit: "Finalizar consulta",
+  submit: "Salvar consulta",
   footer: (values, ctx) => (values.service ? `${values.service} · ${brl(parseMoney(values.valor) || servicePrice(values.service, ctx))}` : "Campos com * são obrigatórios"),
   sections: [
     { title: "Paciente", desc: "busca por nome, tutor ou raça", fields: [animal(), f("responsavel", "Responsável presente", "text", 3, { ph: "Tutor ou outro responsável" }), sel("convenio", "Convênio / plano", (ctx) => ["Particular", ...ctx.data.convenios.slice(0, 12).map((item) => item.name)])] },
@@ -143,7 +175,7 @@ const consultas: FormDef = {
         f("valor", "Valor do atendimento", "money", 2, { hint: "vazio = preço do serviço" }),
         f("retorno", "Retorno", "date", 2),
         sel("cobranca", "Cobrança", ["Enviar para o caixa", "Cobrar agora (Pix)", "Faturar no convênio"], 2, { def: "Enviar para o caixa" }),
-        tog("enviarResumo", "Enviar resumo e orientações ao tutor por WhatsApp", true),
+        tog("enviarResumo", "Registrar envio do resumo ao tutor (WhatsApp simulado)", true),
         tog("nps", "Pesquisa de satisfação (NPS) 24h depois", true),
       ],
     },
@@ -175,7 +207,7 @@ const profissionais: FormDef = {
   sub: "Cria o crachá: dados pessoais, registro no CRMV, escala, comissão e acesso.",
   icon: BriefcaseMedical,
   color: "#2457c5",
-  submit: "Criar crachá",
+  submit: "Salvar profissional",
   sections: [
     { title: "Identificação", fields: [req(f("nomeCompleto", "Nome completo", "text", 4)), sel("tratamento", "Tratamento", ["Dra.", "Dr.", "—"], 2, { def: "Dr." }), f("cpf", "CPF", "text", 2, { ph: "000.000.000-00" }), f("rg", "RG", "text", 2), f("nascimento", "Nascimento", "date", 2), f("cor", "Cor do crachá", "color", 3, { opts: colors, def: "#2457c5" }), f("bio", "Bio curta (site e app do tutor)", "text", 3)] },
     { title: "Contato", fields: [req(f("phone", "Celular / WhatsApp", "tel")), f("email", "E-mail", "email"), f("cep", "CEP", "text", 2), f("logradouro", "Logradouro", "text", 4), f("numero", "Nº", "text", 1), f("complemento", "Complemento", "text", 2), f("bairro", "Bairro", "text", 3), f("cidade", "Cidade", "text", 4), f("uf", "UF", "text", 2), f("emergNome", "Contato de emergência"), f("emergTel", "Telefone de emergência", "tel")] },
@@ -200,36 +232,55 @@ const profissionais: FormDef = {
 
 const vacinas: FormDef = {
   slug: "vacinas",
-  title: "Aplicar dose",
+  title: "Registrar aplicação",
   sub: "Registra a dose, carimba a carteirinha e programa o próximo reforço.",
   icon: Syringe,
   color: "#0f766e",
-  submit: "Aplicar e carimbar",
-  footer: () => "Ao salvar: carimbo na carteirinha + baixa do lote",
+  submit: "Registrar aplicação",
+  footer: () => "Ao salvar: registro na carteirinha + baixa de 1 dose do lote escolhido",
   sections: [
     { title: "Paciente", fields: [animal(), f("peso", "Peso no dia (kg)", "text", 2), f("temperatura", "Temperatura (°C)", "text", 2), f("apto", "Apto(a) na avaliação", "toggle", 2, { def: true })] },
     {
       title: "Vacina",
       fields: [
         pills("grupo", "Grupo", ["Vacina", "Vermífugo", "Antiparasitário"], 6, { def: "Vacina" }),
-        req(sel("name", "Vacina / produto", ["Vacina V10", "Vacina antirrábica", "Vacina quádrupla felina", "Vacina contra gripe", "Vacina contra giárdia", "Vacina contra leishmaniose", "Vermífugo", "Antipulgas"])),
+        req(sel("name", "Vacina / produto", vaccineOptions, 3, { hint: "só as vacinas da espécie do paciente" })),
         sel("protocolo", "Protocolo", ["Filhote · 3 doses a cada 21 dias", "Reforço anual", "Dose única"], 3, { def: "Reforço anual" }),
         pills("dose", "Dose do protocolo", ["1ª", "2ª", "3ª", "Reforço anual", "Dose extra"], 6, { def: "Reforço anual" }),
         f("laboratorio", "Laboratório / fabricante"), f("nomeComercial", "Nome comercial"),
-        req(f("lote", "Lote", "text", 2)), f("fabricacao", "Fabricação", "text", 2, { ph: "MM/AAAA" }), req(f("validadeLote", "Validade do lote", "date", 2)),
+        sel("loteEstoque", "Lote do estoque", lotOptions, 6, { ph: "Escolha o lote (ou digite abaixo se for dose externa)" }),
+        f("lote", "Lote (digitado)", "text", 2), f("fabricacao", "Fabricação", "text", 2, { ph: "MM/AAAA" }), f("validadeLote", "Validade do lote", "date", 2),
         sel("via", "Via", ["Subcutânea", "Intramuscular", "Intranasal", "Oral", "Tópica"], 2, { def: "Subcutânea" }), f("volume", "Volume", "text", 2, { def: "1 mL" }), sel("local", "Local de aplicação", ["Região escapular", "Membro post. direito", "Membro post. esquerdo", "Outro"], 2),
       ],
     },
-    { title: "Aplicação", fields: [req(pills("status", "Situação", ["Aplicada", "A vencer", "Atrasada"], 6, { def: "Aplicada", hint: "“A vencer” = dose programada" })), req(f("date", "Data", "date", 3, { def: today })), f("time", "Hora", "time", 3, { def: "09:00" }), pro(), sel("aplicadoPor", "Aplicado por", ["Próprio veterinário", "Auxiliar sob supervisão"], 3), tog("externa", "Dose aplicada em outra clínica (só histórico)")] },
+    { title: "Aplicação", fields: [req(pills("status", "Situação", ["Aplicada", "A vencer", "Atrasada"], 6, { def: "Aplicada", hint: "“A vencer” = dose programada" })), req(f("date", "Data", "date", 3, { def: today })), f("time", "Hora", "time", 3, { def: nowHM }), pro(), sel("aplicadoPor", "Aplicado por", ["Próprio veterinário", "Auxiliar sob supervisão"], 3), tog("externa", "Dose aplicada em outra clínica (só histórico)")] },
     { title: "Próxima dose", fields: [f("proxima", "Próxima dose", "date", 3, { def: () => addDays(todayISO(), 365) }), sel("antecedencia", "Lembrar o tutor com", ["15 dias de antecedência", "7 dias", "30 dias"], 3, { def: "15 dias de antecedência" }), multi("canais", "Canais", ["WhatsApp", "E-mail", "SMS", "App do tutor"], 6, { def: ["WhatsApp"] }), tog("preAgendar", "Pré-agendar a próxima dose na agenda")] },
     { title: "Reação e cobrança", fields: [pills("reacao", "Reação adversa (até 30 min)", ["Nenhuma", "Leve · dor local", "Moderada · edema/febre", "Grave · anafilaxia"], 6, { def: "Nenhuma" }), f("notes", "Observações", "textarea", 6), tog("atestado", "Emitir atestado de vacinação", false, "com dados do animal, lote e CRMV"), tog("enviarCarteirinha", "Enviar carteirinha digital ao tutor", true), f("valor", "Valor", "money", 3), tog("baixaEstoque", "Dar baixa de 1 dose no estoque", true, undefined, 3)] },
   ],
   fromItem: (item) => ({ proxima: item.dueDate || "", valor: item.amountValue ? brl(item.amountValue) : "" }),
-  toItem: (values) => ({ name: values.name, status: values.status, dueDate: values.proxima, amountValue: parseMoney(values.valor) || 145, category: values.grupo }),
+  validate: (values, ctx) => {
+    const sp = speciesOf(ctx, values)
+    if (values.grupo === "Vacina" && sp && values.name && !vaccineOptions(ctx, values).includes(values.name)) return `${values.name} não é indicada para ${sp}. Escolha uma vacina da espécie do paciente.`
+    const w = weightProblem(values.peso); if (w) return w
+    const t = tempAlert(values); if (t) return t
+    if (values.status === "Aplicada" && !values.externa && !values.loteEstoque && !values.lote) return "Informe o lote: escolha um lote do estoque ou digite o lote."
+    const lot = values.loteEstoque ? ctx.data.estoque.find((i) => i.id === values.loteEstoque) : undefined
+    const validade = lot?.dueDate || values.validadeLote
+    if (values.status === "Aplicada" && validade && validade < (values.date || todayISO())) return `O lote está vencido (validade ${validade.split("-").reverse().join("/")}). Use outro lote.`
+    if (values.proxima && values.date && values.proxima <= values.date) return "A próxima dose precisa ser depois da data de aplicação."
+  },
+  toItem: (values, ctx) => {
+    const lot = values.loteEstoque ? ctx.data.estoque.find((i) => i.id === values.loteEstoque) : undefined
+    return { name: values.name, status: values.status, dueDate: values.proxima, amountValue: parseMoney(values.valor) || 145, category: values.grupo, extra: lot ? { lote: (lot.name.match(/lote (\d+)/) || [])[1] || lot.extra?.lote || values.lote, validadeLote: lot.dueDate, loteEstoque: lot.id } : undefined }
+  },
   after: (saved, values, ctx, isNew) => {
     if (!isNew) return
-    if (values.baixaEstoque && values.status === "Aplicada") stockAdjust(ctx, values.name, -1)
-    if (values.preAgendar && values.proxima) ctx.addItem("agendas", { name: "Vacinação", service: "Vacinação", animalId: saved.animalId, professionalId: saved.professionalId, professional: saved.professional, date: values.proxima, time: "09:00", status: "Agendado", notes: `Reforço de ${values.name}` })
+    if (values.baixaEstoque && values.status === "Aplicada" && !values.externa) {
+      const lot = values.loteEstoque ? ctx.data.estoque.find((i) => i.id === values.loteEstoque) : undefined
+      if (lot) { const q = Math.max(0, (lot.quantity || 0) - 1); ctx.updateItem("estoque", lot.id, { quantity: q, subtitle: `${q} un. • mínimo ${lot.minimum || 0}`, status: q <= 0 ? "Esgotado" : q < (lot.minimum || 0) ? "Abaixo do mínimo" : lot.status, extra: { ...(lot.extra || {}), movimentos: [...(lot.extra?.movimentos || []), { em: new Date().toISOString(), qtd: -1, motivo: `Vacina aplicada · ${saved.animal || ""}` }] } }) }
+      else stockAdjust(ctx, values.name, -1)
+    }
+    if (values.preAgendar && values.proxima) ctx.addItem("agendas", { name: "Vacinação", service: "Vacinação", animalId: saved.animalId, professionalId: saved.professionalId, professional: saved.professional, date: values.proxima, time: values.time || nowHM(), status: "Agendado", notes: `Reforço de ${values.name}` })
     if (values.atestado) ctx.addItem("documentos", { name: "Atestado de vacinação", animalId: saved.animalId, professionalId: saved.professionalId, professional: saved.professional, status: "Pendente", category: "Clínicos", extra: { gaveta: "Clínicos", vacina: values.name, lote: values.lote } })
   },
 }
@@ -240,19 +291,26 @@ const prescricoes: FormDef = {
   sub: "Preenche a folha do receituário; o tipo define a cor do papel e as exigências legais.",
   icon: FileText,
   color: "#8a6a4a",
-  submit: "Assinar e destacar",
+  submit: "Emitir receita",
   sections: [
     { title: "Tipo", fields: [req(pills("tipo", "Tipo de receita", ["Simples", "Controle especial", "Manipulação"], 6, { def: "Simples" })), sel("modelo", "Modelo", ["Em branco", "Otite canina", "Pós-castração", "Dermatite alérgica", "Gastroenterite"], 3, { def: "Em branco" }), sel("consultaVinc", "Atendimento vinculado", (ctx) => ctx.data.consultas.slice(0, 10).map((item) => `${item.name} · ${item.animal} · ${item.date}`))] },
     { title: "Paciente", desc: "exigidos na receita controlada", fields: [animal(), f("tutorCpf", "CPF do tutor"), f("peso", "Peso atual (kg)"), f("tutorEndereco", "Endereço do tutor", "text", 6)] },
     { title: "Prescritor", fields: [pro("Veterinário prescritor"), f("mapa", "Cadastro MAPA"), sel("estabelecimento", "Estabelecimento (cabeçalho)", (ctx) => ctx.units.map((unit) => `${unit.name} · ${unit.street}, ${unit.number}`), 6)] },
     { title: "Medicamentos", desc: "dose calculada pelo peso do dia", fields: [{ ...f("itens", "Itens da receita", "rows", 6, { cols: [{ k: "med", label: "Medicamento", w: "1.6fr" }, { k: "dose", label: "Dose" }, { k: "via", label: "Via", t: "select", opts: ["Oral", "Tópico", "Otológico", "Oftálmico", "Injetável"] }, { k: "freq", label: "Frequência" }, { k: "dur", label: "Duração" }, { k: "qtd", label: "Qtd." }], def: [{ med: "", dose: "", via: "Oral", freq: "12/12 h", dur: "7 dias", qtd: "" }], ph: "Adicionar medicamento" }), req: true }] },
     { title: "Orientações", fields: [f("orientacoes", "Orientações ao tutor", "textarea", 6, { ph: "Dar com alimento, não interromper antes do prazo…" })] },
-    { title: "Assinatura", fields: [req(f("date", "Emissão", "date", 2, { def: today })), sel("validade", "Validade", ["30 dias", "10 dias", "Uso contínuo · 6 meses"], 2, { def: "30 dias" }), sel("vias", "Vias", ["1 via", "2 vias"], 2, { def: "1 via" }), pills("assinatura", "Assinatura", ["Certificado digital ICP-Brasil", "Assinatura digitalizada", "Imprimir e assinar à mão"], 6, { def: "Certificado digital ICP-Brasil" }), tog("qr", "QR Code de verificação na folha", true), multi("enviar", "Enviar ao tutor", ["WhatsApp", "E-mail", "Imprimir", "App do tutor"], 6, { def: ["WhatsApp"] }), pills("status", "Situação", ["Ativa", "Vencendo", "Renovação pendente", "Concluída"], 6, { def: "Ativa", req: true }), { ...f("aviso", "", "info", 6), small: "Receita de controle especial: exige certificado digital, assinatura no mesmo dia e registro no SIPEAGRO.", show: (values: Values) => values.tipo === "Controle especial" }] },
+    { title: "Assinatura", fields: [req(f("date", "Emissão", "date", 2, { def: today })), sel("validade", "Validade", ["30 dias", "10 dias", "Uso contínuo · 6 meses"], 2, { def: "30 dias" }), sel("vias", "Vias", ["1 via", "2 vias"], 2, { def: (values: Values) => (values?.tipo === "Controle especial" ? "2 vias" : "1 via") }), pills("assinatura", "Assinatura", ["Imprimir e assinar à mão", "Certificado digital ICP-Brasil (integração não ativa)"], 6, { def: "Imprimir e assinar à mão" }), multi("enviar", "Depois de emitir", ["Imprimir"], 6, { def: [], hint: "O envio ao tutor é feito pelo botão “Enviar ao tutor”, só quando você clicar." }), pills("status", "Situação", ["Ativa", "Vencendo", "Renovação pendente", "Concluída"], 6, { def: "Ativa", req: true }), { ...f("aviso", "", "info", 6), small: "Receita de controle especial: 2 vias, CPF e endereço completos do tutor e dados completos do prescritor (nome, CRMV e endereço).", show: (values: Values) => values.tipo === "Controle especial" }] },
   ],
   fromItem: (item) => ({ itens: [{ med: item.name, dose: "", via: "Oral", freq: "12/12 h", dur: "7 dias", qtd: "" }] }),
   toItem: (values) => ({ name: values.itens?.find((row: Values) => row.med)?.med || "Receita", category: values.tipo, status: values.status }),
-  after: (saved, values, ctx, isNew) => {
-    if (isNew && values.enviar?.includes("WhatsApp")) ctx.addItem("comunicacao", { name: "Receita enviada", animalId: saved.animalId, status: "Enviada", category: "WhatsApp", extra: { mensagem: `Receita de ${saved.animal}: ${(values.itens || []).map((row: Values) => row.med).filter(Boolean).join(", ")}` } })
+  validate: (values) => {
+    const w = weightProblem(values.peso); if (w) return w
+    if (values.tipo === "Controle especial") {
+      if (!values.tutorCpf || !validCpf(values.tutorCpf)) return "Receita de controle especial exige o CPF válido do tutor."
+      if (!values.tutorEndereco || String(values.tutorEndereco).trim().length < 10) return "Receita de controle especial exige o endereço completo do tutor."
+      if (values.vias !== "2 vias") return "Receita de controle especial deve ser emitida em 2 vias."
+    }
+  },
+  after: (_saved, values, _ctx, isNew) => {
     if (isNew && values.enviar?.includes("Imprimir")) window.setTimeout(() => window.print(), 300)
   },
 }
@@ -263,7 +321,7 @@ const medicamentos: FormDef = {
   sub: "Coloca um frasco novo na prateleira: identificação, dose de referência, preço, estoque e fiscal.",
   icon: Pill,
   color: "#2f78bf",
-  submit: "Colocar na prateleira",
+  submit: "Salvar medicamento",
   sections: [
     { title: "Identificação", fields: [f("ean", "Código de barras (EAN)"), f("codigo", "Código interno"), req(f("name", "Nome comercial")), req(f("principio", "Princípio ativo")), f("concentracao", "Concentração", "text", 2), sel("forma", "Forma farmacêutica", ["Comprimido", "Comprimido palatável", "Suspensão oral", "Injetável", "Pomada / creme", "Gotas otológicas", "Colírio", "Pipeta"], 2), f("apresentacao", "Apresentação", "text", 2), f("laboratorio", "Laboratório"), req(sel("grupo", "Grupo / classe terapêutica", ["Antibióticos", "Anti-inflamatórios", "Analgésicos", "Cardiológicos", "Dermatológicos", "Antiparasitários", "Gastrointestinais", "Suplementos", "Outros"])), pills("origem", "Origem do registro", ["Veterinário (MAPA)", "Humano (ANVISA)"], 3, { def: "Veterinário (MAPA)" }), f("registro", "Nº de registro"), multi("especies", "Espécies indicadas", especies, 6, { def: ["Cão", "Gato"] }), f("cor", "Cor do frasco", "color", 6, { opts: colors, def: "#e94f17" })] },
     { title: "Controle", fields: [pills("receita", "Exige receita", ["Venda livre", "Receita simples", "Controle especial"], 6, { def: "Receita simples" }), tog("antimicrobiano", "Antimicrobiano", false, undefined, 3), tog("controlado", "Produto controlado (MAPA)", false, undefined, 3), tog("hospitalar", "Uso exclusivo hospitalar", false, undefined, 3), tog("termolabil", "Termolábil (geladeira)", false, undefined, 3)] },
@@ -284,24 +342,35 @@ const medicamentos: FormDef = {
   },
 }
 
-const examOptions = ["Hemograma completo", "Bioquímico hepático", "Perfil renal", "Urina tipo I", "Citologia de pele", "Ultrassom abdominal", "Raio-X de tórax", "Ecocardiograma", "Parasitológico de fezes", "Teste rápido FIV/FeLV", "Perfil pré-anestésico", "Check-up sênior"]
+const examAll = ["Hemograma completo", "Bioquímico hepático", "Perfil renal", "Urina tipo I", "Citologia de pele", "Ultrassom abdominal", "Raio-X de tórax", "Ecocardiograma", "Parasitológico de fezes", "Perfil pré-anestésico", "Check-up sênior"]
+/* exames específicos de espécie (V-03) */
+const examCat = ["Teste rápido FIV/FeLV"]
+const examDog = ["Teste rápido cinomose", "Teste rápido parvovirose", "Teste de leishmaniose (DPP)", "Teste rápido 4Dx (erliquiose, anaplasma, Lyme, dirofilária)"]
+const examOptions = (ctx: Ctx, values: Values) => { const sp = speciesOf(ctx, values); return [...examAll, ...(isCat(sp) ? examCat : isDog(sp) ? examDog : sp ? [] : [...examCat, ...examDog])] }
 const exames: FormDef = {
   slug: "exames",
   title: "Solicitar exame",
   sub: "Cria o tubo na bancada: pedido, coleta, laboratório e liberação do laudo.",
   icon: TestTube2,
   color: "#6d4bc2",
-  submit: "Enviar à bancada",
+  submit: "Solicitar exame",
   footer: (values) => `${(values.exames || []).length} exame(s) selecionado(s)`,
   sections: [
     { title: "Paciente", fields: [animal(), pro("Solicitante"), f("atendimento", "Atendimento vinculado", "text", 3, { ph: "Consulta, internação, pré-cirúrgico…" })] },
     { title: "Exames", desc: "um tubo por exame", fields: [{ ...multi("exames", "Exames solicitados", examOptions), req: true }] },
     { title: "Indicação", fields: [req(f("suspeita", "Suspeita / motivo", "textarea", 6)), f("medicacoes", "Medicações em uso"), pills("urgencia", "Urgência", ["Rotina", "Prioridade", "Urgente"], 3, { def: "Rotina" })] },
-    { title: "Coleta", fields: [sel("material", "Material / amostra", ["Sangue total · EDTA", "Soro · tubo seco", "Urina · cistocentese", "Fezes", "Swab", "Imagem (sem coleta)"]), f("amostras", "Nº de amostras"), req(f("date", "Data da coleta", "date", 2, { def: today })), f("time", "Hora", "time", 2, { def: "09:00" }), f("coletadoPor", "Coletado por", "text", 2), f("jejum", "Jejum exigido", "text", 2, { ph: "8 h" }), tog("jejumOk", "Jejum cumprido", false, undefined, 2), tog("sedacao", "Sob sedação", false, undefined, 2)] },
+    { title: "Coleta", fields: [sel("material", "Material / amostra", ["Sangue total · EDTA", "Soro · tubo seco", "Urina · cistocentese", "Fezes", "Swab", "Imagem (sem coleta)"]), f("amostras", "Nº de amostras"), req(f("date", "Data da coleta", "date", 2, { def: today })), f("time", "Hora", "time", 2, { def: nowHM }), f("coletadoPor", "Coletado por", "text", 2), f("jejum", "Jejum exigido", "text", 2, { ph: "8 h" }), tog("jejumOk", "Jejum cumprido", false, undefined, 2), tog("sedacao", "Sob sedação", false, undefined, 2)] },
     { title: "Laboratório", fields: [pills("onde", "Onde será feito", ["Laboratório interno", "Laboratório parceiro", "Volante / imagem móvel"], 6, { def: "Laboratório interno" }), sel("labParceiro", "Laboratório parceiro", ["LabVet", "Diagnóstica Pet", "VetLab Norte"], 3, { show: (values: Values) => values.onde === "Laboratório parceiro" }), f("pedidoExterno", "Nº do pedido externo"), sel("convenio", "Convênio", (ctx) => ["Particular", ...ctx.data.convenios.slice(0, 8).map((item) => item.name)]), f("guia", "Guia de autorização"), f("obsLab", "Observações ao laboratório", "text", 6)] },
-    { title: "Laudo", fields: [sel("responsavel", "Responsável pelo laudo", proNames), f("previsao", "Previsão", "text", 3, { ph: "Hoje 14:00" }), req(pills("status", "Etapa na bancada", ["Solicitado", "Aguardando resultado", "Concluído"], 6, { def: "Solicitado" })), tog("avisar", "Avisar o solicitante quando o laudo ficar pronto", true), tog("liberarTutor", "Liberar ao tutor automaticamente após assinatura"), f("anexos", "Anexar resultado externo", "file", 6, { ph: "PDF, imagem ou DICOM" }), f("valor", "Valor total", "money", 3)] },
+    { title: "Laudo", fields: [sel("responsavel", "Responsável pelo laudo", proNames), f("previsao", "Previsão", "text", 3, { ph: "Hoje 14:00" }), req(pills("status", "Etapa", ["Solicitado", "Aguardando resultado", "Aguardando assinatura", "Concluído"], 6, { def: "Solicitado", hint: "“Concluído” só depois de registrar o resultado e assinar o laudo" })), tog("avisar", "Avisar o solicitante quando o laudo ficar pronto", true), tog("liberarTutor", "Liberar ao tutor automaticamente após assinatura"), f("anexos", "Anexar resultado externo", "file", 6, { ph: "PDF, imagem ou DICOM" }), f("valor", "Valor total", "money", 3)] },
   ],
   fromItem: (item) => ({ exames: [item.name], urgencia: item.urgency ? "Urgente" : "Rotina", suspeita: item.notes || "" }),
+  validate: (values, ctx) => {
+    const sp = speciesOf(ctx, values)
+    const allowed = examOptions(ctx, values)
+    const bad = (values.exames || []).filter((e: string) => !allowed.includes(e))
+    if (bad.length) return `${bad.join(", ")} não se aplica a ${sp || "esta espécie"}.`
+    if (values.status === "Concluído" && !values.resultado) return "Para concluir, registre o resultado pelo botão “Registrar resultado” na tela de Exames."
+  },
   toItem: (values) => ({ name: values.exames?.[0] || "Exame", status: values.status, urgency: values.urgencia === "Urgente", category: values.urgencia === "Urgente" ? "Urgente" : "Rotina", amountValue: parseMoney(values.valor) || 85, notes: values.suspeita }),
   after: (saved, values, ctx, isNew) => {
     if (!isNew) return
@@ -311,11 +380,11 @@ const exames: FormDef = {
 
 const procedimentos: FormDef = {
   slug: "procedimentos",
-  title: "Nova carta · procedimento",
+  title: "Novo procedimento",
   sub: "A frente da carta é o que o tutor vê; o verso é o protocolo da equipe.",
   icon: Sparkles,
   color: "#b4325e",
-  submit: "Adicionar ao baralho",
+  submit: "Salvar procedimento",
   sections: [
     { title: "Frente", fields: [req(pills("naipe", "Naipe (categoria)", ["Clínico", "Cirúrgico", "Diagnóstico", "Estético", "Terapêutico"], 6, { def: "Clínico" })), req(f("name", "Nome", "text", 4)), f("codigo", "Código", "text", 2), f("descricao", "Descrição para o tutor", "textarea", 6), multi("especies", "Espécies", ["Cão", "Gato", "Silvestres"], 6, { def: ["Cão", "Gato"] })] },
     { title: "Execução", fields: [f("duracao", "Duração média", "text", 2, { def: "30 min" }), sel("sala", "Sala", ["Consultório", "Sala de procedimentos", "Centro cirúrgico"], 2), f("jejum", "Jejum", "text", 2), multi("executores", "Quem pode executar", ["Veterinário", "Anestesista", "Auxiliar"], 6, { def: ["Veterinário"] }), tog("anestesia", "Requer anestesia / sedação", false, undefined, 3), tog("geraCirurgia", "Gera agendamento de cirurgia", false, undefined, 3), sel("termo", "Termo de consentimento", ["Nenhum", "Termo de anestesia e cirurgia", "Termo de procedimento"], 3, { def: "Nenhum" }), multi("prereq", "Exames pré-requisito", ["Hemograma", "Perfil renal", "ECG", "Raio-X"], 3), f("checklist", "Checklist da equipe", "rows", 6, { cols: [{ k: "etapa", label: "Etapa" }], def: [{ etapa: "" }], ph: "Adicionar etapa" })] },
@@ -346,7 +415,7 @@ const cirurgias: FormDef = {
   sub: "Reserva a sala, monta a equipe e prepara o checklist de cirurgia segura.",
   icon: Scissors,
   color: "#1a2233",
-  submit: "Reservar sala",
+  submit: "Agendar cirurgia",
   sections: [
     { title: "Paciente", fields: [animal(), req(pills("asa", "Classificação ASA", ["I · saudável", "II · doença leve", "III · grave", "IV · risco de vida", "V · moribundo", "E · emergência"])), f("contato", "Contato durante a cirurgia"), pills("rcp", "Autoriza RCP", ["Sim", "Não (DNR)"], 3, { def: "Sim" })] },
     { title: "Cirurgia", fields: [req(sel("name", "Procedimento", ["Castração", "Ovariohisterectomia", "Orquiectomia", "Limpeza dentária", "Retirada de nódulo", "Mastectomia", "Osteossíntese", "Enterotomia", "Cistotomia"], 4)), f("regiao", "Lado / região", "text", 2), pills("carater", "Caráter", ["Eletiva", "Urgência", "Emergência"], 6, { def: "Eletiva" }), f("indicacao", "Indicação / diagnóstico pré-operatório", "textarea", 6), f("associados", "Procedimentos associados"), tog("histopato", "Enviar peça para histopatológico", false, undefined, 3)] },
@@ -400,7 +469,7 @@ const internacoes: FormDef = {
   color: "#2457c5",
   submit: "Internar",
   sections: [
-    { title: "Paciente", fields: [animal(), req(pills("situacao", "Situação", ["Triagem / orçamento", "Internado"], 3, { def: "Internado" })), req(pills("gravidade", "Gravidade", ["Estável", "Atenção", "Crítico"], 3, { def: "Estável" })), pills("tipo", "Tipo", ["Clínica", "Pós-cirúrgica", "UTI", "Isolamento", "Observação < 12 h"], 6, { def: "Clínica" }), pro(), req(f("date", "Entrada", "date", 2, { def: today })), f("time", "Hora", "time", 1, { def: "08:00" }), f("altaPrevista", "Alta prevista", "date", 3), sel("origem", "Origem", ["Consulta", "Emergência", "Pós-cirúrgico", "Transferência externa"])] },
+    { title: "Paciente", fields: [animal(), req(pills("situacao", "Situação", ["Triagem / orçamento", "Internado"], 3, { def: "Internado" })), req(pills("gravidade", "Gravidade", ["Estável", "Atenção", "Crítico"], 3, { def: "Estável" })), pills("tipo", "Tipo", ["Clínica", "Pós-cirúrgica", "UTI", "Isolamento", "Observação < 12 h"], 6, { def: "Clínica" }), pro(), req(f("date", "Entrada", "date", 2, { def: today })), f("time", "Hora", "time", 1, { def: nowHM }), f("altaPrevista", "Alta prevista", "date", 3), sel("origem", "Origem", ["Consulta", "Emergência", "Pós-cirúrgico", "Transferência externa"])] },
     { title: "Baia", desc: "livres conforme o mapa de leitos", fields: [sel("box", "Baia", (ctx) => { const { map } = bedAssignments(ctx.data.internacoes, ctx.data.animais); return bedLayout.flatMap((room) => room.beds.filter((bed) => !map.has(bed)).map((bed) => [bed, `${room.room} · ${bed}`] as [string, string])) }, 6, { ph: "Escolher depois (fila de espera)" })] },
     { title: "Quadro clínico", fields: [req(sel("name", "Motivo", ["Observação clínica", "Pós-operatório", "Fluidoterapia", "UTI e monitoramento"])), pills("prognostico", "Prognóstico", ["Favorável", "Reservado", "Desfavorável"], 3), req(f("queixa", "Queixa / motivo da internação", "textarea", 6)), f("diagnostico", "Diagnóstico / suspeita", "text", 6), multi("condicoes", "Alergias e condições", ["Alérgico", "Cardiopata", "Diabético", "Sênior", "Nefropata", "Infectocontagioso"]), sel("dieta", "Dieta", ["Ração habitual", "Hipossódica", "Pastosa", "Jejum", "Sonda"]), f("restricoes", "Restrições")] },
     { title: "Monitorização", fields: [f("parametros", "Parâmetros a monitorar", "rows", 6, { cols: [{ k: "parametro", label: "Parâmetro" }, { k: "intervalo", label: "A cada" }, { k: "alerta", label: "Alertar se" }], def: [{ parametro: "FC", intervalo: "2 h", alerta: "> 160 bpm" }, { parametro: "Temperatura", intervalo: "4 h", alerta: "> 39,5 °C" }, { parametro: "Dor", intervalo: "4 h", alerta: "≥ 4/10" }] })] },
@@ -408,18 +477,29 @@ const internacoes: FormDef = {
     { title: "Pertences", fields: [multi("pertences", "Pertences recebidos", ["Coleira", "Guia", "Caixa de transporte", "Roupa", "Ração própria", "Cobertor", "Brinquedo", "Medicação própria"]), f("obsPertences", "Observações", "text", 6)] },
     { title: "Tutor e custos", fields: [pills("rcp", "Autoriza RCP", ["Sim", "Não"], 3, { def: "Sim" }), pills("semAviso", "Procedimentos de urgência", ["Pode fazer", "Ligar antes"], 3, { def: "Ligar antes" }), f("diaria", "Diária", "money", 2), f("caucao", "Caução", "money", 2), sel("convenio", "Convênio", (ctx) => ["Particular", ...ctx.data.convenios.slice(0, 8).map((item) => item.name)], 2), sel("boletim", "Boletim ao tutor", ["2x ao dia · WhatsApp", "1x ao dia", "Só por telefone"], 3, { def: "2x ao dia · WhatsApp" }), sel("visitas", "Visitas", ["15h–16h · 20 min", "Não permitidas"], 3), tog("termo", "Gerar termo de internação para assinatura", true)] },
   ],
+  validate: (values, ctx) => {
+    if (values.altaPrevista && values.date && values.altaPrevista < values.date) return "A alta prevista não pode ser antes da data de entrada."
+    const sp = speciesOf(ctx, values)
+    const room = bedLayout.find((r) => r.beds.includes(values.box))?.room
+    if (room === "Gatil" && sp && !isCat(sp) && !window.confirm(`A baia ${values.box} fica no Gatil, mas o paciente é ${sp}. Internar mesmo assim?`)) return "Escolha uma baia da ala adequada à espécie."
+    if (room === "Canil" && isCat(sp) && !window.confirm(`A baia ${values.box} fica no Canil, mas o paciente é gato. Internar mesmo assim?`)) return "Escolha uma baia da ala adequada à espécie."
+    if (values.box) { const { map } = bedAssignments(ctx.data.internacoes, ctx.data.animais); const occ = map.get(values.box); if (occ) return `A baia ${values.box} está ocupada por ${occ.animal || "outro paciente"}.` }
+  },
   fromItem: (item) => ({ situacao: item.status === "Em observação" ? "Triagem / orçamento" : "Internado", gravidade: item.urgency ? "Crítico" : "Estável", queixa: item.notes || "" }),
   toItem: (values) => ({ name: values.name, status: values.situacao === "Internado" ? "Em andamento" : "Em observação", category: values.tipo, urgency: values.gravidade === "Crítico", amountValue: parseMoney(values.caucao), notes: values.queixa }),
   after: (saved, values, ctx, isNew) => {
     if (!isNew) return
-    if (values.termo) ctx.addItem("documentos", { name: "Contrato de internação", animalId: saved.animalId, professionalId: saved.professionalId, professional: saved.professional, status: "Pendente", category: "Clínicos", extra: { gaveta: "Clínicos" } })
+    /* B-01: fixa a baia de quem já estava internado, para ninguém "pular" de baia */
+    const { map } = bedAssignments(ctx.data.internacoes.filter((i) => i.id !== saved.id), ctx.data.animais)
+    map.forEach((item, bed) => { if (!item.extra?.box) ctx.updateItem("internacoes", item.id, { extra: { ...(item.extra || {}), box: bed } }) })
+    if (values.termo) ctx.addItem("documentos", { name: "Contrato de internação", animalId: saved.animalId, professionalId: saved.professionalId, professional: saved.professional, status: "Pendente", category: "Clínicos", extra: { gaveta: "Clínicos", internacaoId: saved.id } })
     if (saved.animalId) ctx.updateItem("animais", saved.animalId, { status: "Internado" })
   },
 }
 
 const protocolos: FormDef = {
   slug: "protocolos",
-  title: "Novo caminho clínico",
+  title: "Novo protocolo",
   sub: "Monte o fluxograma etapa por etapa; decisões abrem ramos.",
   icon: BookOpen,
   color: "#6d4bc2",
@@ -437,40 +517,48 @@ const protocolos: FormDef = {
 
 const servicos: FormDef = {
   slug: "servicos",
-  title: "Novo item no cardápio",
+  title: "Novo serviço",
   sub: "Serviço com descrição para o tutor, preço por porte, agenda e regras de execução.",
   icon: ShoppingBag,
   color: "#b9500a",
-  submit: "Publicar no cardápio",
+  submit: "Salvar serviço",
   sections: [
     { title: "Cardápio", fields: [req(f("name", "Nome", "text", 4)), f("codigo", "Código", "text", 2), req(sel("secao", "Seção do cardápio", ["Consultas", "Vacinas", "Exames", "Estética", "Cirurgias", "Hospedagem", "Leva e traz", "Outros"])), pills("area", "Área", ["Clínica", "Estética", "Pet shop"], 3, { def: "Clínica" }), f("descCurta", "Descrição curta (itálico no cardápio)", "text", 6), f("descricao", "Descrição completa para o tutor", "textarea", 6)] },
     { title: "Preço", fields: [pills("modelo", "Modelo", ["Único", "Por porte", "Por espécie"], 6, { def: "Único" }), req(f("preco", "Preço base", "money", 2)), ...(["P", "M", "G", "GG", "Gato"].map((porte) => f(`preco${porte}`, `Porte ${porte}`, "money", 1, { show: (values: Values) => values.modelo !== "Único" }))), f("custo", "Custo estimado", "money", 2), f("comissao", "Comissão (%)", "number", 2), f("promo", "Preço promocional", "money", 2), f("promoAte", "Promoção até", "date", 2), tog("combo", "Destacar como combo do mês", false, undefined, 6), tog("exibir", "Exibir preço no cardápio", true, undefined, 3), tog("alterar", "Permitir alterar na venda", false, undefined, 3)] },
     { title: "Agenda", fields: [tog("agendavel", "Pode ser agendado", true), sel("duracao", "Duração padrão", ["15 min", "30 min", "45 min", "60 min", "90 min"], 2, { def: "30 min" }), sel("recorrencia", "Recorrência sugerida", ["Não repete", "A cada 15 dias", "Mensal", "Anual"], 2, { def: "Não repete" }), f("capacidade", "Capacidade simultânea", "number", 2), tog("lembrete", "Lembrete automático 24 h antes", true), tog("online", "Agendável online pelo tutor", true)] },
     { title: "Execução", fields: [multi("executores", "Quem executa", ["Veterinário", "Auxiliar", "Banho e tosa"], 6, { def: ["Veterinário"] }), f("insumos", "Insumos consumidos", "rows", 6, { cols: [{ k: "produto", label: "Produto", w: "2fr" }, { k: "qtd", label: "Qtd", t: "number" }, { k: "un", label: "Un." }], ph: "Adicionar insumo" }), tog("fichaSaude", "Exige ficha de saúde (vacinas e pulgas)")] },
     { title: "Pacotes e convênios", fields: [tog("pacote", "Pode compor pacotes", true), multi("convenios", "Convênios que cobrem", (ctx) => ctx.data.convenios.slice(0, 6).map((item) => item.name)), multi("unidades", "Unidades que oferecem", unitNames)] },
-    { title: "Fiscal", desc: "NFS-e", fields: [sel("lc116", "Item da lista (LC 116)", ["5.01 · medicina veterinária", "5.02 · hospitais/clínicas veterinárias", "5.08 · guarda, banho e tosa"], 4, { def: "5.01 · medicina veterinária" }), f("iss", "Alíquota ISS (%)", "number", 2, { def: "5" }), f("cnae", "CNAE", "text", 3, { def: "7500-1/00" }), tog("nfse", "Emitir NFS-e automática", true, undefined, 3)] },
+    { title: "Fiscal", desc: "NFS-e", fields: [sel("lc116", "Item da lista (LC 116)", ["5.01 · medicina veterinária", "5.02 · hospitais/clínicas veterinárias", "5.08 · guarda, banho e tosa"], 4, { def: "5.01 · medicina veterinária" }), f("iss", "Alíquota ISS (%)", "number", 2, { def: "5" }), f("cnae", "CNAE", "text", 3, { def: "7500-1/00" }), { ...f("nfseAviso", "", "info", 6), small: "Emissão de NFS-e e combos automáticos: em breve (integração com a prefeitura ainda não ativa)." }] },
   ],
   fromItem: (item) => ({ preco: item.amountValue ? brl(item.amountValue) : "" }),
+  validate: (values) => (moneyNegative(values.preco, values.custo, values.promo, values.precoP, values.precoM, values.precoG, values.precoGG, values.precoGato) ? "Preços e custos não podem ser negativos." : undefined),
   toItem: (values) => ({ name: values.name, amountValue: parseMoney(values.preco), status: "Ativo", category: values.secao, subtitle: `${brl(parseMoney(values.preco))} • ${values.duracao || "30 min"}` }),
 }
 
 const estoque: FormDef = {
   slug: "estoque",
-  title: "Nova caixa no almoxarifado",
+  title: "Novo item de estoque",
   sub: "Cadastra um item de estoque com corredor, mínimo, lote e validade.",
   icon: PackagePlus,
   color: "#8a6a4a",
-  submit: "Guardar no corredor",
+  submit: "Salvar item",
   sections: [
-    { title: "Item", fields: [req(f("name", "Nome", "text", 4)), f("sku", "SKU", "text", 2), req(sel("category", "Categoria", ["Vacinas", "Medicamentos", "Materiais"], 2)), sel("corredor", "Corredor", ["A", "B", "C", "D"], 2, { def: "A" }), sel("unidadeMedida", "Unidade", ["un", "cx", "frasco", "bolsa", "L", "kg"], 2, { def: "un" })] },
+    { title: "Item", fields: [req(f("name", "Nome", "text", 4)), f("sku", "SKU", "text", 2), req(sel("category", "Categoria", ["Vacinas", "Medicamentos", "Materiais", "Rações", "Petiscos", "Coleiras e guias", "Higiene", "Brinquedos", "Camas", "Acessórios"], 2)), f("preco", "Preço de venda", "money", 2), sel("unidadeMedida", "Unidade", ["un", "cx", "frasco", "bolsa", "L", "kg"], 2, { def: "un" })] },
     { title: "Quantidades", fields: [req(f("quantity", "Quantidade atual", "number", 2)), req(f("minimum", "Mínimo", "number", 2)), f("maximo", "Máximo", "number", 2), f("lote", "Lote", "text", 2), f("dueDate", "Validade", "date", 2), f("custo", "Custo unitário", "money", 2), f("fornecedor", "Fornecedor", "text", 6)] },
   ],
-  fromItem: (item) => ({ quantity: String(item.quantity ?? ""), minimum: String(item.minimum ?? ""), dueDate: item.dueDate || "", custo: item.quantity ? brl((item.amountValue || 0) / Math.max(1, item.quantity)) : "" }),
+  fromItem: (item) => ({ quantity: String(item.quantity ?? ""), minimum: String(item.minimum ?? ""), dueDate: item.dueDate || "", custo: item.extra?.custo ? brl(Number(item.extra.custo)) : item.quantity ? brl((item.amountValue || 0) / Math.max(1, item.quantity)) : "", preco: item.extra?.preco ? brl(Number(item.extra.preco)) : "" }),
+  validate: (values) => {
+    const q = num(values.quantity), mn = num(values.minimum), mx = values.maximo ? num(values.maximo) : NaN
+    if (Number.isNaN(q) || q < 0) return "A quantidade não pode ser negativa."
+    if (Number.isNaN(mn) || mn < 0) return "O mínimo não pode ser negativo."
+    if (!Number.isNaN(mx) && mx < mn) return "O máximo precisa ser maior ou igual ao mínimo."
+    if (moneyNegative(values.custo, values.preco)) return "Custo e preço não podem ser negativos."
+  },
   toItem: (values) => {
     const quantity = Number(values.quantity || 0)
     const minimum = Number(values.minimum || 0)
     const expired = values.dueDate && values.dueDate < todayISO()
-    return { name: values.name, category: values.category, quantity, minimum, dueDate: values.dueDate, amountValue: quantity * parseMoney(values.custo), subtitle: `${quantity} ${values.unidadeMedida || "un"}. • mínimo ${minimum}`, status: quantity < minimum ? "Abaixo do mínimo" : expired ? "Vencido" : "Disponível" }
+    return { name: values.name, category: values.category, quantity, minimum, dueDate: values.dueDate, amountValue: quantity * parseMoney(values.custo), extra: { custo: parseMoney(values.custo) || undefined, preco: parseMoney(values.preco) || undefined }, subtitle: `${quantity} ${values.unidadeMedida || "un"}. • mínimo ${minimum}`, status: quantity < minimum ? "Abaixo do mínimo" : expired ? "Vencido" : "Disponível" }
   },
 }
 
@@ -483,13 +571,21 @@ const entradaNota: FormDef = {
   submit: "Dar entrada",
   footer: (values) => `${(values.itens || []).filter((row: Values) => row.produto).length} item(ns) · ${brl((values.itens || []).reduce((sum: number, row: Values) => sum + Number(row.qtd || 0) * parseMoney(row.custo), 0) + parseMoney(values.frete) - parseMoney(values.desconto) + parseMoney(values.impostos))}`,
   sections: [
-    { title: "Origem", fields: [f("xml", "XML da NF-e", "file", 6, { ph: "Solte o XML aqui ou clique para escolher" }), f("chave", "Chave de acesso", "text", 6, { ph: "44 dígitos" })] },
+    { title: "Origem", fields: [f("chave", "Chave de acesso", "text", 6, { ph: "44 dígitos (opcional)" }), { ...f("xmlAviso", "", "info", 6), small: "Importação automática do XML da NF-e: em breve. Por enquanto, digite os itens abaixo." }] },
     { title: "Nota fiscal", fields: [req(f("fornecedor", "Fornecedor", "text", 4)), f("cnpj", "CNPJ", "text", 2), req(f("numero", "Número NF", "text", 2)), f("serie", "Série", "text", 1, { def: "1" }), f("cfop", "CFOP", "text", 3, { def: "1.102" }), f("emissao", "Emissão", "date", 3, { def: today }), req(f("date", "Entrada", "date", 3, { def: today }))] },
     { title: "Itens", desc: "cada item abastece a caixa do mesmo nome", fields: [{ ...f("itens", "Itens da nota", "rows", 6, { cols: [{ k: "produto", label: "Produto", w: "1.6fr" }, { k: "qtd", label: "Qtd", t: "number" }, { k: "lote", label: "Lote" }, { k: "validade", label: "Validade", t: "date" }, { k: "custo", label: "Custo un." }], def: [{ produto: "", qtd: "", lote: "", validade: "", custo: "" }], ph: "Adicionar item" }), req: true }, f("dica", "", "info", 6, { small: "Produto que não existir no estoque vira uma caixa nova no corredor C." })] },
     { title: "Totais", fields: [f("frete", "Frete", "money", 2), f("desconto", "Desconto", "money", 2), f("impostos", "Impostos (ST/IPI)", "money", 2), pills("rateio", "Rateio de frete e impostos no custo", ["Proporcional ao valor", "Por quantidade", "Não ratear"], 6, { def: "Proporcional ao valor" })] },
     { title: "Contas a pagar", fields: [tog("gerar", "Gerar lançamento no financeiro", true), sel("forma", "Forma de pagamento", ["Boleto", "Pix", "Transferência", "Cartão corporativo"], 2, { def: "Boleto" }), sel("parcelas", "Parcelas", ["1x", "2x", "3x"], 2, { def: "1x" }), f("vencimento", "1º vencimento", "date", 2, { def: () => addDays(todayISO(), 30) })] },
     { title: "Conferência", fields: [tog("custoMedio", "Atualizar custo médio dos itens", true), tog("etiquetas", "Imprimir etiquetas das caixas", false), f("conferidoPor", "Recebido e conferido por", "text", 6)] },
   ],
+  validate: (values) => {
+    if (values.cnpj && !validCnpj(values.cnpj)) return "CNPJ do fornecedor inválido. Confira os 14 dígitos."
+    if (values.chave && String(values.chave).replace(/\D/g, "").length !== 44) return "A chave de acesso da NF-e tem 44 dígitos."
+    const rows = (values.itens || []).filter((r: Values) => r.produto)
+    if (rows.some((r: Values) => !(num(r.qtd) > 0))) return "A quantidade de cada item precisa ser maior que zero."
+    if (rows.some((r: Values) => r.validade && r.validade <= todayISO())) return "Há item com validade vencida ou de hoje. Confira o lote."
+    if (moneyNegative(values.frete, values.desconto, values.impostos, ...rows.map((r: Values) => r.custo))) return "Valores não podem ser negativos."
+  },
   toItem: (values) => {
     const total = (values.itens || []).reduce((sum: number, row: Values) => sum + Number(row.qtd || 0) * parseMoney(row.custo), 0) + parseMoney(values.frete) - parseMoney(values.desconto) + parseMoney(values.impostos)
     return { name: `NF ${values.numero} • ${values.fornecedor}`, subtitle: `Compra de estoque • ${(values.itens || []).length} itens`, category: "Despesa", kind: "Despesa", status: "A pagar", amountValue: total, dueDate: values.vencimento }
@@ -509,7 +605,7 @@ const financeiro: FormDef = {
   sub: "Entrada, saída ou transferência — vira uma linha no extrato.",
   icon: CircleDollarSign,
   color: "#2b7a4b",
-  submit: "Lançar",
+  submit: "Salvar lançamento",
   sections: [
     { title: "Tipo e valor", fields: [req(pills("tipo", "Tipo", ["Receita", "Despesa", "Transferência"], 6, { def: "Receita" })), req(f("valor", "Valor", "money", 2)), req(f("name", "Descrição", "text", 4))] },
     { title: "Classificação", fields: [sel("categoriaConta", "Categoria", (_ctx, values) => values.tipo === "Despesa" ? ["Despesas fixas", "Pessoal", "Compras / insumos", "Impostos", "Marketing", "Manutenção"] : ["Atendimentos", "Vendas de produtos", "Convênios", "Outras receitas"]), f("subcategoria", "Subcategoria"), sel("centro", "Centro de custo", ["Operação", "Centro cirúrgico", "Internação", "Estética", "Rede"]), f("competencia", "Competência", "text", 3, { ph: "MM/AAAA" }), f("contraparte", "Cliente / fornecedor"), sel("vinculo", "Vincular a", ["—", "Atendimento / venda", "Nota de entrada", "Convênio (repasse)"])] },
@@ -517,6 +613,7 @@ const financeiro: FormDef = {
     { title: "Recorrência", fields: [tog("repetir", "Repetir este lançamento"), sel("frequencia", "Frequência", ["Mensal", "Semanal", "Anual"], 3, { def: "Mensal", show: (values: Values) => values.repetir }), sel("vezes", "Quantas vezes", ["2", "3", "6", "12"], 3, { def: "3", show: (values: Values) => values.repetir })] },
     { title: "Documentos", fields: [f("documento", "Nº do documento"), f("codigo", "Código de barras / Pix"), f("comprovante", "Comprovante", "file", 6), tog("nfse", "Emitir NFS-e (receitas)", false, undefined, 3), tog("conciliado", "Conciliado com o extrato", false, undefined, 3), f("notes", "Observações", "textarea", 6)] },
   ],
+  validate: (values) => (parseMoney(values.valor) <= 0 ? "O valor precisa ser maior que zero." : moneyNegative(values.juros, values.descontoValor) ? "Juros e desconto não podem ser negativos." : undefined),
   fromItem: (item) => ({ tipo: item.category === "Despesa" ? "Despesa" : "Receita", valor: item.amountValue ? brl(item.amountValue) : "", situacao: /pago|recebido/i.test(item.status) ? "Pago / recebido" : /vencido/i.test(item.status) ? "Vencido" : "Pendente" }),
   toItem: (values) => {
     const despesa = values.tipo === "Despesa"
@@ -531,7 +628,7 @@ const financeiro: FormDef = {
       if (values.frequencia === "Semanal") date.setDate(date.getDate() + 7 * index)
       else if (values.frequencia === "Anual") date.setFullYear(date.getFullYear() + index)
       else date.setMonth(date.getMonth() + index)
-      ctx.addItem("financeiro", { ...withoutId(saved), date: date.toISOString().slice(0, 10), status: saved.category === "Despesa" ? "A pagar" : "A receber", name: `${saved.name} (${index + 1}/${times})` } as Partial<Item>)
+      ctx.addItem("financeiro", { ...withoutId(saved), date: localISO(date), status: saved.category === "Despesa" ? "A pagar" : "A receber", name: `${saved.name} (${index + 1}/${times})` } as Partial<Item>)
     }
   },
 }
@@ -542,7 +639,7 @@ const convenios: FormDef = {
   sub: "Adiciona um cartão à wallet: operadora, contrato, coberturas e faturamento.",
   icon: ShieldCheck,
   color: "#2457c5",
-  submit: "Adicionar à wallet",
+  submit: "Salvar convênio",
   sections: [
     { title: "Operadora", fields: [req(f("name", "Nome fantasia")), f("razao", "Razão social"), f("cnpj", "CNPJ"), sel("tipo", "Tipo", ["Plano de saúde pet", "Seguro pet", "Plano próprio da clínica", "Empresa parceira / benefício"]), f("contato", "Contato comercial", "text", 2), f("telefone", "Telefone", "tel", 2), f("email", "E-mail", "email", 2), f("portal", "Portal de autorizações", "text", 6, { ph: "https://" }), f("cor", "Cor do cartão", "color", 6, { opts: colors, def: "#0f766e" })] },
     { title: "Contrato", fields: [f("numero", "Nº do contrato", "text", 2), f("inicio", "Início", "date", 2, { def: today }), f("fim", "Fim", "date", 2), sel("reajuste", "Reajuste", ["Anual · IPCA", "Anual · IGP-M", "Negociado"]), tog("renovacao", "Renovação automática", true, undefined, 3), f("contrato", "Contrato assinado", "file", 6)] },
@@ -560,7 +657,7 @@ const unidades: FormDef = {
   sub: "Finca um pino novo no mapa: dados legais, endereço, horário e estrutura.",
   icon: Building2,
   color: "#0f766e",
-  submit: "Fincar no mapa",
+  submit: "Salvar unidade",
   sections: [
     { title: "Identificação", fields: [req(f("name", "Nome da unidade", "text", 4, { ph: "Unidade - Nome" })), f("sigla", "Sigla no pino", "text", 2), pills("tipo", "Tipo", ["Matriz", "Filial", "Ponto de coleta", "Hospital 24 h"], 6, { def: "Filial" }), req(f("cnpj", "CNPJ")), f("razao", "Razão social"), f("ie", "Inscrição estadual", "text", 2), f("im", "Inscrição municipal", "text", 2), f("crmvPj", "Registro CRMV (PJ)", "text", 2), sel("responsible", "Responsável técnico", proNames), f("alvara", "Alvará / licença sanitária")] },
     { title: "Endereço", fields: [req(f("cep", "CEP", "text", 2)), req(f("street", "Logradouro", "text", 4)), req(f("number", "Nº", "text", 1)), f("complemento", "Complemento", "text", 2), req(f("neighborhood", "Bairro")), req(f("city", "Cidade", "text", 4)), req(f("state", "UF", "text", 2)), f("referencia", "Ponto de referência", "text", 6)] },
@@ -588,7 +685,7 @@ const teleatendimentos: FormDef = {
   sub: "Agenda a chamada, gera o link da sala e envia termo e pagamento ao tutor.",
   icon: Video,
   color: "#2f78bf",
-  submit: "Agendar e enviar link",
+  submit: "Agendar teleatendimento",
   sections: [
     { title: "Paciente", fields: [animal(), f("contato", "Enviar link para (WhatsApp)", "tel"), f("email", "E-mail", "email")] },
     { title: "Modalidade", fields: [req(pills("modalidade", "Modalidade", ["Teleconsulta", "Teleorientação", "Telemonitoramento", "Teleinterconsulta"], 6, { def: "Teleconsulta" })), req(sel("name", "Tipo de atendimento", ["Retorno remoto", "Orientação pós-operatória", "Avaliação de exames", "Triagem remota"])), f("vinculoAviso", "", "info", 6, { small: "Teleconsulta só para pacientes com atendimento presencial recente — confira o histórico antes de liberar a sala." })] },
@@ -642,7 +739,7 @@ const publicacoes: FormDef = {
   sub: "Monte o post, confirme a autorização de imagem e pendure no varal da semana.",
   icon: Sparkles,
   color: "#b4325e",
-  submit: "Agendar post",
+  submit: "Salvar post",
   sections: [
     { title: "Formato", fields: [req(pills("formato", "Formato", ["Post", "Carrossel", "Stories", "Reels", "Perfil no Google"], 6, { def: "Post" }))] },
     { title: "Mídia", fields: [f("midia", "Fotos e vídeos", "file", 6), pills("modeloArte", "Modelo de arte", ["Campanha laranja", "Dica rápida", "Antes e depois", "Conheça a equipe"], 6, { def: "Campanha laranja" }), f("textoImagem", "Texto sobre a imagem", "text", 6), f("alt", "Texto alternativo (acessibilidade)", "text", 6)] },
@@ -661,7 +758,7 @@ const documentos: FormDef = {
   sub: "Gera a partir de um modelo, coleta assinaturas e arquiva na gaveta certa.",
   icon: Archive,
   color: "#6b4a26",
-  submit: "Enviar para assinar",
+  submit: "Salvar documento",
   sections: [
     { title: "Tipo", fields: [req(pills("name", "Tipo", ["Termo de consentimento", "Laudo laboratorial", "Autorização cirúrgica", "Contrato de internação", "Atestado de saúde", "Atestado de vacinação", "Autorização de eutanásia", "Declaração", "Encaminhamento"])), pills("origem", "Começar de", ["Modelo da clínica", "Em branco", "PDF pronto"], 6, { def: "Modelo da clínica" })] },
     { title: "Vínculos", fields: [animal(), pro(), f("evento", "Evento", "text", 3, { ph: "Cirurgia, internação, consulta…" })] },
@@ -679,7 +776,7 @@ const ocorrencias: FormDef = {
   sub: "Vira um post-it no mural e só sai de lá quando alguém resolver e registrar a causa.",
   icon: AlertTriangle,
   color: "#d9a514",
-  submit: "Pregar no mural",
+  submit: "Salvar ocorrência",
   sections: [
     { title: "O que houve", fields: [req(f("name", "Título (vira o post-it)", "text", 6)), f("descricao", "Descrição", "textarea", 6), req(pills("tipo", "Categoria", ["Equipamento", "Paciente / clínico", "Atendimento / tutor", "Estrutura predial", "Financeiro", "TI / sistema", "Biossegurança", "Equipe"])), req(pills("gravidade", "Gravidade", ["Baixa", "Média", "Alta", "Crítica"], 6, { def: "Média" }))] },
     { title: "Onde e quando", fields: [sel("setor", "Setor", ["Recepção", "Consultórios", "Centro cirúrgico", "Internação", "Laboratório", "Farmácia", "Banho e tosa"]), req(f("date", "Data", "date", 2, { def: today })), f("time", "Hora", "time", 1), f("equipamento", "Equipamento / patrimônio", "text", 6), { ...animal("Paciente envolvido (opcional)", false) }] },
@@ -695,11 +792,11 @@ const ocorrencias: FormDef = {
 
 const usuarios: FormDef = {
   slug: "usuarios",
-  title: "Fazer nova chave",
+  title: "Novo usuário",
   sub: "Cria o acesso: quem é, que papel tem, quais portas abre e com que segurança.",
   icon: KeyRound,
   color: "#c98a1b",
-  submit: "Fazer a chave e convidar",
+  submit: "Salvar usuário",
   sections: [
     { title: "Pessoa", fields: [{ ...pro("Vincular a um profissional (opcional)", false, "professionalId", 6) }, req(f("name", "Nome", "text", 6)), req(f("email", "E-mail de acesso", "email")), f("phone", "Celular (2FA)", "tel")] },
     { title: "Papel", fields: [req(pills("papel", "Papel (cor da chave)", ["Administrador", "Veterinário", "Enfermagem / auxiliar", "Recepção", "Financeiro", "Personalizado"])), multi("unidades", "Unidades", unitNames, 6, { def: [] })] },

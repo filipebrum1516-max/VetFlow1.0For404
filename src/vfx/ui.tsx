@@ -168,6 +168,45 @@ export function useToast() {
 /* ---------------- página ---------------- */
 export type Blob = [string, number | string, number | string, number, number]
 
+/** N-12: ajuda curta de cada tela (botão "?" ao lado do título). */
+const HELP: Record<string, string> = {
+  Dashboard: "Resumo do dia: compromissos em ordem de horário, receita recebida, leitos ocupados e pendências. Clique em qualquer número para abrir a tela correspondente.",
+  Consultas: "Fila do dia: arraste o cartão entre as colunas ou use a seta. “Chamar próxima” leva direto ao consultório quem tem prioridade. Em Histórico ficam todas as consultas.",
+  Vacinas: "Abra a carteirinha de um paciente pela busca. Registre a aplicação escolhendo o lote do estoque; a próxima dose entra no radar de atrasadas e a vencer.",
+  Exames: "Cada tubo é um pedido. Avance: amostra colhida → lançar resultado (formulário do tipo de exame) → assinar laudo. Sem resultado o exame não é concluído.",
+  Prescrições: "Escolha um canhoto para ver a receita. Controle especial exige CPF e endereço do tutor e duas vias. A assinatura é um registro interno.",
+  Procedimentos: "Catálogo de procedimentos com categoria, duração e preço. Use “Visual” para ver em cartas.",
+  Protocolos: "Protocolos são roteiros clínicos da equipe. Para aplicar a um paciente, escolha o protocolo e clique em “Aplicar a um paciente”: ele entra em uso para aquele animal e gera a prescrição.",
+  Internações: "Mapa dos leitos e fila de espera. Registre sinais vitais, medicações e dê alta pela janela de alta (motivo e orientações obrigatórios).",
+  Cirurgias: "Salas do dia com o checklist de cirurgia segura. Inicie, acompanhe as fases e encaminhe para a internação pós-cirúrgica.",
+  Financeiro: "Entradas e saídas, contas a receber e a pagar. Lançamentos não são apagados: use Estornar com o motivo.",
+  Caixa: "Abra o caixa com o troco, receba as vendas da fila e feche conferindo cada forma de pagamento.",
+  Entregas: "Pedidos para entregar: atribua o entregador, monte a rota e confirme a entrega. “Pendentes” não inclui as já entregues.",
+  Estoque: "Itens, lotes e validades. A venda paga e a vacina aplicada dão baixa automática; a entrada de nota soma ao estoque.",
+  Ocorrências: "Mural de problemas. Para mover para Resolvida, informe a causa e a solução.",
+  Relatórios: "Escolha um relatório, ajuste o período e os filtros e exporte em CSV (padrão brasileiro) ou imprima com o período no cabeçalho.",
+  Comunicação: "Conversas e lembretes com os tutores. O envio por WhatsApp, e-mail e SMS é simulado nesta versão.",
+  Publicações: "Posts da clínica. Alterne entre o varal, a lista e o calendário.",
+  Documentos: "Termos e contratos gerados a partir de modelos. “Marcar assinado” é um registro interno, sem certificado digital.",
+  Medicamentos: "Medicamentos do estoque. A quantidade é a mesma da tela Estoque (soma dos lotes); para dar entrada use “Entrada de nota”.",
+  Serviços: "Tabela de serviços com preço e duração, usada na agenda e no balcão. Emissão de NFS-e ainda não está disponível.",
+  Convênios: "Planos aceitos pela clínica, com cobertura e situação. Cada convênio aparece uma vez.",
+  Profissionais: "Equipe clínica com registro no CRMV e especialidade. A especialidade é a mesma mostrada na agenda.",
+  Teleatendimentos: "Consultas por vídeo. “Ao vivo” só aparece quando a chamada foi iniciada ou está no horário. A videochamada é simulada nesta versão.",
+  "Usuários e acessos": "Contas de quem usa o sistema. Ao criar ou redefinir, o sistema gera uma senha provisória mostrada uma única vez; no primeiro acesso a pessoa cria a própria senha.",
+  Configurações: "Tema, fuso, unidade padrão, cópia de segurança dos dados e, para administradores, o registro de auditoria.",
+}
+
+function PageHelp({ text }: { text: string }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <span className="vx-help">
+      <button type="button" className="vx-help-btn" aria-label="Ajuda desta tela" aria-expanded={open} onClick={() => setOpen(!open)}>?</button>
+      {open && <span className="vx-help-pop" role="note">{text}<button type="button" aria-label="Fechar ajuda" onClick={() => setOpen(false)}>×</button></span>}
+    </span>
+  )
+}
+
 export function Page({
   bg,
   bgDark,
@@ -215,7 +254,7 @@ export function Page({
           <div className="vx-crumb">
             <b>Vetflow</b> / {crumb}
           </div>
-          <h1 className="vx-h1">{title}</h1>
+          <h1 className="vx-h1">{title}{typeof crumb === "string" && HELP[crumb.split(" · ")[0]] && <PageHelp text={HELP[crumb.split(" · ")[0]]} />}</h1>
           {sub && <p className="vx-sub">{sub}</p>}
         </div>
         {actions && <div className="vx-actions">{actions}</div>}
@@ -347,9 +386,25 @@ export function Modal({
   onClose: () => void
   actions?: ReactNode
 }) {
+  const boxRef = useRef<HTMLDivElement>(null)
+  // A-06: o foco entra na janela, fica preso nela com Tab e volta ao botão de origem ao fechar.
+  useEffect(() => {
+    const origin = document.activeElement as HTMLElement | null
+    const box = boxRef.current
+    const focusables = () => Array.from(box?.querySelectorAll<HTMLElement>("button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex='-1'])") || [])
+    if (box && !box.contains(document.activeElement)) (focusables()[0] || box).focus()
+    return () => { origin?.focus?.() }
+  }, [])
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose()
+      if (event.key === "Tab" && boxRef.current) {
+        const list = Array.from(boxRef.current.querySelectorAll<HTMLElement>("button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex='-1'])"))
+        if (!list.length) return
+        const first = list[0], last = list[list.length - 1]
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus() }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus() }
+      }
     }
     document.addEventListener("keydown", onKey)
     return () => document.removeEventListener("keydown", onKey)
@@ -357,6 +412,8 @@ export function Modal({
   return createPortal(
     <div className="vx-modal-layer" onMouseDown={onClose}>
       <div
+        ref={boxRef}
+        tabIndex={-1}
         className="vx-modal"
         role="dialog"
         aria-modal="true"
@@ -380,19 +437,30 @@ export function Confirm({
   danger,
   onCancel,
   onConfirm,
+  reason,
 }: {
   title: string
   text: string
   confirm?: string
   danger?: boolean
   onCancel: () => void
-  onConfirm: () => void
+  onConfirm: (reason: string) => void
+  /** Quando informado, exige uma justificativa antes de confirmar. */
+  reason?: string
 }) {
+  const [why, setWhy] = useState("")
+  const blocked = !!reason && why.trim().length < 5
   return (
     <Modal
       title={title}
       text={text}
       onClose={onCancel}
+      children={reason ? (
+        <label className="vx-field" style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 6 }}>
+          <span className="vx-lbl">{reason}</span>
+          <textarea autoFocus rows={3} value={why} onChange={(event) => setWhy(event.target.value)} placeholder="Escreva o motivo (mínimo de 5 letras)" style={{ font: "inherit", padding: 10, borderRadius: 10, border: "1px solid var(--vx-line, #d5d9df)" }} />
+        </label>
+      ) : undefined}
       actions={
         <>
           <button className="vx-btn vx-btn-g" onClick={onCancel} type="button">
@@ -400,7 +468,8 @@ export function Confirm({
           </button>
           <button
             className={`vx-btn ${danger ? "vx-btn-d" : "vx-btn-p"}`}
-            onClick={onConfirm}
+            onClick={() => !blocked && onConfirm(why.trim())}
+            disabled={blocked}
             type="button"
           >
             {confirm}
@@ -436,10 +505,15 @@ export function useQueryParam(name: string) {
 }
 
 export function usePaged<T>(items: T[], perPage: number, reset: unknown[] = []) {
-  const [page, setPage] = useState(1)
+  // N-09: ao voltar de uma ficha, a lista reabre na mesma página.
+  const key = typeof window !== "undefined" ? `vetflow-page:${window.location.pathname}` : ""
+  const [page, setPageRaw] = useState(() => { try { return Number(sessionStorage.getItem(key)) || 1 } catch { return 1 } })
+  const setPage = (value: number) => { setPageRaw(value); try { sessionStorage.setItem(key, String(value)) } catch { /* ok */ } }
   const pages = Math.max(1, Math.ceil(items.length / perPage))
+  const first = useRef(true)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
+    if (first.current) { first.current = false; return }
     setPage(1)
   }, reset)
   useEffect(() => {
@@ -480,27 +554,19 @@ export function moduleLabel(slug: ModuleSlug) {
   return labels[slug] || slug
 }
 
-/* ---------------- assinatura digital no padrão gov.br ---------------- */
-export function GovSign({ name, when, compact }: { name: string; when?: string; compact?: boolean }) {
-  const date = when ? new Date(when.length <= 10 ? `${when}T10:24:31` : when) : new Date()
-  const stamp = `${date.toLocaleDateString("pt-BR")} ${date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}-0300`
-  const line: CSSProperties = { display: "block", fontSize: compact ? 9 : 10, color: "#333", lineHeight: 1.3 }
+/* ---------------- assinatura ----------------
+   Sem integração com certificado ICP-Brasil, o sistema NÃO mostra selo de assinatura digital.
+   Mostra "Assinatura pendente" ou o registro interno de quem marcou como assinado e quando. */
+export function GovSign({ name, when, compact, signed = true, by }: { name: string; when?: string; compact?: boolean; signed?: boolean; by?: string }) {
+  const box: CSSProperties = { display: "inline-flex", flexDirection: "column", gap: 2, padding: compact ? "6px 10px" : "8px 14px", border: `1px dashed ${signed ? "#2b7a4b" : "#c27b0e"}`, borderRadius: 8, background: signed ? "#f0faf4" : "#fff8eb", color: "#1a2233", fontFamily: "Arial, Helvetica, sans-serif", textAlign: "left", maxWidth: "100%", fontSize: compact ? 10 : 11, lineHeight: 1.35 }
+  if (!signed) return <div style={box}><strong style={{ color: "#8a5300" }}>Assinatura pendente</strong><span>{name}</span></div>
+  const date = when ? new Date(when.length <= 10 ? `${when}T12:00:00` : when) : null
   return (
-    <div style={{ display: "inline-flex", alignItems: "center", gap: 10, padding: compact ? "6px 10px" : "8px 14px", border: "1px solid #cfd4dc", borderRadius: 2, background: "#fff", boxShadow: "0 1px 2px rgba(0,0,0,.06)", color: "#1a2233", fontFamily: "Arial, Helvetica, sans-serif", textAlign: "left", maxWidth: "100%" }}>
-      <svg aria-label="gov.br" role="img" viewBox="0 0 96 40" width={compact ? 64 : 82} height={compact ? 27 : 34} style={{ flex: "none" }}>
-        <text x="0" y="29" fontFamily="Arial Black, Arial, Helvetica, sans-serif" fontWeight="900" fontSize="30" letterSpacing="-1.5">
-          <tspan fill="#2670E8">g</tspan>
-          <tspan fill="#FFCD07">o</tspan>
-          <tspan fill="#168821">v</tspan>
-          <tspan fill="#2670E8">.br</tspan>
-        </text>
-      </svg>
-      <span style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
-        <span style={line}>Documento assinado digitalmente</span>
-        <strong style={{ display: "block", fontSize: compact ? 10 : 11, fontWeight: 700, color: "#000", lineHeight: 1.35, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{name.toUpperCase()}</strong>
-        <span style={line}>Data: {stamp}</span>
-        <span style={line}>Verifique em https://validar.iti.gov.br</span>
-      </span>
+    <div style={box}>
+      <strong style={{ color: "#1f6b3f" }}>Marcado como assinado</strong>
+      <span style={{ fontWeight: 700 }}>{name}</span>
+      {date && <span>{date.toLocaleDateString("pt-BR")}{when && when.length > 10 ? ` ${date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}` : ""}{by ? ` · registrado por ${by}` : ""}</span>}
+      <span style={{ color: "#5b6474" }}>Registro interno, sem certificado digital ICP-Brasil</span>
     </div>
   )
 }

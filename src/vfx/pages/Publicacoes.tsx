@@ -66,6 +66,9 @@ export default function Publicacoes() {
     Agendada: data.publicacoes.filter((item) => item.status === "Agendada").length,
     Rascunho: data.publicacoes.filter((item) => item.status === "Rascunho").length,
   }
+  // M-40: além do varal, lista e calendário.
+  const [mode, setMode] = useState<"varal" | "lista" | "calendario">("varal")
+  const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7))
   const reach = (item: Item) => 300 + (hash(item.id) % 2400)
   const likes = (item: Item) => 20 + (hash(item.id) % 340)
 
@@ -89,10 +92,11 @@ export default function Publicacoes() {
       bg="#fbeef2"
       blobs={[["#ffb3c8", -80, -60, 460, 420], ["#ffd39a", "70%", 120, 420, 380], ["#c9b8ff", "40%", "75%", 380, 340]]}
       crumb="Publicações"
-      title="Varal da semana"
-      sub="Cada post é uma polaroid pendurada. Escolha uma para ver no celular, ajustar a legenda e agendar."
+      title="Publicações"
+      sub="Posts das redes sociais da clínica: rascunhos, agendados e publicados. A publicação nas redes é simulada até a integração ser ativada."
       actions={
         <>
+          <Seg label="Visão" options={[["varal", "Varal"], ["lista", "Lista"], ["calendario", "Calendário"]]} value={mode} onChange={(v) => setMode(v as "varal" | "lista" | "calendario")} />
           <Seg options={formats} value={format} onChange={setFormat} />
           <Seg options={["Todos", "Publicada", "Agendada", "Rascunho"]} value={status} onChange={setStatus} />
           <button className="vx-btn vx-btn-p" onClick={() => forms.open()}>
@@ -101,6 +105,52 @@ export default function Publicacoes() {
         </>
       }
     >
+      {mode === "lista" && (
+        <div className="vx-table">
+          <div className="vx-tr vx-th" style={{ gridTemplateColumns: "110px minmax(0,2fr) 110px 120px" }}><span>Data</span><span>Post</span><span>Formato</span><span>Situação</span></div>
+          {[...list].sort((a, b) => itemDate(b).localeCompare(itemDate(a))).map((item) => (
+            <button key={item.id} className="vx-tr" style={{ gridTemplateColumns: "110px minmax(0,2fr) 110px 120px", textAlign: "left", font: "inherit", color: "inherit", border: 0, width: "100%", cursor: "pointer", background: item.id === selected?.id ? "rgba(233,79,23,.08)" : undefined }} onClick={() => setSelectedId(item.id)}>
+              <span className="vx-mono">{fmtDate(itemDate(item))}{item.time ? ` ${item.time}` : ""}</span>
+              <strong>{item.name}</strong>
+              <span>{item.extra?.formato || item.category || "Post"}</span>
+              <span><StatusPill status={item.status} /></span>
+            </button>
+          ))}
+          {!list.length && <div className="vx-empty">Nenhum post neste filtro.</div>}
+        </div>
+      )}
+      {mode === "calendario" && (() => {
+        const [y, m] = month.split("-").map(Number)
+        const first = new Date(y, m - 1, 1)
+        const offset = (first.getDay() + 6) % 7
+        const daysIn = new Date(y, m, 0).getDate()
+        const cells = Array.from({ length: Math.ceil((offset + daysIn) / 7) * 7 }, (_, i) => i - offset + 1)
+        const shift = (n: number) => { const d = new Date(y, m - 1 + n, 1); setMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`) }
+        return (
+          <div className="vx-glass" style={{ padding: 16 }}>
+            <div className="vx-row" style={{ justifyContent: "space-between", marginBottom: 10 }}>
+              <button className="vx-icon-btn" aria-label="Mês anterior" onClick={() => shift(-1)}><ChevronLeft /></button>
+              <strong style={{ textTransform: "capitalize" }}>{first.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}</strong>
+              <button className="vx-icon-btn" aria-label="Próximo mês" onClick={() => shift(1)}><ChevronRight /></button>
+            </div>
+            <div className="vx-pub-cal">
+              {["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"].map((d) => <b key={d}>{d}</b>)}
+              {cells.map((day, i) => {
+                const iso = day > 0 && day <= daysIn ? `${month}-${String(day).padStart(2, "0")}` : ""
+                const posts = iso ? list.filter((item) => itemDate(item) === iso) : []
+                return (
+                  <div key={i} className={iso ? "" : "off"}>
+                    {iso && <small>{day}</small>}
+                    {posts.slice(0, 3).map((item) => <button key={item.id} onClick={() => setSelectedId(item.id)} className={item.status === "Publicada" ? "pub" : item.status === "Agendada" ? "ag" : "ra"} title={`${item.name} · ${item.status}`}>{item.status === "Publicada" ? "✓" : item.status === "Agendada" ? "⏱" : "✎"} {item.name}</button>)}
+                    {posts.length > 3 && <em>+{posts.length - 3}</em>}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })()}
+      {mode === "varal" && (
       <div className="vx-glass vx-varal" style={{ padding: "18px 18px 26px", position: "relative", overflow: "hidden" }}>
         <div className="vx-row" style={{ justifyContent: "space-between", marginBottom: 6, gap: 8, flexWrap: "wrap" }}>
           <span className="vx-lbl">
@@ -142,6 +192,7 @@ export default function Publicacoes() {
           {!visible.length && <div className="vx-empty" style={{ width: "100%" }}>Nenhum post neste filtro.</div>}
         </div>
       </div>
+      )}
 
       {selected && (
         <div className="vx-pub-grid" style={{ display: "grid", gridTemplateColumns: "300px minmax(0,1fr)", gap: 28, marginTop: 22, alignItems: "start" }}>

@@ -1,3 +1,4 @@
+import { localDateTime, localISO } from "../../date"
 import { useMemo, useState } from "react"
 import { useNavigate } from "react-router"
 import { Edit3, Plus, Printer, Send } from "lucide-react"
@@ -10,7 +11,7 @@ const bar: Record<string, string> = { Simples: "#e3dccf", "Controle especial": "
 const typeOf = (item: Item) => item.extra?.tipo || (/(tramadol|gabapent|fenobarb|metadona)/i.test(item.name) ? "Controle especial" : "Simples")
 
 export default function Prescricoes() {
-  const { data, units, activeUnit, addItem, updateItem } = useVetFlow()
+  const { data, units, activeUnit, addItem, updateItem, user } = useVetFlow()
   const navigate = useNavigate()
   const forms = usePageForms("prescricoes", (saved) => setSelectedId(saved.id))
   const [type, setType] = useState("Todas")
@@ -31,11 +32,16 @@ export default function Prescricoes() {
   const sendToTutor = () => {
     if (!selected) return
     addItem("comunicacao", { name: "Receita enviada", animalId: selected.animalId, status: "Enviada", category: "WhatsApp", extra: { mensagem: `Receita de ${selected.animal}: ${rows.map((row) => row.med).join(", ")}` } })
-    forms.toast(`Receita enviada a ${selected.owner} por WhatsApp.`)
+    forms.toast(`Envio simulado: registrado em Comunicação para ${selected.owner}. Nenhuma mensagem real é enviada nesta versão.`)
+  }
+  const markSigned = () => {
+    if (!selected) return
+    updateItem("prescricoes", selected.id, { extra: { ...(selected.extra || {}), assinadoPor: user?.displayName || selected.professional, assinadoEm: new Date().toISOString() } })
+    forms.toast("Receita marcada como assinada (registro interno).")
   }
   const renew = () => {
     if (!selected) return
-    updateItem("prescricoes", selected.id, { status: "Ativa", date: new Date().toISOString().slice(0, 10) })
+    updateItem("prescricoes", selected.id, { status: "Ativa", date: localISO() })
     forms.toast("Receita renovada por mais 30 dias.")
   }
 
@@ -44,14 +50,14 @@ export default function Prescricoes() {
       bg="#f3eee6"
       blobs={[["#e9dcc6", "30%", 160, 520, 520], ["#ffc9a8", -100, -60, 380, 380], ["#b3c9f5", "85%", "70%", 380, 340]]}
       crumb="Prescrições"
-      title="Receituário"
-      sub="Escreva na folha, destaque o canhoto. Cada tipo de receita tem sua cor de papel."
+      title="Prescrições"
+      sub="Receitas emitidas por paciente e tipo (simples, controle especial, manipulação)."
       actions={
         <>
           <SearchBox value={query} onChange={setQuery} placeholder="Buscar paciente ou medicamento" />
           <Seg options={["Todas", "Simples", "Controle especial", "Manipulação"]} value={type} onChange={setType} />
           <button className="vx-btn vx-btn-p" onClick={() => forms.open("prescricoes", undefined, type !== "Todas" ? { tipo: type } : undefined)}>
-            <Plus /> Nova receita
+            <Plus /> Emitir receita
           </button>
         </>
       }
@@ -106,9 +112,9 @@ export default function Prescricoes() {
               </div>
               <div className="vx-row" style={{ marginTop: "auto", justifyContent: "flex-end", alignItems: "flex-end", paddingTop: 30, gap: 12 }}>
                 <div style={{ textAlign: "center" }}>
-                  <GovSign name={(selected.professional || "Médico veterinário").replace(/^Dra?\.\s*/, "")} when={selected.extra?.assinadoEm || selected.createdAt || itemDate(selected)} />
+                  <GovSign name={selected.professional || "Médico veterinário"} signed={!!selected.extra?.assinadoPor} by={selected.extra?.assinadoPor} when={selected.extra?.assinadoEm} />
                   <div style={{ width: 260, maxWidth: "100%", margin: "8px auto 0", borderTop: "1.5px solid #1a2233", paddingTop: 4, fontSize: 11, color: "#5b6474" }}>
-                    {selected.professional} · {professional?.registration || "CRMV"}
+                    {selected.professional} · {professional?.registration || `CRMV-${unit.state || "RO"}`}
                   </div>
                 </div>
               </div>
@@ -134,8 +140,9 @@ export default function Prescricoes() {
             <button className="vx-btn vx-btn-g" onClick={() => window.print()}>
               <Printer /> Imprimir
             </button>
-            <button className="vx-btn vx-btn-p" onClick={sendToTutor}>
-              <Send /> Enviar ao tutor
+            {!selected.extra?.assinadoPor && <button className="vx-btn vx-btn-g" onClick={markSigned}>Marcar como assinada</button>}
+            <button className="vx-btn vx-btn-p" onClick={sendToTutor} title="Simulado: registra o envio em Comunicação">
+              <Send /> Enviar ao tutor (simulado)
             </button>
           </div>
         )}

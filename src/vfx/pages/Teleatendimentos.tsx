@@ -40,7 +40,17 @@ export default function Teleatendimentos() {
   const [filtro, setFiltro] = useState<Filtro>("Próximos")
   const [q, setQ] = useState("")
   const [limit, setLimit] = useState(24)
-  const live = sorted.filter((item) => item.status === "Em andamento")
+  // M-38: "Ao vivo" só quando a chamada foi iniciada há pouco ou está no horário real de hoje.
+  const reallyLive = (item: Item) => {
+    if (item.status !== "Em andamento") return false
+    const started = item.extra?.inicio ? Date.now() - new Date(item.extra.inicio).getTime() : Infinity
+    if (started < 3 * 3600_000) return true
+    if (itemDate(item) !== today || !item.time) return false
+    const [h, m] = item.time.split(":").map(Number)
+    const nowMin = new Date().getHours() * 60 + new Date().getMinutes()
+    return nowMin >= h * 60 + m - 5 && nowMin <= h * 60 + m + (item.duration || 30) + 30
+  }
+  const live = sorted.filter(reallyLive)
   const list = useMemo(() => {
     const nq = normalizeText(q.trim())
     let l = sorted.filter((item) => !nq || normalizeText(`${item.owner} ${item.animal} ${item.name} ${item.professional}`).includes(nq))
@@ -332,7 +342,7 @@ export default function Teleatendimentos() {
           <h3><span>{dayLabel(d)}</span><small>{fmtDate(d)} · {items.length} {items.length === 1 ? "atendimento" : "atendimentos"}</small></h3>
           <div className="tl-grid">
             {items.map((item, i) => {
-              const isLive = item.status === "Em andamento"
+              const isLive = reallyLive(item)
               const done = /conclu|faltou|cancel/i.test(item.status)
               const an = data.animais.find((a) => a.id === item.animalId)
               return (

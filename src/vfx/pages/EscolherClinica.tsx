@@ -65,17 +65,17 @@ export default function EscolherClinica() {
         <div className="esc-cards">
           <button className="esc-card a" style={{ transform: tilt.a }} onPointerMove={onMove("a")} onPointerLeave={off("a")} onClick={() => pick("exemplo")}>
             <span className="esc-ring" aria-hidden="true" />
-            <span className="esc-badge">Demonstração</span>
+            <span className="esc-badge">Recomendado para começar</span>
             <span className="esc-ill" aria-hidden="true">
               <span className="m m1" /><span className="m m2" />
               {[46, 72, 58, 96, 84, 110].map((h, i) => <span key={i} className="b" style={{ height: h, right: 30 + (5 - i) * 24, animationDelay: `${0.25 + i * 0.08}s` }} />)}
             </span>
             <strong>Clínica exemplo</strong>
-            <em>Tudo o que construímos até agora, com dados fictícios para explorar e treinar a equipe sem medo de errar.</em>
+            <em>Uma clínica veterinária com dados fictícios para conhecer o sistema e treinar a equipe sem medo de errar.</em>
             <ul>
               <li>3 unidades · {stats.animais.toLocaleString("pt-BR")} animais · {stats.tutores.toLocaleString("pt-BR")} tutores</li>
               <li>{stats.produtos.toLocaleString("pt-BR")} produtos, vendas, caixa e entregas movimentados</li>
-              <li>Pode bagunçar: nada vai para a clínica real</li>
+              <li>Pode testar à vontade: nada vai para a clínica real</li>
             </ul>
             <span className="esc-go">Explorar a clínica exemplo <kbd>1</kbd><b><ArrowRight size={18} /></b></span>
           </button>
@@ -88,7 +88,7 @@ export default function EscolherClinica() {
               <span className="plus"><Plus size={34} /></span>
             </span>
             <strong>Minha clínica</strong>
-            <em>Ambiente real, só seu. {stats.mProdutos || stats.mClientes ? "Continue de onde parou." : "Começa do zero: cadastre produtos, clientes e equipe e comece a vender."}</em>
+            <em>Ambiente real, só seu. {stats.mProdutos || stats.mClientes ? "Continue de onde parou." : "Começa do zero: cadastre a equipe, os tutores, os animais e os serviços da sua clínica."}</em>
             <ul>
               {stats.mProdutos || stats.mClientes || stats.mVendas
                 ? <><li>{stats.mProdutos} produtos · {stats.mClientes} clientes</li><li>{stats.mVendas} vendas registradas</li></>

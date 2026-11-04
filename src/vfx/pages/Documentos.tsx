@@ -16,7 +16,7 @@ const templates: Record<string, string> = {
 }
 
 export default function Documentos() {
-  const { data, activeUnit, updateItem } = useVetFlow()
+  const { data, activeUnit, updateItem, user } = useVetFlow()
   const navigate = useNavigate()
   const forms = usePageForms("documentos", (saved) => {
     setDrawer(drawerOf(saved))
@@ -55,8 +55,8 @@ export default function Documentos() {
   }
   const sign = () => {
     if (!selected) return
-    updateItem("documentos", selected.id, { status: "Assinado", extra: { ...(selected.extra || {}), assinadoEm: new Date().toISOString() } })
-    forms.toast(`${selected.name} assinado.`)
+    updateItem("documentos", selected.id, { status: "Assinado", extra: { ...(selected.extra || {}), assinadoEm: new Date().toISOString(), assinadoPor: user?.displayName || "" } })
+    forms.toast(`${selected.name} marcado como assinado (registro interno).`)
   }
   const archive = () => {
     if (!selected) return
@@ -74,8 +74,8 @@ export default function Documentos() {
       bg="#f4ede4"
       blobs={[["#f6c96b", -60, -40, 420, 380], ["#9fc7f5", "75%", 160, 400, 360], ["#d2bdf5", "35%", "78%", 360, 320]]}
       crumb="Documentos"
-      title="Arquivo de aço"
-      sub="Abra uma gaveta, puxe a pasta pelo tipo e leia o documento já preenchido com os dados do paciente."
+      title="Documentos"
+      sub="Termos, contratos, laudos e atestados por tipo. Escolha um documento para ler, imprimir ou marcar como assinado."
       actions={
         <>
           <SearchBox value={query} onChange={setQuery} placeholder="Buscar paciente, tutor, tipo" />
@@ -150,7 +150,7 @@ export default function Documentos() {
                   <div className="vx-sign-row" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 22, marginTop: 22 }}>
                     {[selected.owner || "Tutor", selected.professional || "Veterinário"].map((who, index) => (
                       <div key={who} style={{ fontSize: 12, position: "relative", display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
-                        {selected.status !== "Pendente" ? <GovSign compact name={who.replace(/^Dra?\.\s*/, "")} when={selected.extra?.assinadoEm || selected.createdAt || itemDate(selected)} /> : <span style={{ height: 52 }} />}
+                        <GovSign compact name={who} signed={selected.status !== "Pendente"} by={selected.extra?.assinadoPor} when={selected.extra?.assinadoEm || itemDate(selected)} />
                         <span style={{ display: "block", borderTop: "1px solid #1a2233", marginTop: 8, paddingTop: 6 }} />
                         {who}
                         <div style={{ color: "#6b7280", fontSize: 11 }}>{index ? "Médico(a) veterinário(a)" : "Tutor responsável"}</div>

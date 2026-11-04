@@ -9,7 +9,7 @@ export default function Layer({ className, onMouseDown, children }: { className:
   if (typeof document === "undefined") return null
   return createPortal(
     <div className="vx op op-vx op-portal">
-      <div className={className} onMouseDown={onMouseDown}>{children}</div>
+      <div className={className} onMouseDown={onMouseDown} {...(/toast/.test(className) ? { role: "status", "aria-live": "polite" as const } : {})}>{children}</div>
     </div>,
     document.body,
   )

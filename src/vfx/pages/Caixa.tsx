@@ -97,13 +97,15 @@ export default function Caixa() {
   }
 
   const baixaEstoque = (s: Item) => {
-    for (const l of (s.extra?.itens || []) as Line[]) {
-      const st = data.estoque.find((x) => x.id === l.ref)
-      if (st && l.tipo === "Produto") {
-        const quantity = Math.max(0, (st.quantity || 0) - l.qtd)
-        updateItem("estoque", st.id, { quantity, subtitle: `${quantity} un. • mínimo ${st.minimum}`, status: quantity <= 0 ? "Esgotado" : quantity < (st.minimum || 0) ? "Abaixo do mínimo" : st.status })
-      }
-    }
+    if (s.extra?.estoqueBaixado) return
+    const totals = new Map<string, number>()
+    for (const l of (s.extra?.itens || []) as Line[]) if (l.ref && l.tipo === "Produto") totals.set(l.ref, (totals.get(l.ref) || 0) + l.qtd)
+    totals.forEach((qtd, ref) => {
+      const st = data.estoque.find((x) => x.id === ref)
+      if (!st) return
+      const quantity = Math.max(0, (st.quantity || 0) - qtd)
+      updateItem("estoque", st.id, { quantity, subtitle: `${quantity} un. • mínimo ${st.minimum}`, status: quantity <= 0 ? "Esgotado" : quantity < (st.minimum || 0) ? "Abaixo do mínimo" : st.status, extra: { ...(st.extra || {}), movimentos: [...(st.extra?.movimentos || []), { em: new Date().toISOString(), tipo: "Saída", qtd, motivo: `Venda ${s.name}` }] } })
+    })
   }
   const lancarFinanceiro = (s: Item, list: Pay[]) => {
     const base = Date.now()
@@ -138,7 +140,7 @@ export default function Caixa() {
     const e = sale.extra?.entrega as Entrega | undefined
     const status = tipo === "Balcão" ? "Concluída" : "Paga"
     const extra = {
-      ...sale.extra, pago: total, pagamentos: pays, caixaId: caixa.id, recebidoPor: operador, recebidoAs: nowTime(),
+      ...sale.extra, estoqueBaixado: true, pago: total, pagamentos: pays, caixaId: caixa.id, recebidoPor: operador, recebidoAs: nowTime(),
       entrega: e ? { ...e, status: "A separar", historico: [...(e.historico || []), `${stamp()} · Liberada pelo caixa (pago)`] } : e,
       historico: [...(sale.extra?.historico || []), `${stamp()} · Recebida no caixa por ${operador}: ${pays.map((p) => `${p.forma} ${brl(p.valor)}`).join(" + ")}`],
     }
@@ -150,7 +152,7 @@ export default function Caixa() {
     if (!sale || !caixa) return
     const e = sale.extra?.entrega as Entrega
     baixaEstoque(sale)
-    updateItem("vendas", sale.id, { status: "A cobrar na entrega", extra: { ...sale.extra, caixaId: caixa.id, entrega: { ...e, status: "A separar", aCobrar: total, historico: [...(e.historico || []), `${stamp()} · Liberada para cobrar na entrega`] }, historico: [...(sale.extra?.historico || []), `${stamp()} · Liberada pelo caixa para pagar na entrega`] } })
+    updateItem("vendas", sale.id, { status: "A cobrar na entrega", extra: { ...sale.extra, estoqueBaixado: true, caixaId: caixa.id, entrega: { ...e, status: "A separar", aCobrar: total, historico: [...(e.historico || []), `${stamp()} · Liberada para cobrar na entrega`] }, historico: [...(sale.extra?.historico || []), `${stamp()} · Liberada pelo caixa para pagar na entrega`] } })
     showToast(`${sale.name} liberada. ${brl(total)} será cobrado na entrega.`)
     setSelId(""); setPays([])
   }
@@ -338,7 +340,9 @@ export default function Caixa() {
         <span className="sep" />
         <div className="op-meta">
           <span><span className="op-num">{caixa.name}</span></span>
-          <span className="op-tag green">Aberto às {caixa.time}</span>
+          {itemDate(caixa) < todayISO()
+            ? <span className="op-tag red" role="alert">Aberto desde {fmtDate(itemDate(caixa), { day: "2-digit", month: "2-digit" })} {caixa.time} · feche o caixa do dia anterior</span>
+            : <span className="op-tag green">Aberto às {caixa.time}</span>}
           <span>Operador <b>{caixa.professional}</b></span>
           <span>Na gaveta <b className="num">{brl(dinheiroEsperado)}</b></span>
           <span className="op-hide-sm">Recebido hoje <b className="num">{brl(totalRecebido)}</b></span>

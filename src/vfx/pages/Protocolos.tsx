@@ -42,13 +42,13 @@ export default function Protocolos() {
       bg="#f2effb"
       blobs={[["#d6c8ff", "30%", 220, 560, 500], ["#ffc9a8", -100, -40, 360, 360], ["#a7e3d8", "88%", "70%", 320, 320]]}
       crumb="Protocolos"
-      title="Caminhos clínicos"
-      sub="Protocolos como mapas de decisão — siga as setas com o paciente em mãos."
+      title="Protocolos"
+      sub="Protocolos clínicos em etapas. Para aplicar a um paciente, abra o protocolo e siga as etapas durante a consulta ou internação."
       actions={
         <>
           <SearchBox value={query} onChange={setQuery} placeholder="Buscar protocolo" />
           <button className="vx-btn vx-btn-p" onClick={() => forms.open()}>
-            <Plus /> Novo caminho
+            <Plus /> Novo protocolo
           </button>
         </>
       }
@@ -130,6 +130,7 @@ export default function Protocolos() {
             <button className="vx-btn vx-btn-p" onClick={() => setApplying(true)}>
               <Play /> Aplicar a um paciente
             </button>
+            <p className="vx-hint" style={{ margin: 0 }}>Como aplicar: clique no botão acima, escolha o paciente e confirme. O protocolo passa a constar no histórico do animal e gera a prescrição com as medicações das etapas.</p>
             <div className="vx-row" style={{ gap: 8 }}>
               <button className="vx-btn vx-btn-g" style={{ flex: 1 }} onClick={() => forms.open("protocolos", selected, selected.extra?.etapas ? undefined : { etapas: steps })}><Edit3 /> Editar</button>
               <button className="vx-btn vx-btn-g" style={{ flex: 1 }} onClick={() => navigate(`/protocolos/${selected.id}`)}>Ficha</button>

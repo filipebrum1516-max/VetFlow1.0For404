@@ -766,7 +766,7 @@ function AnimalField({
             {results.length ? (
               results.map((animal) => (
                 <button type="button" key={animal.id} onClick={() => onChange(animal.id)}>
-                  <span className="vx-av" style={{ width: 30, height: 30, fontSize: 10, background: colorFor(animal.name) }}>
+                  <span className="vx-av" style={{ width: 30, height: 30, fontSize: 10, background: colorFor(animal.id) }}>
                     {initials(animal.name)}
                   </span>
                   <span>

@@ -53,14 +53,14 @@ export default function Estoque() {
       bg="#f4eee4"
       blobs={[["#e6cfa3", 120, 260, 600, 480], ["#ffd39a", "70%", -100, 360, 360], ["#b8dceb", "88%", "75%", 320, 320]]}
       crumb="Estoque"
-      title="Almoxarifado"
-      sub="Corredores e caixas como no depósito: farmácia veterinária e pet shop. A régua lateral mostra quanto resta; a fita amarela, o que está acabando; a vermelha, o que esgotou."
+      title="Estoque"
+      sub="Produtos, medicamentos e materiais por corredor. Amarelo = acabando, vermelho = esgotado."
       actions={
         <>
           <SearchBox value={query} onChange={setQuery} placeholder="Buscar item ou lote" />
           <Seg options={[["Todos", "Todos"], ["Acabando", `Acabando ${data.estoque.filter(low).length}`], ["Esgotado", `Esgotado ${data.estoque.filter(out).length}`], ["Vencendo", `Vencendo ${data.estoque.filter(expiring).length}`]]} value={filter} onChange={setFilter} />
           <button className="vx-btn vx-btn-g" onClick={() => forms.open("estoque")}>
-            <Plus /> Nova caixa
+            <Plus /> Novo item
           </button>
           <button className="vx-btn vx-btn-p" onClick={() => forms.open("estoque-nota")}>
             <PackagePlus /> Entrada de nota

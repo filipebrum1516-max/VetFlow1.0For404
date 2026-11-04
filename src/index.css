@@ -2051,7 +2051,7 @@ button:disabled { cursor: not-allowed; opacity: .55; transform: none !important;
   background: var(--animals-canvas);
   border-bottom: 1px solid var(--animals-line);
 }
-.animals-table-head strong { font-size: 8px; font-weight: 600; letter-spacing: .045em; text-transform: uppercase; }
+.animals-table-head strong { font-size: 11px; font-weight: 600; letter-spacing: .045em; text-transform: uppercase; }
 .animals-table-row {
   min-height: 96px;
   padding: 12px 22px;
@@ -4446,3 +4446,73 @@ button:disabled { cursor: not-allowed; opacity: .55; transform: none !important;
 .login-scene .ls-bone.b2 { right: -19%; }
 /* tabela de tutores: rola dentro do card em telas médias, sem estourar a página */
 @media (max-width: 1280px) { .tutors-list-card { overflow-x: auto; } .tutors-list-head, .tutor-row { min-width: 780px; } }
+/* login: mostrar senha, manter conectado */
+.login-page .input-control { position: relative; }
+.login-page .login-eye { position: absolute; right: 8px; top: 50%; translate: 0 -50%; width: 34px; height: 34px; border: 0; border-radius: 8px; background: transparent; color: #5b6474; display: grid; place-items: center; cursor: pointer; }
+.login-page .login-eye:hover { background: rgba(26,34,51,.06); }
+.login-page .input-control input { padding-right: 46px; }
+.login-page .login-keep { margin-top: -4px; }
+.login-page .login-priv { display: block; text-align: center; font-size: 12px; }
+
+/* M-08: a coluna de ações fica sempre visível, mesmo com rolagem lateral */
+.animals-table-row .animal-actions { position: sticky; right: 0; background: var(--animals-card, #fff); padding: 6px 0 6px 8px; z-index: 1; }
+.animals-table-head > :last-child { position: sticky; right: 0; background: var(--animals-canvas); }
+.animal-facts { display: block; font-size: 12px; color: #6b6f7b; margin-top: 2px; }
+
+/* B-14: bloco da agenda com altura proporcional à duração; colunas para todos os veterinários (M-17) */
+.vf-time-cell { position: relative; overflow: visible; }
+.vf-professional-head, .vf-time-row { grid-template-columns: 70px repeat(var(--vf-cols, 4), minmax(190px, 1fr)) !important; }
+.vf-professional-head, .vf-day-grid { min-width: calc(70px + var(--vf-cols, 4) * 190px) !important; }
+.vf-col-print { border: 0; background: transparent; padding: 6px; border-radius: 8px; cursor: pointer; color: inherit; display: inline-flex; min-width: 32px; min-height: 32px; align-items: center; justify-content: center; }
+.vf-col-print:hover { background: rgba(0,0,0,.06); }
+.vf-professional-head > span, .vf-time-row > span { font-size: 11px !important; }
+.vf-professional-head strong { font-size: 13px !important; } .vf-professional-head small { font-size: 11px !important; }
+.vf-appointment b { font-size: 11px !important; } .vf-appointment strong { font-size: 12px !important; } .vf-appointment small, .vf-appointment em { font-size: 11px !important; }
+@media (max-width:900px) { .vf-professional-head, .vf-time-row { grid-template-columns: 64px minmax(230px,1fr) !important; } .vf-professional-head, .vf-day-grid { min-width: 0 !important; } }
+.vf-mobile-hint { display: none; margin: 0; padding: 8px 12px; font-size: 12px; color: #59616D; background: #FFF8EC; }
+@media (max-width:900px) { .vf-mobile-hint { display: block; } }
+
+/* D-01 / D-02: base legível (14 px) e texto secundário com contraste mínimo 4,5:1 */
+body { font-size: 14px; }
+.vx-muted, .vx-hint, .muted { color: #4f5868 !important; }
+[data-theme="dark"] .vx-muted, [data-theme="dark"] .vx-hint, [data-theme="dark"] .muted { color: #b9c0cc !important; }
+.nav-group-title { font-size: 11px; color: #8a96a8; }
+/* C-05: alvos de toque de 44 px no celular */
+@media (max-width: 760px) {
+  .vx-btn, .op-btn, .vx-icon-btn, .vx-chip, .nav-item, .animal-actions button, .vf-col-print { min-height: 44px; min-width: 44px; }
+}
+/* A-05: foco sempre visível */
+:focus-visible { outline: 3px solid #2457c5; outline-offset: 2px; }
+
+/* D-05: banners de Animais e Tutores mais baixos para a lista aparecer logo */
+@media (min-width: 901px) {
+  .animals-hero, .tutors-hero { aspect-ratio: 4.6 / 1; }
+  .animals-hero picture img, .tutors-hero picture img { object-position: center 35%; }
+}
+.tutor-metric small { font-size: 12px !important; white-space: normal !important; }
+
+/* C-01: no celular as tabelas viram cartões (nome, tutor e situação visíveis; ações juntas) */
+@media (max-width: 760px) {
+  .animals-table { min-width: 0 !important; }
+  .animals-table-head, .tutors-list-head { display: none !important; }
+  .animals-table-row { grid-template-columns: 1fr 1fr !important; gap: 8px 12px !important; min-height: 0 !important; padding: 14px !important; }
+  .animals-table-row > :first-child { grid-column: 1 / -1; }
+  .animals-table-row .animal-actions { grid-column: 1 / -1; position: static !important; justify-content: flex-end; padding: 0 !important; }
+  .tutors-list-card { overflow-x: visible !important; }
+  .tutor-row { min-width: 0 !important; grid-template-columns: 1fr auto !important; gap: 8px !important; padding: 14px !important; }
+  .tutor-row .pet-chips { grid-column: 1 / -1; }
+  .vx-table { overflow-x: visible; }
+  .vx-table .vx-th { display: none !important; }
+  .vx-table .vx-tr { grid-template-columns: 1fr 1fr !important; gap: 4px 12px !important; padding: 12px 14px !important; }
+  .vx-table .vx-tr > :first-child { grid-column: 1 / -1; }
+}
+/* D-01: tabela de Animais com texto mínimo de 12 px */
+.animals-table-row strong { font-size: 14px !important; }
+.animals-table-row small, .animals-table-row em, .animal-status { font-size: 12px !important; }
+.animals-toolbar input, .animals-toolbar select, .animals-toolbar button { font-size: 13px !important; }
+.pr-page table td, .pr-page .pr-row { font-size: 14px; }
+@media (max-width: 760px) {
+  .tutors-actions { flex-wrap: wrap !important; width: 100% !important; min-width: 0 !important; }
+  .tutors-actions > * { flex: 1 1 140px; }
+  .tutors-pagination { min-width: 0 !important; width: 100% !important; flex-wrap: wrap !important; gap: 8px !important; }
+}

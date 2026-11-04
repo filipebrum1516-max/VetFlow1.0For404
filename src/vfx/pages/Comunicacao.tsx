@@ -67,8 +67,8 @@ export default function Comunicacao() {
       bg="#ecf6ee"
       blobs={[["#9ee6b0", "30%", 200, 520, 480], ["#ffd39a", -100, -60, 360, 360], ["#8cc9ff", "85%", 300, 340, 340]]}
       crumb="Comunicação"
-      title="Conversas"
-      sub="Todos os tutores numa caixa só. Lembretes automáticos aparecem tracejados no fio."
+      title="Comunicação"
+      sub="Mensagens com os tutores e lembretes automáticos. O envio por WhatsApp, e-mail e SMS é simulado até a integração ser ativada."
       actions={
         <button className="vx-btn vx-btn-p" onClick={() => forms.open()}>
           <Plus /> Nova campanha

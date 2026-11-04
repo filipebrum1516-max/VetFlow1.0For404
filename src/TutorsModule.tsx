@@ -23,6 +23,9 @@ import {
 import { useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router"
 import { useVetFlow, type Item } from "./store"
+import ClienteForm, { fromItem, toItem } from "./vfx/ClienteForm"
+import { Confirm } from "./vfx/ui"
+import { printHtml } from "./vfx/vendasShared"
 
 type Pet = {
   id: string
@@ -94,7 +97,7 @@ export const initialTutors: TutorRow[] = [
   {
     id: "gabriel-ribeiro",
     name: "Gabriel Ribeiro",
-    phone: "(11) 98765-4321",
+    phone: "(69) 98765-4321",
     status: "Ativo",
     lastVisit: "07/05/2025",
     pets: [
@@ -105,7 +108,7 @@ export const initialTutors: TutorRow[] = [
   {
     id: "juliana-lima",
     name: "Juliana Lima",
-    phone: "(11) 97654-3210",
+    phone: "(69) 97654-3210",
     status: "Ativo",
     lastVisit: "03/05/2025",
     pets: [pet("3", "Mel", "Gato", petPhotos.cat)],
@@ -113,7 +116,7 @@ export const initialTutors: TutorRow[] = [
   {
     id: "patricia-ribeiro",
     name: "Patricia Ribeiro",
-    phone: "(11) 96543-2109",
+    phone: "(69) 96543-2109",
     status: "Ativo",
     lastVisit: "29/04/2025",
     pets: [
@@ -125,7 +128,7 @@ export const initialTutors: TutorRow[] = [
   {
     id: "larissa-lima",
     name: "Larissa Lima",
-    phone: "(11) 95432-1098",
+    phone: "(69) 95432-1098",
     status: "Ativo",
     lastVisit: "27/04/2025",
     pets: [pet("7", "Bob", "Cão", petPhotos.dog2)],
@@ -133,7 +136,7 @@ export const initialTutors: TutorRow[] = [
   {
     id: "marcelo-lima",
     name: "Marcelo Lima",
-    phone: "(11) 94321-0987",
+    phone: "(69) 94321-0987",
     status: "Ativo",
     lastVisit: "20/04/2025",
     pets: [pet("8", "Nina", "Gato", petPhotos.cat)],
@@ -271,7 +274,22 @@ function ToggleRow({
 }
 
 export default function TutorsModule() {
-  const { addItem, updateItem, data, theme } = useVetFlow()
+  const { addItem, updateItem, deleteItem, data, theme, activeUnit } = useVetFlow()
+  // Cadastro e edição usam o mesmo formulário completo, com CEP, máscara e validação de CPF/CNPJ (M-12, B-16, B-17, V-10..V-14).
+  const [clienteForm, setClienteForm] = useState<{ item: Item | null } | null>(() => (new URLSearchParams(window.location.search).get("novo") === "1" ? { item: null } : null))
+  const [confirmTutor, setConfirmTutor] = useState<{ kind: "inativar" | "excluir" | "anonimizar"; tutor: TutorRow } | null>(null)
+  const historyOf = (id: string) => (["consultas", "vendas", "prontuarios", "vacinas", "agendas"] as const).reduce((n, slug) => n + data[slug].filter((r) => r.ownerId === id || r.animalId && data.animais.some((a) => a.id === r.animalId && a.ownerId === id)).length, 0)
+  const exportTutor = (tutor: TutorRow) => {
+    const item = data.tutores.find((t) => t.id === tutor.id)
+    const payload = { exportadoEm: new Date().toISOString(), titular: item || tutor, animais: data.animais.filter((a) => a.ownerId === tutor.id) }
+    const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }))
+    const a = document.createElement("a"); a.href = url; a.download = `dados-${tutor.name.replace(/\s+/g, "-").toLowerCase()}.json`; a.click(); URL.revokeObjectURL(url)
+  }
+  const printTutor = (tutor: TutorRow) => {
+    const item = data.tutores.find((t) => t.id === tutor.id)
+    const pets = data.animais.filter((a) => a.ownerId === tutor.id)
+    printHtml(`Ficha ${tutor.name}`, `<div class="doc"><h1>Ficha do tutor</h1><p><b>${tutor.name}</b></p><p>CPF ${item?.cpf || "—"} · Telefone ${tutor.phone || "—"} · ${item?.email || ""}</p><p>${item?.address || ""}</p><h2>Animais</h2><table><tr><th>Nome</th><th>Espécie</th><th>Raça</th><th>Situação</th></tr>${pets.map((p) => `<tr><td>${p.name}</td><td>${p.species || ""}</td><td>${p.breed || ""}</td><td>${p.status}</td></tr>`).join("")}</table></div>`, true)
+  }
   const navigate = useNavigate()
   const [query, setQuery] = useState(() => new URLSearchParams(window.location.search).get("tutor") || "")
   const [statusFilter, setStatusFilter] = useState("Todos os status")
@@ -407,6 +425,10 @@ export default function TutorsModule() {
   }, [pages])
 
   const openTutor = (tutor: TutorRow, edit = false) => {
+    if (edit) {
+      const item = data.tutores.find((t) => t.id === tutor.id)
+      if (item) { setClienteForm({ item }); return }
+    }
     setSelectedTutor(tutor)
     setTutorDraft({ ...tutor })
     setEditingTutor(edit)
@@ -643,9 +665,9 @@ export default function TutorsModule() {
         <div className="tutor-metrics">
           {[
             [Users, rows.length, "Tutores cadastrados", "Base completa", "orange"],
-            [UserRound, activeCount, "Ativos", "97,8% da base", "aqua"],
+            [UserRound, activeCount, "Ativos", rows.length ? `${((activeCount / rows.length) * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}% da base` : "—", "aqua"],
             [UserRound, inactiveCount, "Inativos", "Cadastros arquivados", "gray"],
-            [TrendingUp, 28 + addedRows.length, "Novos este mês", "+12% no período", "orange"],
+            [TrendingUp, data.tutores.filter((t) => (t.date || "").slice(0, 7) === new Date().toISOString().slice(0, 7)).length, "Novos este mês", "cadastrados no mês atual", "orange"],
           ].map(([Icon, value, label, detail, tone]) => {
             const MetricIcon = Icon as typeof Users
             return (
@@ -694,7 +716,7 @@ export default function TutorsModule() {
               </select>
               <ChevronDown size={15} />
             </label>
-            <button className="tf-primary" onClick={() => setDrawerOpen(true)}>
+            <button className="tf-primary" onClick={() => setClienteForm({ item: null })}>
               <Plus size={18} />
               Novo tutor
             </button>
@@ -772,6 +794,10 @@ export default function TutorsModule() {
                         tutor.status === "Ativo"
                           ? "Inativar"
                           : "Ativar novamente",
+                        "Imprimir ficha",
+                        "Exportar dados (LGPD)",
+                        "Anonimizar (LGPD)",
+                        ...(historyOf(tutor.id) === 0 && !tutor.pets.length ? ["Excluir"] : []),
                       ].map((label) => (
                           <button
                             key={label}
@@ -780,13 +806,14 @@ export default function TutorsModule() {
                               if (label === "Ver tutor") openTutor(tutor)
                               if (label === "Editar") openTutor(tutor, true)
                               if (label === "Inativar")
-                                changeTutorStatus(tutor, "Inativo")
+                                setConfirmTutor({ kind: "inativar", tutor })
+                              if (label === "Imprimir ficha") printTutor(tutor)
+                              if (label === "Exportar dados (LGPD)") exportTutor(tutor)
+                              if (label === "Anonimizar (LGPD)") setConfirmTutor({ kind: "anonimizar", tutor })
+                              if (label === "Excluir") setConfirmTutor({ kind: "excluir", tutor })
                               if (label === "Ativar novamente")
                                 changeTutorStatus(tutor, "Ativo")
-                              if (label === "Adicionar animal") {
-                                setDrawerOpen(true)
-                                setStep(5)
-                              }
+                              if (label === "Adicionar animal") navigate(`/animais?novo=1&tutor=${tutor.id}`)
                               setOpenMenu(null)
                             }}
                           >
@@ -1217,8 +1244,47 @@ export default function TutorsModule() {
           </aside>
         </div>
       )}
+      {clienteForm && (
+        <ClienteForm
+          initial={fromItem(clienteForm.item)}
+          existing={clienteForm.item}
+          tutores={data.tutores}
+          unitCity={activeUnit.city}
+          onClose={() => setClienteForm(null)}
+          onSave={(d) => {
+            const patch = toItem(d, activeUnit.city)
+            if (clienteForm.item) {
+              updateItem("tutores", clienteForm.item.id, { ...patch, status: clienteForm.item.status, extra: { ...(clienteForm.item.extra || {}), ...(patch.extra || {}) } })
+              setAddedRows((rows) => rows.filter((row) => row.id !== clienteForm.item?.id))
+              setToast("Dados do tutor atualizados")
+            } else {
+              addItem("tutores", patch)
+              setToast("Tutor cadastrado")
+            }
+            setClienteForm(null)
+            window.setTimeout(() => setToast(""), 3500)
+          }}
+        />
+      )}
+      {confirmTutor && (
+        <Confirm
+          danger={confirmTutor.kind !== "inativar"}
+          title={confirmTutor.kind === "inativar" ? `Inativar ${confirmTutor.tutor.name}?` : confirmTutor.kind === "excluir" ? `Excluir ${confirmTutor.tutor.name}?` : `Anonimizar ${confirmTutor.tutor.name}?`}
+          text={confirmTutor.kind === "inativar" ? "O tutor e os animais dele deixam de aparecer nas buscas de agendamento e venda. Você pode reativar depois." : confirmTutor.kind === "excluir" ? "Este tutor não tem animais nem histórico. O cadastro será removido." : "Nome, CPF, telefone, e-mail e endereço serão substituídos. O histórico clínico e financeiro continua, sem identificar a pessoa. Não é possível desfazer."}
+          confirm={confirmTutor.kind === "inativar" ? "Inativar" : confirmTutor.kind === "excluir" ? "Excluir" : "Anonimizar"}
+          onCancel={() => setConfirmTutor(null)}
+          onConfirm={() => {
+            const t = confirmTutor.tutor
+            if (confirmTutor.kind === "inativar") changeTutorStatus(t, "Inativo")
+            if (confirmTutor.kind === "excluir") { deleteItem("tutores", t.id); setAddedRows((rows) => rows.filter((row) => row.id !== t.id)); setToast("Tutor excluído") }
+            if (confirmTutor.kind === "anonimizar") { updateItem("tutores", t.id, { name: `Titular anonimizado ${t.id.slice(-4)}`, cpf: "", phone: "", email: "", address: "", rg: "", birthDate: "", notes: "", status: "Inativo", extra: { anonimizadoEm: new Date().toISOString() } }); setToast("Dados pessoais anonimizados") }
+            setConfirmTutor(null)
+            window.setTimeout(() => setToast(""), 3500)
+          }}
+        />
+      )}
       {toast && (
-        <div className="tf-success-toast">
+        <div className="tf-success-toast" role="status">
           <Check size={17} />
           {toast}
         </div>

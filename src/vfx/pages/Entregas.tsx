@@ -58,7 +58,7 @@ export default function Entregas() {
     const qq = normalizeText(q.trim())
     return deliveries.filter((s) => {
       const e = s.extra.entrega as Entrega
-      if (kpi === "pendentes" ? /conclu|cancel/i.test(e.status) : kpi !== "todas" && e.status !== kpi) return false
+      if (kpi === "pendentes" ? /conclu|cancel|^entregue/i.test(e.status) : kpi !== "todas" && e.status !== kpi) return false
       if (dia && e.data !== dia) return false
       if (periodo !== "Todos" && e.periodo !== periodo) return false
       if (bairro !== "Todos" && e.bairro !== bairro) return false
@@ -179,7 +179,7 @@ export default function Entregas() {
       <div className="op-bar">
         <h1><Truck size={18} /> Entregas</h1>
         <span className="sep" />
-        <div className="op-meta"><span><b>{deliveries.filter((s) => !/conclu|cancel/i.test((s.extra.entrega as Entrega).status)).length}</b> pendentes</span><span>A cobrar na rua <b className="num">{brl(deliveries.filter((s) => /rota|pronta/i.test((s.extra.entrega as Entrega).status)).reduce((a, s) => a + (s.extra.entrega as Entrega).aCobrar, 0))}</b></span></div>
+        <div className="op-meta"><span><b>{deliveries.filter((s) => !/conclu|cancel|^entregue/i.test((s.extra.entrega as Entrega).status)).length}</b> pendentes</span><span>A cobrar na rua <b className="num">{brl(deliveries.filter((s) => /rota|pronta/i.test((s.extra.entrega as Entrega).status)).reduce((a, s) => a + (s.extra.entrega as Entrega).aCobrar, 0))}</b></span></div>
         <span className="grow" />
         <div className="op-tabs">
           <button className={view === "exp" ? "on" : ""} onClick={() => setView("exp")}>Expedição</button>
@@ -194,11 +194,11 @@ export default function Entregas() {
           <div className="op-card">
             <div className="op-cb" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
               <div className="op-search" style={{ width: 280 }}><Search /><input className="op-in" placeholder="Nº, cliente, rua ou bairro" value={q} onChange={(e) => setQ(e.target.value)} /></div>
-              <input className="op-in" type="date" style={{ width: 150 }} value={dia} onChange={(e) => setDia(e.target.value)} aria-label="Data" />
-              <select className="op-in" style={{ width: 120 }} value={periodo} onChange={(e) => setPeriodo(e.target.value)}>{["Todos", "Manhã", "Tarde", "Noite"].map((p) => <option key={p}>{p}</option>)}</select>
-              <select className="op-in" style={{ width: 170 }} value={bairro} onChange={(e) => setBairro(e.target.value)}>{bairros.map((b) => <option key={b}>{b}</option>)}</select>
-              <select className="op-in" style={{ width: 170 }} value={entregador} onChange={(e) => setEntregador(e.target.value)}>{["Todos", "Sem entregador", ...ENTREGADORES].map((b) => <option key={b}>{b}</option>)}</select>
-              <select className="op-in" style={{ width: 160 }} value={kpi} onChange={(e) => setKpi(e.target.value)}><option value="pendentes">Pendentes</option><option value="todas">Todas</option>{KPIS.map(([s]) => <option key={s}>{s}</option>)}<option>Concluída</option><option>Cancelada</option></select>
+              <label className="op-flt"><span>Data</span><input className="op-in" type="date" style={{ width: 150 }} value={dia} onChange={(e) => setDia(e.target.value)} /></label>
+              <label className="op-flt"><span>Período</span><select className="op-in" style={{ width: 150 }} value={periodo} onChange={(e) => setPeriodo(e.target.value)}>{["Todos", "Manhã", "Tarde", "Noite"].map((p) => <option key={p} value={p}>{p === "Todos" ? "Todos os períodos" : p}</option>)}</select></label>
+              <label className="op-flt"><span>Bairro</span><select className="op-in" style={{ width: 170 }} value={bairro} onChange={(e) => setBairro(e.target.value)}>{bairros.map((b) => <option key={b} value={b}>{b === "Todos" ? "Todos os bairros" : b}</option>)}</select></label>
+              <label className="op-flt"><span>Entregador</span><select className="op-in" style={{ width: 180 }} value={entregador} onChange={(e) => setEntregador(e.target.value)}>{["Todos", "Sem entregador", ...ENTREGADORES].map((b) => <option key={b} value={b}>{b === "Todos" ? "Todos os entregadores" : b}</option>)}</select></label>
+              <label className="op-flt"><span>Situação</span><select className="op-in" style={{ width: 160 }} value={kpi} onChange={(e) => setKpi(e.target.value)}><option value="pendentes">Pendentes</option><option value="todas">Todas</option>{KPIS.map(([s]) => <option key={s}>{s}</option>)}<option>Concluída</option><option>Cancelada</option></select></label>
               <span className="grow" />
               <span className="muted" style={{ fontSize: 12 }}>{rows.length} entregas</span>
             </div>

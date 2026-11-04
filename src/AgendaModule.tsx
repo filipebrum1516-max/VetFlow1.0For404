@@ -1,3 +1,4 @@
+import { localDateTime, localISO } from "./date"
 import {
   AlertCircle,
   ArrowLeft,
@@ -25,10 +26,12 @@ import {
   useMemo,
   useState,
   type FormEvent,
+  type CSSProperties,
 } from "react"
 import { useNavigate } from "react-router"
 import { useVetFlow, type Item } from "./store"
 import { initialTutors } from "./TutorsModule"
+import { printHtml } from "./vfx/vendasShared"
 
 type ClientPet = {
   id: string
@@ -92,9 +95,9 @@ const catalog = [
 ] as const
 
 const emptyAppointment = {
-  service: "Banho e tosa",
-  duration: "60",
-  date: new Date().toISOString().slice(0, 10),
+  service: "",
+  duration: "30",
+  date: localISO(),
   professional: "",
   time: "08:00",
   notes: "",
@@ -134,7 +137,7 @@ export default function AgendaModule() {
   const { data, addItem, updateItem, deleteItem } = useVetFlow()
   const navigate = useNavigate()
   const [view, setView] = useState("Dia")
-  const [cursor, setCursor] = useState(new Date(2026, 9, 17, 12))
+  const [cursor, setCursor] = useState(() => { const d = new Date(); d.setHours(12, 0, 0, 0); return d })
   const [professionalFilter, setProfessionalFilter] = useState("Todos")
   const [drawer, setDrawer] = useState<"search" | "form" | null>(
     () =>
@@ -172,19 +175,19 @@ export default function AgendaModule() {
   const [discardConfirm, setDiscardConfirm] = useState(false)
   const [selectedWeekdays, setSelectedWeekdays] = useState<string[]>(["Sáb"])
   const professionals = useMemo(
-    () => data.profissionais.map((item) => item.name).slice(0, 4),
+    () => data.profissionais.filter((item) => !/inativ/i.test(item.status || "")).map((item) => item.name),
     [data.profissionais],
   )
 
   const clients = useMemo(() => {
     const byOwner = new Map<string, Item[]>()
     data.animais.forEach((animal) => {
-      if (!animal.ownerId) return
+      if (!animal.ownerId || /inativ|falec|óbito/i.test(animal.status || "")) return
       const current = byOwner.get(animal.ownerId) || []
       current.push(animal)
       byOwner.set(animal.ownerId, current)
     })
-    const stored = data.tutores.map((tutor, index): Client => ({
+    const stored = data.tutores.filter((tutor) => !/inativ/i.test(tutor.status || "")).map((tutor): Client => ({
       id: tutor.id,
       code: tutor.id.toUpperCase().slice(-6),
       name: tutor.name,
@@ -278,7 +281,7 @@ export default function AgendaModule() {
     setSelectedClient(null)
     setSelectedPet(null)
     setExtraPets([])
-    setDraft({ ...emptyAppointment, date, time, professional: professional || professionals[0] || "" })
+    setDraft({ ...emptyAppointment, date: date || localISO(), time, professional: professional || professionals[0] || "" })
     setSelectedProducts([])
     setErrors([])
     setConflict("")
@@ -391,9 +394,10 @@ export default function AgendaModule() {
     setErrors(required)
     if (required.length) return
     if (!draft.encaixe && occupied(draft.time)) {
-      setConflict("Este horário já está ocupado")
+      setConflict(`${draft.professional} já tem atendimento neste horário. Escolha outro horário ou marque como encaixe.`)
       return
     }
+    if (!editing && (draft.date < localISO() || (draft.date === localISO() && minutesFromTime(draft.time) < new Date().getHours() * 60 + new Date().getMinutes())) && !window.confirm("A data e o horário escolhidos já passaram. Deseja registrar mesmo assim?")) return
     const base = {
       name: draft.service,
       subtitle: `${selectedPet!.name} • ${selectedClient!.name}`,
@@ -499,8 +503,8 @@ export default function AgendaModule() {
     <div className="vf-agenda-page">
       <div className="vf-agenda-heading">
         <div>
-          <span>OPERAÇÃO CLÍNICA</span>
-          <h1>Agenda diária</h1>
+          <span>HOJE · AGENDA</span>
+          <h1>Agenda</h1>
           <p>Organize os atendimentos da equipe em tempo real.</p>
         </div>
         <button className="vf-new-appointment" onClick={() => openNew()}>
@@ -553,7 +557,8 @@ export default function AgendaModule() {
       </section>
 
       {view === "Dia" && (
-        <section className="vf-day-calendar">
+        <section className="vf-day-calendar" style={{ ["--vf-cols" as string]: professionalFilter === "Todos" ? Math.max(1, professionals.length) : 1 } as CSSProperties}>
+          <p className="vf-mobile-hint">No celular aparece um veterinário por vez: escolha quem ver no seletor acima.</p>
           <div className="vf-professional-head">
             <span>HORÁRIO</span>
             {professionals
@@ -566,10 +571,13 @@ export default function AgendaModule() {
                 <div key={name}>
                   <span>
                     <strong>{name}</strong>
-                    <small>Clínica, Banho e Tosa</small>
+                    <small>{data.profissionais.find((p) => p.name === name)?.category || "Clínica geral"}</small>
                   </span>
-                  <HelpCircle size={15} />
-                  <Printer size={15} />
+                  <span title={`Cada linha vale 30 minutos. Clique num espaço vazio para agendar com ${name}.`} aria-label="Ajuda" style={{ flex: "none", display: "inline-flex" }}><HelpCircle size={15} /></span>
+                  <button type="button" className="vf-col-print" aria-label={`Imprimir agenda de ${name}`} title="Imprimir agenda do dia" onClick={() => {
+                    const list = appointments.filter((a) => a.date === iso(cursor) && a.professional === name && a.status !== "Cancelado").sort((a, b) => (a.time || "").localeCompare(b.time || ""))
+                    printHtml(`Agenda ${name}`, `<div class="doc"><h1>Agenda de ${name}</h1><p>${cursor.toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long", year: "numeric" })}</p><table><tr><th>Hora</th><th>Paciente</th><th>Tutor</th><th>Serviço</th><th>Duração</th><th>Situação</th></tr>${list.map((a) => `<tr><td>${a.time}</td><td>${a.animal || ""}</td><td>${a.owner || ""}</td><td>${a.service || a.name}</td><td>${a.duration || 30} min</td><td>${a.status}</td></tr>`).join("") || `<tr><td colspan="6">Nenhum atendimento.</td></tr>`}</table></div>`, true)
+                  }}><Printer size={15} /></button>
                 </div>
               ))}
           </div>
@@ -599,10 +607,12 @@ export default function AgendaModule() {
                           openNew(iso(cursor), time, professional)
                         }
                       >
-                        {events.map((item) => (
+                        {events.map((item, index) => (
                           <span
                             className={`vf-appointment ${statusClass(item.status)}`}
                             key={item.id}
+                            title={`${item.time} · ${item.duration || 30} min · ${item.animal || ""} · ${item.service || ""}`}
+                            style={{ position: "absolute", top: 3 + ((minutesFromTime(item.time || "00:00") - minutesFromTime(time)) / 30) * 54, left: `calc(${(index / events.length) * 100}% + 3px)`, width: `calc(${100 / events.length}% - 6px)`, height: Math.max(24, (Number(item.duration || 30) / 30) * 54 - 6), zIndex: 2 }}
                             onClick={(event) => {
                               event.stopPropagation()
                               openEdit(item)
@@ -756,7 +766,7 @@ export default function AgendaModule() {
                 <div className="vf-extra-pets">{extraPets.map((pet) => <span key={pet.id}><PawPrint size={14} />{pet.name}<button onClick={() => setExtraPets(extraPets.filter((item) => item.id !== pet.id))}><X size={13} /></button></span>)}</div>
               )}
               <div className="vf-appointment-form">
-                <label className={errors.includes("service") ? "error" : ""}><span>Serviço *</span><select value={draft.service} onChange={(event) => selectService(event.target.value)}>{services.map(([name]) => <option key={name}>{name}</option>)}</select></label>
+                <label className={errors.includes("service") ? "error" : ""}><span>Serviço *</span><select value={draft.service} onChange={(event) => selectService(event.target.value)}><option value="">Selecione o serviço</option>{services.map(([name]) => <option key={name}>{name}</option>)}</select></label>
                 <label><span>Duração</span><select value={draft.duration} onChange={(event) => setDraft({ ...draft, duration: event.target.value })}>{[5,10,15,20,30,45,60,90,120].map((value) => <option value={value} key={value}>{value} minutos</option>)}</select></label>
                 <label className={errors.includes("date") ? "error" : ""}><span>Data *</span><input type="date" value={draft.date} onChange={(event) => setDraft({ ...draft, date: event.target.value, time: "" })} /></label>
                 <label className={errors.includes("professional") ? "error" : ""}><span>Profissional *</span><select value={draft.professional} onChange={(event) => setDraft({ ...draft, professional: event.target.value, time: "" })}>{professionals.map((name) => <option key={name}>{name}</option>)}</select></label>

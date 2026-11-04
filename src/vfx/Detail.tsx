@@ -110,6 +110,9 @@ export default function Detail({
   const [edit, setEdit] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [toast, showToast] = useToast()
+  // Registros financeiros, vendas e prontuários nunca são apagados: são cancelados ou estornados com motivo (L-05, L-08, M-13).
+  const keepHistory = ["financeiro", "vendas", "caixa", "prontuarios", "prescricoes", "documentos"].includes(slug)
+  const cancelWord = slug === "financeiro" || slug === "vendas" || slug === "caixa" ? "Estornar" : "Cancelar"
   const list = data[slug] || []
   const index = list.findIndex((record) => record.id === id)
   const item = list[index]
@@ -217,7 +220,11 @@ export default function Detail({
   const tabs: [string, number | null][] = [
     ["Resumo", null],
     ...(fullSections.length ? ([["Cadastro completo", null]] as [string, null][]) : []),
-    ...relatedTabs.map(([label, key]) => [label, relatedItems(key).length] as [string, number]),
+    // M-16: não mostra a aba do próprio módulo (ex.: "Consultas" dentro de uma consulta) nem abas vazias fora da ficha do animal/tutor.
+    ...relatedTabs
+      .filter(([, key]) => key !== slug)
+      .map(([label, key]) => [label, relatedItems(key).length] as [string, number])
+      .filter(([, count]) => count > 0 || ["animais", "tutores", "profissionais"].includes(slug)),
   ]
 
   const goBack = () => {
@@ -233,7 +240,7 @@ export default function Detail({
   const activeKey = relatedTabs.find(([label]) => label === tab)?.[1]
   return (
     <div className="vx vx-page" style={{ ["--vx-bg" as string]: "#f4efe8" }}>
-      <div className="vx-blob" style={{ background: colorFor(item.name), left: -120, top: 80, width: 460, height: 420, opacity: 0.35 }} />
+      <div className="vx-blob" style={{ background: colorFor(item.id), left: -120, top: 80, width: 460, height: 420, opacity: 0.35 }} />
       <div className="vx-blob" style={{ background: "#9fe3c6", right: -80, top: 360, width: 380, height: 380, opacity: 0.4 }} />
       <div className="vx-row" style={{ justifyContent: "space-between", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
         <button className="vx-btn vx-btn-g vx-btn-sm" onClick={goBack}>
@@ -253,7 +260,7 @@ export default function Detail({
       </div>
 
       <section className="vx-glass vx-detail-hero">
-        <span className="vx-av" style={{ background: colorFor(item.name) }}>
+        <span className="vx-av" style={{ background: colorFor(item.id) }}>
           {initials(item.name)}
         </span>
         <div style={{ flex: 1, minWidth: 220 }}>
@@ -287,9 +294,16 @@ export default function Detail({
           <button className="vx-btn vx-btn-g" onClick={() => setEdit(true)}>
             <Edit3 /> Editar
           </button>
-          <button className="vx-btn vx-btn-d" onClick={() => setConfirmDelete(true)}>
-            <Trash2 /> Excluir
-          </button>
+          {slug === "financeiro" && !/receb|pago|estorn|cancel/i.test(item.status) && (
+            <button className="vx-btn vx-btn-p" onClick={() => { const paid = item.category === "Receita" ? "Recebido" : "Pago"; updateItem(slug, item.id, { status: paid, extra: { ...(item.extra || {}), pagoEm: new Date().toISOString() } }); showToast(`Lançamento marcado como ${paid.toLowerCase()}.`) }}>
+              Marcar como {item.category === "Receita" ? "recebido" : "pago"}
+            </button>
+          )}
+          {!(keepHistory && /estorn|cancel/i.test(item.status)) && (
+            <button className="vx-btn vx-btn-d" onClick={() => setConfirmDelete(true)}>
+              <Trash2 /> {keepHistory ? cancelWord : "Excluir"}
+            </button>
+          )}
         </div>
       </section>
 
@@ -409,6 +423,8 @@ export default function Detail({
               )}
             </section>
           )}
+          {/* D-08: ações clínicas só em registros ligados a paciente ou profissional */}
+          {(slug === "profissionais" || !!animal || slug === "tutores") && (
           <section className="vx-glass" style={{ padding: 18, display: "flex", flexDirection: "column", gap: 8 }}>
             <div className="vx-lbl">Ações rápidas</div>
             {slug === "profissionais" ? (
@@ -443,6 +459,7 @@ export default function Detail({
               </>
             )}
           </section>
+          )}
         </aside>
       </div>
 
@@ -453,17 +470,33 @@ export default function Detail({
           renderLegacyForm?.(slug, item, () => setEdit(false))
         ))}
       {confirmDelete && (
-        <Confirm
-          danger
-          title="Excluir registro?"
-          text={`Esta ação remove ${item.name} da unidade ativa e não poderá ser desfeita.`}
-          confirm="Excluir definitivamente"
-          onCancel={() => setConfirmDelete(false)}
-          onConfirm={() => {
-            deleteItem(slug, item.id)
-            navigate(`/${slug}`, { replace: true })
-          }}
-        />
+        keepHistory ? (
+          <Confirm
+            danger
+            title={`${cancelWord} registro?`}
+            text={`${item.name} continua no histórico, marcado como ${cancelWord === "Estornar" ? "estornado" : "cancelado"}, com o motivo e quem fez. Nada é apagado.`}
+            confirm={cancelWord}
+            reason="Motivo"
+            onCancel={() => setConfirmDelete(false)}
+            onConfirm={(why) => {
+              updateItem(slug, item.id, { status: cancelWord === "Estornar" ? "Estornado" : "Cancelado", extra: { ...(item.extra || {}), motivoCancelamento: why, canceladoPor: store.user?.displayName || "", canceladoEm: new Date().toISOString() } })
+              setConfirmDelete(false)
+              showToast(`Registro ${cancelWord === "Estornar" ? "estornado" : "cancelado"}.`)
+            }}
+          />
+        ) : (
+          <Confirm
+            danger
+            title="Excluir registro?"
+            text={`Esta ação remove ${item.name} da unidade ativa e não poderá ser desfeita.`}
+            confirm="Excluir definitivamente"
+            onCancel={() => setConfirmDelete(false)}
+            onConfirm={() => {
+              deleteItem(slug, item.id)
+              navigate(`/${slug}`, { replace: true })
+            }}
+          />
+        )
       )}
       {toast}
     </div>

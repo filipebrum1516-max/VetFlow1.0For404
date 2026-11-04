@@ -6,10 +6,10 @@ import { usePageForms } from "../hooks"
 import { addDays, colorFor, fmtLong, initials, itemDate, matches, Page, Pager, SearchBox, Seg, StatusPill, todayISO, usePaged } from "../ui"
 
 const lanes = [
-  { key: "Chegou", label: "Chegou", statuses: ["Chegou", "Agendado", "Confirmado"], color: "#c2410c", bg: "#ffe7d2" },
-  { key: "Triagem", label: "Triagem", statuses: ["Triagem"], color: "#9a6212", bg: "#fff1c9" },
-  { key: "Em atendimento", label: "No consultório", statuses: ["Em atendimento", "Em andamento"], color: "#0f766e", bg: "#d5f3ec" },
-  { key: "Concluído", label: "Finalizado", statuses: ["Concluído"], color: "#2457c5", bg: "#dce7ff" },
+  { key: "Chegou", label: "Chegou", hint: "Na recepção, aguardando triagem", statuses: ["Chegou", "Agendado", "Confirmado"], color: "#c2410c", bg: "#ffe7d2" },
+  { key: "Triagem", label: "Triagem", hint: "Peso, temperatura e queixa", statuses: ["Triagem"], color: "#9a6212", bg: "#fff1c9" },
+  { key: "Em atendimento", label: "No consultório", hint: "Em atendimento com o veterinário", statuses: ["Em atendimento", "Em andamento"], color: "#0f766e", bg: "#d5f3ec" },
+  { key: "Concluído", label: "Finalizado", hint: "Atendimento encerrado hoje", statuses: ["Concluído"], color: "#2457c5", bg: "#dce7ff" },
 ]
 const flow = ["Chegou", "Triagem", "Em atendimento", "Concluído"]
 
@@ -26,12 +26,7 @@ export default function Consultas() {
   const [statusFilter, setStatusFilter] = useState("Todos")
   const [calledId, setCalledId] = useState("")
   const [dragOver, setDragOver] = useState("")
-  const dates = useMemo(() => [...new Set(data.consultas.map(itemDate))].sort(), [data.consultas])
-  const [day, setDay] = useState(() => {
-    const today = todayISO()
-    if (dates.includes(today)) return today
-    return [...dates].reverse().find((value) => value <= today) || today
-  })
+  const [day, setDay] = useState(() => todayISO())
 
   const dayItems = useMemo(
     () => data.consultas.filter((item) => itemDate(item) === day && matches(item, query)).sort((a, b) => (a.time || "").localeCompare(b.time || "")),
@@ -124,14 +119,14 @@ export default function Consultas() {
       bg="#fbf3e6"
       blobs={[["#ffd39a", -120, 260, 520, 420], ["#ffb27a", "78%", 360, 480, 420], ["#9fe3c6", "45%", -120, 300, 300]]}
       crumb="Consultas"
-      title="Fila viva"
-      sub="Cada paciente é uma senha que anda da recepção até a alta. Arraste entre as colunas ou toque na seta para avançar."
+      title="Consultas"
+      sub="Fila do dia por etapa: Chegou → Triagem → No consultório → Finalizado. Arraste o cartão ou use a seta para avançar."
       actions={
         <>
           <SearchBox value={query} onChange={setQuery} placeholder="Buscar pet, tutor ou serviço" />
           <Seg options={[["fila", "Fila do dia"], ["historico", "Histórico"]]} value={view} onChange={setView} />
           <button className="vx-btn vx-btn-p" onClick={() => forms.open("consultas", undefined, { date: day })}>
-            <Plus /> Emitir senha
+            <Plus /> Nova consulta
           </button>
         </>
       }
@@ -165,7 +160,7 @@ export default function Consultas() {
                 <ChevronRight />
               </button>
             </div>
-            <button className="vx-btn" onClick={callNext} style={{ background: "rgba(255,255,255,.14)", color: "#fff", border: "1px solid rgba(255,255,255,.25)" }}>
+            <button className="vx-btn" onClick={callNext} title="Leva direto ao consultório o próximo da fila (urgente, depois preferencial, depois por ordem de chegada), sem passar pela triagem." style={{ background: "rgba(255,255,255,.14)", color: "#fff", border: "1px solid rgba(255,255,255,.25)" }}>
               <Megaphone /> Chamar próxima
             </button>
           </div>
@@ -188,6 +183,7 @@ export default function Consultas() {
                     <div className="vx-row" style={{ gap: 8 }}>
                       <span className="vx-dot" style={{ background: lane.color, width: 10, height: 10 }} />
                       <strong style={{ fontSize: 15 }}>{lane.label}</strong>
+                      <small style={{ display: "block", fontSize: 12, color: "var(--vx-muted)", fontWeight: 500 }}>{lane.hint}</small>
                     </div>
                     <span className="vx-chip" style={{ minHeight: 24 }}>{items.length}</span>
                   </div>

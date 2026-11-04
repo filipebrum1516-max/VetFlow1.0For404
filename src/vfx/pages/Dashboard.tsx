@@ -2,14 +2,9 @@ import { useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router"
 import { CalendarDays, ChevronLeft, ChevronRight, Plus } from "lucide-react"
 import { useVetFlow, type Item, type ModuleSlug } from "../../store"
-import { bedAssignments } from "../forms"
+import { clinicMetrics } from "../../metrics"
 import { addDays, brl, fmtLong, itemDate, Page, Seg, todayISO } from "../ui"
 
-const START_H = 7
-const HOURS = 12
-const R = 240
-const CIRC = 2 * Math.PI * R
-const PER_MIN = CIRC / (HOURS * 60)
 
 type Kind = "Consulta" | "Cirurgia" | "Vacina" | "Exame" | "Tele"
 const kindColor: Record<Kind, string> = { Consulta: "#e94f17", Cirurgia: "#6d4bc2", Vacina: "#0f9c8c", Exame: "#2457c5", Tele: "#5aa9f0" }
@@ -38,7 +33,7 @@ function CountUp({ value }: { value: number }) {
 }
 
 export default function Dashboard() {
-  const { data, profile, activeUnit } = useVetFlow()
+  const { data, profile, activeUnit, clinic } = useVetFlow()
   const navigate = useNavigate()
   const [period, setPeriod] = useState<"1" | "7" | "30">("30")
   const [hidden, setHidden] = useState<Kind[]>([])
@@ -59,12 +54,7 @@ export default function Dashboard() {
     )
   }, [data])
 
-  const daysWithEvents = useMemo(() => [...new Set(allEvents.map((event) => itemDate(event.item)))].sort(), [allEvents])
-  const [day, setDay] = useState(() => {
-    const today = todayISO()
-    if (daysWithEvents.includes(today)) return today
-    return daysWithEvents.find((value) => value >= today) || daysWithEvents[daysWithEvents.length - 1] || today
-  })
+  const [day, setDay] = useState(() => todayISO())
   const events = allEvents.filter((event) => itemDate(event.item) === day && !hidden.includes(event.kind)).sort((a, b) => a.start - b.start)
   const isToday = day === todayISO()
   const nowMin = now.getHours() * 60 + now.getMinutes()
@@ -72,25 +62,21 @@ export default function Dashboard() {
   const upcoming = events.filter((event) => !isToday || event.start >= nowMin)
   const focus = current || upcoming[0]
   const done = isToday ? events.filter((event) => event.start + event.minutes <= nowMin).length : 0
-  const needle = ((Math.min(Math.max(nowMin, START_H * 60), (START_H + HOURS) * 60) - START_H * 60) / (HOURS * 60)) * 360
 
-  const ref = useMemo(() => {
-    const today = todayISO()
-    const dates = data.financeiro.map(itemDate).filter((value) => value <= today).sort()
-    return dates[dates.length - 1] || today
-  }, [data.financeiro])
+  const ref = todayISO()
+  const metrics = clinicMetrics(data, ref)
   const days = Number(period)
-  const revenueItems = data.financeiro.filter((item) => item.category === "Receita" && itemDate(item) > addDays(ref, -days) && itemDate(item) <= ref)
-  const revenue = revenueItems.reduce((sum, item) => sum + (item.amountValue || 0), 0)
+  const revenueItems = metrics.receipts(days)
+  const revenue = metrics.revenue(days)
   const spark = Array.from({ length: 10 }, (_, index) => {
     const date = addDays(ref, index - 9)
-    return data.financeiro.filter((item) => item.category === "Receita" && itemDate(item) === date).reduce((sum, item) => sum + (item.amountValue || 0), 0)
+    return data.financeiro.filter((item) => item.category === "Receita" && /receb/i.test(item.status) && itemDate(item) === date).reduce((sum, item) => sum + (item.amountValue || 0), 0)
   })
   const sparkMax = Math.max(...spark, 1)
   const sparkPath = spark.map((value, index) => `${index === 0 ? "M" : "L"}${index * 28.8} ${50 - (value / sparkMax) * 42}`).join(" ")
-  const beds = 14
-  const occupied = Math.min(beds, bedAssignments(data.internacoes, data.animais).map.size)
-  const patients = data.animais.filter((item) => !/falec|inativ/i.test(item.status)).length
+  const beds = metrics.beds
+  const occupied = metrics.hospitalized
+  const patients = metrics.patients
   const needs = [
     ["Vacinas em atraso", data.vacinas.filter((item) => item.status === "Atrasada").length, "/vacinas?filtro=Atrasada"],
     ["Itens abaixo do mínimo", data.estoque.filter((item) => (item.quantity || 0) < (item.minimum || 0)).length, "/estoque?filtro=Acabando"],
@@ -106,7 +92,7 @@ export default function Dashboard() {
       blobs={[["#ffb27a", "30%", 160, 640, 640], ["#8fe0d2", -80, 520, 360, 360], ["#ffd39a", "82%", 40, 340, 340]]}
       crumb={`Dashboard · ${fmtLong(day)}`}
       title={`${greeting}, ${profile.displayName}.`}
-      sub={`${activeUnit.name} — seu dia em órbita: cada arco é um compromisso, o ponteiro é agora.`}
+      sub={`${activeUnit.name} · Compromissos de ${isToday ? "hoje" : fmtLong(day)}, em ordem de horário.`}
       actions={
         <>
           <Seg label="Período dos indicadores" options={[["1", "Hoje"], ["7", "Semana"], ["30", "Mês"]]} value={period} onChange={setPeriod} />
@@ -119,10 +105,39 @@ export default function Dashboard() {
         </>
       }
     >
+      {clinic === "minha" && (() => {
+        // N-11: roteiro de primeiros passos da clínica real.
+        const steps: [string, boolean, string][] = [
+          ["Cadastrar a equipe", data.profissionais.length > 0, "/profissionais?novo=1"],
+          ["Cadastrar os serviços e preços", data.servicos.length > 0, "/servicos?novo=1"],
+          ["Cadastrar um tutor", data.tutores.length > 0, "/tutores?novo=1"],
+          ["Cadastrar o primeiro animal", data.animais.length > 0, "/animais?novo=1"],
+          ["Fazer o primeiro agendamento", data.agendas.length > 0, "/agendas"],
+        ]
+        const doneCount = steps.filter(([, ok]) => ok).length
+        if (doneCount === steps.length) return null
+        return (
+          <section className="vx-glass" style={{ padding: 18, marginBottom: 18 }} aria-label="Primeiros passos">
+            <div className="vx-row" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+              <strong style={{ fontSize: 16 }}>Primeiros passos · {doneCount} de {steps.length}</strong>
+              <span className="vx-hint">Siga a ordem para deixar a clínica pronta para atender.</span>
+            </div>
+            <ol style={{ listStyle: "none", padding: 0, margin: "12px 0 0", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 8 }}>
+              {steps.map(([label, ok, path], index) => (
+                <li key={label}>
+                  <button className="vx-btn vx-btn-g" style={{ width: "100%", justifyContent: "flex-start", opacity: ok ? 0.6 : 1 }} onClick={() => navigate(path)}>
+                    <b style={{ color: ok ? "var(--vx-green)" : "var(--vx-accent)" }}>{ok ? "✓" : index + 1}</b> {label}
+                  </button>
+                </li>
+              ))}
+            </ol>
+          </section>
+        )
+      })()}
       <div className="vx-dash">
         <div className="vx-side">
           <button className="vx-glass vx-clickable" style={{ textAlign: "left", font: "inherit", color: "inherit" }} onClick={() => navigate("/financeiro")}>
-            <div className="vx-lbl">Receita · {period === "1" ? "último dia" : `${period} dias`}</div>
+            <div className="vx-lbl">Receita recebida · {period === "1" ? "hoje" : `últimos ${period} dias`}</div>
             <div className="vx-num" style={{ fontSize: 32, marginTop: 6 }}><CountUp value={revenue} /></div>
             <svg key={`${period}-${revenue}`} className="vx-spark" width="100%" height="64" viewBox="0 0 260 58" preserveAspectRatio="none" aria-hidden="true" style={{ marginTop: 8 }}>
               <defs>
@@ -154,88 +169,51 @@ export default function Dashboard() {
             <div className="vx-num" style={{ fontSize: 40, color: "var(--vx-teal)" }}>{patients}</div>
             <div style={{ fontSize: 13, color: "var(--vx-muted)", lineHeight: 1.4 }}>
               pacientes ativos<br />
-              <b style={{ color: "var(--vx-ink)" }}>{data.tutores.length} tutores</b>
+              <b style={{ color: "var(--vx-ink)" }}>{metrics.tutors} tutores</b>
             </div>
           </button>
         </div>
 
-        <div className="vx-orbit">
-          <svg viewBox="0 0 600 600" role="img" aria-label={`Agenda de ${fmtLong(day)} em formato de relógio, das 7h às 19h`}>
-            <circle cx="300" cy="300" r={R} fill="none" stroke="rgba(255,255,255,.65)" strokeWidth="44" />
-            <g transform="rotate(-90 300 300)" fill="none" strokeWidth="34" strokeLinecap="round">
-              {events.map((event) => {
-                const offset = Math.max(0, event.start - START_H * 60) * PER_MIN
-                const length = Math.max(10, Math.min(event.minutes, (START_H + HOURS) * 60 - event.start) * PER_MIN - 6)
-                if (event.start >= (START_H + HOURS) * 60) return null
-                return (
-                  <circle
-                    key={`${event.slug}-${event.item.id}`}
-                    className="vx-arc"
-                    cx="300"
-                    cy="300"
-                    r={R}
-                    stroke={kindColor[event.kind]}
-                    strokeDasharray={`${length} ${CIRC}`}
-                    strokeDashoffset={-offset - 3}
-                    opacity={isToday && event.start + event.minutes <= nowMin ? 0.45 : 1}
-                    onClick={() => navigate(`/${event.slug}/${event.item.id}`)}
-                  >
-                    <title>{`${event.item.time} · ${event.item.name} · ${event.item.animal || ""}`}</title>
-                  </circle>
-                )
-              })}
-            </g>
-            <g fontSize="13" fontWeight="700" fill="currentColor" textAnchor="middle" style={{ color: "var(--vx-muted)" }}>
-              <text x="300" y="34">7h</text>
-              <text x="572" y="305">10h</text>
-              <text x="300" y="584">13h</text>
-              <text x="28" y="305">16h</text>
-            </g>
-            {isToday && (
-              <g transform={`rotate(${needle} 300 300)`}>
-                <line x1="300" y1="300" x2="300" y2="38" stroke="currentColor" style={{ color: "var(--vx-ink)" }} strokeWidth="3" strokeLinecap="round" />
-                <circle cx="300" cy="44" r="9" fill="var(--vx-ink)" stroke="#fff" strokeWidth="3" />
-              </g>
-            )}
-            <circle cx="300" cy="300" r="8" fill="var(--vx-ink)" />
-          </svg>
-          <div className="vx-glass vx-orbit-core">
-            <div className="vx-lbl">{isToday ? `Agora · ${now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}` : fmtLong(day)}</div>
-            {focus ? (
-              <button onClick={() => navigate(`/${focus.slug}/${focus.item.id}`)} style={{ border: 0, background: "transparent", font: "inherit", color: "inherit", cursor: "pointer" }}>
-                <div style={{ fontSize: 14, fontWeight: 700, color: kindColor[focus.kind], marginTop: 6 }}>
-                  {current ? "Acontecendo" : "Próximo"} · {focus.item.time}
-                </div>
-                <div style={{ fontSize: 19, fontWeight: 800, letterSpacing: "-.02em" }}>
-                  {focus.item.animal || focus.item.name} · {focus.item.name}
-                </div>
-                <div style={{ fontSize: 13, color: "var(--vx-muted)" }}>{focus.item.professional}</div>
-              </button>
-            ) : (
-              <div style={{ fontSize: 14, color: "var(--vx-muted)", marginTop: 6 }}>Sem compromissos restantes</div>
-            )}
-            <div style={{ width: 140, height: 1, background: "var(--vx-line)", margin: "10px 0" }} />
-            <div className="vx-num">{events.length}</div>
-            <div style={{ fontSize: 13, color: "var(--vx-muted)" }}>
-              compromissos {isToday ? `· ${done} feitos` : ""}
+        <section className="vx-glass vx-timeline" aria-label={`Compromissos de ${fmtLong(day)}`}>
+          <div className="vx-row" style={{ justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+            <div>
+              <div className="vx-lbl">{isToday ? `Hoje · agora ${now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}` : fmtLong(day)}</div>
+              <div style={{ fontSize: 15, marginTop: 4 }}><b className="vx-num" style={{ fontSize: 22 }}>{events.length}</b> compromissos{isToday ? ` · ${done} concluídos` : ""}</div>
+            </div>
+            <div className="vx-row" style={{ gap: 6 }}>
+              <button className="vx-icon-btn" aria-label="Dia anterior" onClick={() => setDay(addDays(day, -1))}><ChevronLeft /></button>
+              <button className="vx-chip" onClick={() => setDay(todayISO())} aria-pressed={isToday}>Hoje</button>
+              <button className="vx-icon-btn" aria-label="Próximo dia" onClick={() => setDay(addDays(day, 1))}><ChevronRight /></button>
             </div>
           </div>
-          <div className="vx-orbit-nav">
-            <button className="vx-icon-btn" aria-label="Dia anterior" onClick={() => setDay(addDays(day, -1))}>
-              <ChevronLeft />
+          {focus && (
+            <button className="vx-tl-focus" onClick={() => navigate(`/${focus.slug}/${focus.item.id}`)} style={{ borderColor: kindColor[focus.kind] }}>
+              <small style={{ color: kindColor[focus.kind] }}>{current ? "Acontecendo agora" : "Próximo"} · {focus.item.time}</small>
+              <strong>{focus.item.animal || focus.item.name} · {focus.item.name}</strong>
+              <span>{focus.item.professional}</span>
             </button>
-            <button className="vx-chip" onClick={() => setDay(todayISO())}>
-              Hoje
-            </button>
-            <button className="vx-icon-btn" aria-label="Próximo dia" onClick={() => setDay(addDays(day, 1))}>
-              <ChevronRight />
-            </button>
-          </div>
-        </div>
+          )}
+          <ol className="vx-tl">
+            {events.map((event) => {
+              const past = isToday && event.start + event.minutes <= nowMin
+              const live = current === event
+              return (
+                <li key={`${event.slug}-${event.item.id}`} className={`${past ? "past" : ""} ${live ? "live" : ""}`}>
+                  <time>{event.item.time}</time>
+                  <button onClick={() => navigate(`/${event.slug}/${event.item.id}`)} style={{ borderLeftColor: kindColor[event.kind], minHeight: Math.max(52, Math.min(140, event.minutes * 1.1)) }}>
+                    <strong>{event.item.animal || "—"} · {event.item.name}</strong>
+                    <small>{event.kind} · {event.minutes} min · {event.item.professional || "sem profissional"}{past ? " · concluído" : live ? " · agora" : ""}</small>
+                  </button>
+                </li>
+              )
+            })}
+          </ol>
+          {!events.length && <div className="vx-empty" style={{ padding: 24 }}>Nenhum compromisso neste dia. <button className="vx-btn vx-btn-g" style={{ marginTop: 10 }} onClick={() => navigate("/agendas")}><CalendarDays /> Abrir agenda</button></div>}
+        </section>
 
         <div className="vx-side">
           <div className="vx-glass">
-            <div className="vx-lbl">Próximos na órbita</div>
+            <div className="vx-lbl">Próximos</div>
             <div style={{ marginTop: 8 }}>
               {upcoming.slice(0, 4).map((event) => (
                 <button key={`${event.slug}-${event.item.id}`} className="vx-up" onClick={() => navigate(`/${event.slug}/${event.item.id}`)}>

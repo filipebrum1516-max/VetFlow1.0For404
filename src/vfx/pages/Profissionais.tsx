@@ -47,8 +47,8 @@ export default function Profissionais() {
       bg="#eef2f8"
       blobs={[["#9ec5ff", -140, 120, 520, 520], ["#ffc7a0", "80%", 200, 460, 380], ["#b8e8dc", "42%", 600, 380, 300]]}
       crumb="Profissionais"
-      title="Quem está de crachá hoje"
-      sub="Toda a equipe pendurada no quadro: veterinários, vendedores, caixa, estoque e entregadores. Crachá aceso = no plantão. Toque num crachá para abrir a ficha."
+      title="Profissionais"
+      sub="Toda a equipe: veterinários, vendedores, caixa, estoque e entregadores, com especialidade, situação e agenda do dia."
       actions={
         <>
           <SearchBox value={query} onChange={setQuery} placeholder="Buscar profissional" />

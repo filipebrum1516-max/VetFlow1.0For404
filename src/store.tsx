@@ -1,3 +1,5 @@
+import { localDateTime, localISO } from "./date"
+import { hashPassword, newSalt, passwordProblems, tempPassword } from "./crypto"
 import {
   createContext,
   useCallback,
@@ -102,7 +104,7 @@ export const modules = [
   ["animais", "Animais"],
   ["prontuarios", "Prontuários"],
   ["consultas", "Consultas"],
-  ["agendas", "Agendas"],
+  ["agendas", "Agenda"],
   ["profissionais", "Profissionais"],
   ["vacinas", "Vacinas"],
   ["prescricoes", "Prescrições"],
@@ -113,7 +115,7 @@ export const modules = [
   ["internacoes", "Internações"],
   ["protocolos", "Protocolos"],
   ["servicos", "Serviços"],
-  ["vendas", "Vendas"],
+  ["vendas", "Balcão"],
   ["caixa", "Caixa"],
   ["entregas", "Entregas"],
   ["estoque", "Estoque"],
@@ -125,7 +127,7 @@ export const modules = [
   ["publicacoes", "Publicações"],
   ["documentos", "Documentos"],
   ["ocorrencias", "Ocorrências"],
-  ["usuarios", "Usuários e Acessos"],
+  ["usuarios", "Usuários e acessos"],
   ["relatorios", "Relatórios"],
 ] as const
 
@@ -532,7 +534,7 @@ function pick<T>(list: readonly T[], random: () => number) {
 }
 
 function dateValue(date: Date) {
-  return date.toISOString().slice(0, 10)
+  return localISO(date)
 }
 
 function dateInHistory(random: () => number, seasonal = false) {
@@ -698,7 +700,7 @@ function generateUnit(unit: Unit, unitIndex: number): UnitData {
       name,
       subtitle: `Cliente desde ${created.toLocaleDateString("pt-BR", { month: "short", year: "numeric" })}`,
       phone: `(${
-        unit.id === "norte" ? "11" : index % 4 === 0 ? "13" : "11"
+        "69"
       }) 9${String(7000 + (index % 2999)).padStart(4, "0")}-${String(1100 + ((index * 37) % 8800)).padStart(4, "0")}`,
       email: `${normalize(name).replaceAll(" ", ".")}${index}@email.com`,
       address: `${pick(["Rua", "Avenida", "Alameda"], random)} ${pick(ownerLast, random)}, ${80 + index} • ${unit.city}`,
@@ -754,7 +756,7 @@ function generateUnit(unit: Unit, unitIndex: number): UnitData {
       registration: `CRMV-SP ${28_410 + index * 317}`,
       status: index === 4 && unit.id !== "norte" ? "Plantão eventual" : "Ativo",
       category: specialty,
-      phone: `(11) 9${8100 + index * 113}-${1200 + index * 227}`,
+      phone: `(69) 9${8100 + index * 113}-${1200 + index * 227}`,
     }),
   )
 
@@ -1270,7 +1272,8 @@ function generateUnit(unit: Unit, unitIndex: number): UnitData {
     statuses: readonly string[],
   ) =>
     Array.from(
-      { length: Math.max(8, Math.round(count * scale)) },
+      // Catálogos (medicamentos, protocolos, convênios) não repetem nomes com sufixo "#N".
+      { length: ["medicamentos", "protocolos", "convenios"].includes(slug) ? names.length : Math.max(8, Math.round(count * scale)) },
       (_, index) => {
         const date = dateInHistory(random)
         return baseItem(unit.id, slug, index, date, {
@@ -1367,12 +1370,13 @@ function generateUnit(unit: Unit, unitIndex: number): UnitData {
     financeiro: [...financeRevenue, ...expenses].sort((a, b) =>
       b.date!.localeCompare(a.date!),
     ),
+    // M-36 / T-08: convênios sem repetição e sem sufixo técnico.
     convenios: generic(
       "convenios",
-      28,
-      ["VetPlus Essencial", "PetCare Premium", "Amigo Animal", "Clube VetFlow"],
-      ["Ativo", "Em análise", "Suspenso"],
-    ),
+      8,
+      ["VetPlus Essencial", "PetCare Premium", "Amigo Animal", "Clube VetFlow", "Saúde Pet Rondônia", "Bicho Feliz Plano Básico", "AgroVet Rural", "Proteção Felina"],
+      ["Ativo", "Ativo", "Em análise", "Ativo", "Suspenso", "Ativo", "Ativo", "Em análise"],
+    ).slice(0, 8),
     unidades: seedUnits.map((item, index) =>
       baseItem(unit.id, "unidades", index, START, {
         id: item.id,
@@ -1394,7 +1398,7 @@ function generateUnit(unit: Unit, unitIndex: number): UnitData {
     ).map((item, index) => {
       /* agenda realista: alguns hoje, próximos 6 dias agendados, o restante no histórico */
       const REAL_TODAY = new Date(); REAL_TODAY.setHours(12, 0, 0, 0)
-      const MOTIVOS = ["Tutor relata coceira e lambedura nas patas há 5 dias.", "Acompanhamento da ferida cirúrgica, 7º dia pós-castração.", "Discutir resultado do hemograma e bioquímico.", "Vômito ocasional desde ontem; apetite preservado.", "Revisão da dose do anti-inflamatório.", "Filhote com diarreia leve; orientar dieta.", "Gato urinando fora da caixa há 3 dias.", "Retorno de otite: avaliar evolução pela câmera."]
+      const MOTIVOS = ["Tutor relata coceira e lambedura nas patas há 5 dias.", "Acompanhamento da ferida cirúrgica, 7º dia pós-castração.", "Discutir resultado do hemograma e bioquímico.", "Vômito ocasional desde ontem; apetite preservado.", "Revisão da dose do anti-inflamatório.", "Filhote com diarreia leve; orientar dieta.", "Urinando fora do lugar habitual há 3 dias.", "Retorno de otite: avaliar evolução pela câmera."]
       const slot = index % 19
       const hour = ["08:00", "08:40", "09:20", "10:00", "10:40", "11:20", "13:30", "14:10", "14:50", "15:30", "16:10", "16:50", "17:30"]
       const iso = (d: Date) => dateValue(d)
@@ -1469,7 +1473,19 @@ function generateUnit(unit: Unit, unitIndex: number): UnitData {
         "Atraso no atendimento",
         "Reação vacinal leve",
         "Divergência de estoque",
-        "Falha de equipamento",
+        "Autoclave sem aquecer",
+        "Tutor reclamou da espera",
+        "Medicamento vencido na prateleira",
+        "Ar-condicionado da internação parado",
+        "Erro no agendamento",
+        "Queda de energia por 20 minutos",
+        "Etiqueta de amostra ilegível",
+        "Cobrança em duplicidade",
+        "Impressora da recepção sem papel",
+        "Animal escapou da baia",
+        "Seringa em falta no consultório",
+        "Laudo entregue com atraso",
+        "Monitor multiparamétrico com alarme falso",
       ],
       ["Aberta", "Em análise", "Resolvida"],
     ),
@@ -1506,8 +1522,35 @@ function generateUnit(unit: Unit, unitIndex: number): UnitData {
 
 function makeSeed(): Record<string, UnitData> {
   return Object.fromEntries(
-    seedUnits.map((unit, index) => [unit.id, generateUnit(unit, index)]),
+    seedUnits.map((unit, index) => [unit.id, noFutureFacts(generateUnit(unit, index))]),
   )
+}
+
+/** E-01: dados de exemplo nunca mostram como já feito algo que ainda não aconteceu (venda às 22:56 quando são 06:30, tele "ao vivo" de dias atrás). */
+function noFutureFacts(data: UnitData): UnitData {
+  const now = new Date()
+  const today = localISO(now)
+  const nowMin = now.getHours() * 60 + now.getMinutes()
+  const yesterday = localISO(new Date(now.getTime() - DAY))
+  const done = /conclu|aplicad|pag|recebid|enviad|entregue|realizad|assinad|finaliz|fechad|transferid/i
+  const toMin = (t?: string) => { const [h, m] = (t || "").split(":").map(Number); return Number.isFinite(h) ? h * 60 + (m || 0) : -1 }
+  const hm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`
+  const fix = (item: Item): Item => {
+    const date = (item.date || "").slice(0, 10)
+    if (item.status === "Em andamento" && /teleatend/.test(item.id)) {
+      if (date < today) return { ...item, status: "Concluído" }
+      if (date > today || toMin(item.time) > nowMin) return { ...item, status: "Agendado" }
+      return item
+    }
+    if (!done.test(item.status || "")) return item
+    if (date > today) return { ...item, date: yesterday }
+    if (date === today && item.time && toMin(item.time) > nowMin) {
+      if (nowMin < 8 * 60) return { ...item, date: yesterday }
+      return { ...item, time: hm(Math.max(7 * 60, nowMin - 20 - (toMin(item.time) % 90))) }
+    }
+    return item
+  }
+  return Object.fromEntries(Object.entries(data).map(([slug, items]) => [slug, (items as Item[]).map(fix)])) as UnitData
 }
 
 function emptyUnitData(): UnitData {
@@ -1564,7 +1607,13 @@ type StoreValue = {
   updateItem: (module: ModuleSlug, id: string, patch: Partial<Item>) => void
   deleteItem: (module: ModuleSlug, id: string) => void
   authenticated: boolean
-  login: (identifier: string, password: string) => StaffUser | null
+  login: (identifier: string, password: string, keep?: boolean) => { user: StaffUser | null; error?: string }
+  changePassword: (userId: string, current: string | null, next: string) => string | null
+  resetPassword: (userId: string) => string
+  verifyPassword: (u: StaffUser, password: string) => boolean
+  audit: AuditEntry[]
+  acceptTerms: () => void
+  termsAccepted: boolean
   logout: () => void
   user: StaffUser | null
   staff: StaffUser[]
@@ -1582,18 +1631,21 @@ type StoreValue = {
   updateUnit: (id: string, patch: Partial<Unit>) => void
 }
 
+export type AuditEntry = { em: string; quem: string; acao: "criou" | "editou" | "excluiu" | "login" | "logout" | "senha" | "termos"; modulo: string; registro: string; unidade: string }
+export const TERMS_VERSION = "2026-10-30"
+
 export type Role = "Administrador" | "Vendedor" | "Caixa" | "Estoque" | "Veterinário" | "Entregador"
-export type StaffUser = { id: string; name: string; displayName: string; username: string; email: string; cpf: string; password: string; role: Role; crmv?: string; code?: string; active: boolean; perms?: Record<string, string>; log?: { quando: string; quem: string; acao: string }[] }
+export type StaffUser = { id: string; name: string; displayName: string; username: string; email: string; cpf: string; passwordHash: string; salt: string; mustChange?: boolean; password?: string; role: Role; crmv?: string; code?: string; active: boolean; perms?: Record<string, string>; log?: { quando: string; quem: string; acao: string }[] }
 export const STAFF: StaffUser[] = [
-  { id: "u-admin", name: "Rafael Souza", displayName: "Dr. Rafael", username: "admin", email: "admin@vetflow.com", cpf: "482.315.770-10", password: "admin123", role: "Administrador", crmv: "CRMV-SP 28.410", code: "001", active: true },
-  { id: "u-vend", name: "Felipe Brum", displayName: "Felipe Brum", username: "vendedor", email: "vendedor@vetflow.com", cpf: "041.115.882-02", password: "vendedor123", role: "Vendedor", code: "026", active: true },
-  { id: "u-caixa", name: "Franciely Rocha", displayName: "Franciely Rocha", username: "caixa", email: "caixa@vetflow.com", cpf: "271.904.338-48", password: "caixa123", role: "Caixa", code: "030", active: true },
-  { id: "u-est", name: "João Matias", displayName: "João Matias", username: "estoque", email: "estoque@vetflow.com", cpf: "660.218.497-31", password: "estoque123", role: "Estoque", code: "037", active: true },
-  { id: "u-vet", name: "Ana Martins", displayName: "Dra. Ana Martins", username: "veterinario", email: "veterinario@vetflow.com", cpf: "448.902.115-19", password: "vet123", role: "Veterinário", crmv: "CRMV-RO 4.215", active: true },
-  { id: "u-vet2", name: "Marcos Nunes", displayName: "Dr. Marcos Nunes", username: "veterinario2", email: "marcos@vetflow.com", cpf: "519.337.204-66", password: "vet123", role: "Veterinário", crmv: "CRMV-RO 3.870", active: true },
-  { id: "u-vet3", name: "João Lima", displayName: "Dr. João Lima", username: "veterinario3", email: "joao@vetflow.com", cpf: "284.661.093-12", password: "vet123", role: "Veterinário", crmv: "CRMV-SP 29044", active: true },
-  { id: "u-vet4", name: "Luísa Paiva", displayName: "Dra. Luísa Paiva", username: "veterinario4", email: "luisa@vetflow.com", cpf: "371.905.448-20", password: "vet123", role: "Veterinário", crmv: "CRMV-SP 29361", active: true },
-  { id: "u-ent", name: "Cauã Torres", displayName: "Cauã Torres", username: "entregador", email: "entregador@vetflow.com", cpf: "032.774.519-77", password: "entrega123", role: "Entregador", active: true },
+  { id: "u-admin", name: "Rafael Souza", displayName: "Dr. Rafael", username: "admin", email: "admin@vetflow.com", cpf: "482.315.770-10", passwordHash: "011d01d8447102c0c2e6b444725b68f425a88d08a84cec74ff773b02c76cf149", salt: "c64f4ef740b62274ff8cc66c", mustChange: true, role: "Administrador", crmv: "CRMV-RO 2.841", code: "001", active: true },
+  { id: "u-vend", name: "Felipe Brum", displayName: "Felipe Brum", username: "vendedor", email: "vendedor@vetflow.com", cpf: "041.115.882-02", passwordHash: "899528001dd08d0a855e6a6b8a74f8ae5c4422bb11aa1f7c49f6fda8fbdaf1de", salt: "48c7e81a6031d6f1e205d095", mustChange: true, role: "Vendedor", code: "026", active: true },
+  { id: "u-caixa", name: "Franciely Rocha", displayName: "Franciely Rocha", username: "caixa", email: "caixa@vetflow.com", cpf: "271.904.338-48", passwordHash: "ba6047209237daa8d52089ab8bf96acf3553deeaf0860c1aa94c710ac9a859b3", salt: "eaf3dac73be77c374b4a8738", mustChange: true, role: "Caixa", code: "030", active: true },
+  { id: "u-est", name: "João Matias", displayName: "João Matias", username: "estoque", email: "estoque@vetflow.com", cpf: "660.218.497-31", passwordHash: "bf8d4d70f978232a9ce6c7e2b25d43ce236270e0d9740f1dfea02b13b5ead518", salt: "2acdcc1e688836b1f499e604", mustChange: true, role: "Estoque", code: "037", active: true },
+  { id: "u-vet", name: "Ana Martins", displayName: "Dra. Ana Martins", username: "veterinario", email: "veterinario@vetflow.com", cpf: "448.902.115-19", passwordHash: "dc4f60a0fcc4f9a46872df6e9117a942133295cd070e09a91be4f40a271a04bc", salt: "98f286b15565f72c68517553", mustChange: true, role: "Veterinário", crmv: "CRMV-RO 4.215", active: true },
+  { id: "u-vet2", name: "Marcos Nunes", displayName: "Dr. Marcos Nunes", username: "veterinario2", email: "marcos@vetflow.com", cpf: "519.337.204-66", passwordHash: "791b14e66e50c05ee6e683e19ef47200ae0cc0a4d70f005d317a3414ad9a09be", salt: "1eb14a66934c68d6f33b08af", mustChange: true, role: "Veterinário", crmv: "CRMV-RO 3.870", active: true },
+  { id: "u-vet3", name: "João Lima", displayName: "Dr. João Lima", username: "veterinario3", email: "joao@vetflow.com", cpf: "284.661.093-12", passwordHash: "3a582f68ab75a127639f34ebe92f24cd93da1ea7f57d50ae82e850679f7b7f3f", salt: "44f19021711987491b448847", mustChange: true, role: "Veterinário", crmv: "CRMV-RO 2.904", active: true },
+  { id: "u-vet4", name: "Luísa Paiva", displayName: "Dra. Luísa Paiva", username: "veterinario4", email: "luisa@vetflow.com", cpf: "371.905.448-20", passwordHash: "63f92063f401b5af7415a28870a772616bf39727240df60fd539531e43db4542", salt: "f6838afcc4adda501db50b25", mustChange: true, role: "Veterinário", crmv: "CRMV-RO 2.936", active: true },
+  { id: "u-ent", name: "Cauã Torres", displayName: "Cauã Torres", username: "entregador", email: "entregador@vetflow.com", cpf: "032.774.519-77", passwordHash: "1cc1c39b027251bf323e1ec8143353008327ed74c3c088c5431100b8cfb43796", salt: "3a191e034631f0aa26034426", mustChange: true, role: "Entregador", active: true },
 ]
 /** Abas liberadas para cada perfil ("*" = todas). */
 export const ROLE_ACCESS: Record<Role, string[]> = {
@@ -1621,8 +1673,8 @@ const defaultProfile: UserProfile = {
   name: "Rafael Souza",
   displayName: "Dr. Rafael",
   email: "rafael@vetflow.com.br",
-  phone: "(11) 98765-4321",
-  crmv: "CRMV-SP 28.410",
+  phone: "(69) 98765-4321",
+  crmv: "CRMV-RO 2.841",
   specialty: "Dermatologia veterinária",
   bio: "Médico-veterinário com atuação em clínica geral e dermatologia de cães e gatos.",
 }
@@ -1713,26 +1765,46 @@ export function VetFlowProvider({ children }: { children: ReactNode }) {
   const [staff, setStaff] = useState<StaffUser[]>(() => {
     try {
       const saved = JSON.parse(localStorage.getItem("vetflow-staff") || "null")
-      if (Array.isArray(saved) && saved.length) return [...saved, ...STAFF.filter((u) => !saved.some((x: StaffUser) => x.id === u.id))]
+      if (Array.isArray(saved) && saved.length) {
+        /* migração: cadastros antigos tinham a senha em texto puro; viram hash e exigem troca */
+        const migrated = (saved as StaffUser[]).map((u) => {
+          if (u.passwordHash && u.salt) { const { password: _drop, ...rest } = u; return rest as StaffUser }
+          const seed = STAFF.find((x) => x.id === u.id)
+          const salt = seed?.salt || newSalt()
+          const { password: _old, ...rest } = u
+          return { ...rest, salt, passwordHash: seed?.passwordHash || hashPassword(tempPassword(), salt), mustChange: true } as StaffUser
+        })
+        return [...migrated, ...STAFF.filter((u) => !migrated.some((x) => x.id === u.id))]
+      }
     } catch { /* sem cadastro salvo */ }
     return STAFF
   })
-  const [session, setSession] = useState<{ userId: string; clinic: Clinic | "" } | null>(() => {
+  type Session = { token: string; userId: string; clinic: Clinic | ""; exp: number; keep?: boolean }
+  const readTokens = (): Record<string, { userId: string; exp: number }> => { try { return JSON.parse(localStorage.getItem("vetflow-auth") || "{}") } catch { return {} } }
+  const [session, setSession] = useState<Session | null>(() => {
     try {
-      const raw = sessionStorage.getItem("vetflow-session")
+      const raw = sessionStorage.getItem("vetflow-session") || localStorage.getItem("vetflow-session-keep")
       if (!raw) return null
-      if (raw === "admin") return { userId: "u-admin", clinic: "exemplo" }
-      return JSON.parse(raw)
+      const s = JSON.parse(raw) as Session
+      const t = readTokens()[s?.token || ""]
+      /* a sessão só vale com um token emitido no login, ainda dentro da validade */
+      if (!s?.token || !t || t.userId !== s.userId || t.exp < Date.now()) return null
+      return s
     } catch {
       return null
     }
   })
   useEffect(() => {
     try {
-      if (session) sessionStorage.setItem("vetflow-session", JSON.stringify(session))
-      else sessionStorage.removeItem("vetflow-session")
+      sessionStorage.removeItem("vetflow-session"); localStorage.removeItem("vetflow-session-keep")
+      if (session) (session.keep ? localStorage : sessionStorage).setItem(session.keep ? "vetflow-session-keep" : "vetflow-session", JSON.stringify(session))
     } catch { /* sem sessão */ }
   }, [session])
+  /* registro de auditoria (I-11) */
+  const [audit, setAudit] = useState<AuditEntry[]>(() => { try { return JSON.parse(localStorage.getItem("vetflow-audit") || "[]") } catch { return [] } })
+  useEffect(() => { try { localStorage.setItem("vetflow-audit", JSON.stringify(audit.slice(-3000))) } catch { /* sem espaço */ } }, [audit])
+  const [termsAccepted, setTermsAccepted] = useState(() => { try { return (JSON.parse(localStorage.getItem("vetflow-terms") || "{}") as Record<string, string>)._version === TERMS_VERSION } catch { return false } })
+  const loginFails = useRef<Record<string, { n: number; until: number }>>({})
   useEffect(() => {
     try { localStorage.setItem("vetflow-staff", JSON.stringify(staff)) } catch { /* sem espaço */ }
   }, [staff])
@@ -1982,19 +2054,80 @@ export function VetFlowProvider({ children }: { children: ReactNode }) {
             item.unitId === activeUnitId ? { ...item, read: true } : item,
           ),
         ),
-      addItem,
-      updateItem,
-      deleteItem,
+      addItem: (module, item) => {
+        const created = addItem(module, item)
+        setAudit((a) => [...a, { em: new Date().toISOString(), quem: user?.displayName || "Sistema", acao: "criou", modulo: module, registro: created.name || created.id, unidade: effectiveUnitId }])
+        return created
+      },
+      updateItem: (module, id, patch) => {
+        updateItem(module, id, patch)
+        const cur = (allData[effectiveUnitId]?.[module] || []).find((x) => x.id === id)
+        setAudit((a) => [...a, { em: new Date().toISOString(), quem: user?.displayName || "Sistema", acao: "editou", modulo: module, registro: cur?.name || id, unidade: effectiveUnitId }])
+      },
+      deleteItem: (module, id) => {
+        const cur = (allData[effectiveUnitId]?.[module] || []).find((x) => x.id === id)
+        deleteItem(module, id)
+        setAudit((a) => [...a, { em: new Date().toISOString(), quem: user?.displayName || "Sistema", acao: "excluiu", modulo: module, registro: cur?.name || id, unidade: effectiveUnitId }])
+      },
       authenticated,
-      login: (identifier, password) => {
+      login: (identifier, password, keep) => {
         const id = identifier.trim().toLowerCase()
         const digits = id.replace(/\D/g, "")
-        const found = staff.find((u) => u.active && (u.username === id || u.email.toLowerCase() === id || (digits.length === 11 && u.cpf.replace(/\D/g, "") === digits)))
-        if (!found || found.password !== password) return null
-        setSession({ userId: found.id, clinic: "" })
-        return found
+        const f = loginFails.current[id]
+        if (f && f.until > Date.now()) return { user: null, error: `Muitas tentativas. Tente de novo em ${Math.ceil((f.until - Date.now()) / 1000)} s.` }
+        const found = staff.find((u) => (u.username === id || u.email.toLowerCase() === id || (digits.length === 11 && u.cpf.replace(/\D/g, "") === digits)))
+        if (!found || hashPassword(password, found.salt) !== found.passwordHash) {
+          const n = (f?.n || 0) + 1
+          loginFails.current[id] = { n, until: n >= 5 ? Date.now() + 60_000 : 0 }
+          return { user: null, error: n >= 5 ? "Senha incorreta 5 vezes. O acesso foi bloqueado por 1 minuto." : `Usuário ou senha incorretos.${n >= 3 ? ` Restam ${5 - n} tentativa(s).` : ""}` }
+        }
+        if (!found.active) return { user: null, error: "Este acesso está desativado. Fale com o administrador da clínica." }
+        delete loginFails.current[id]
+        const token = newSalt() + newSalt()
+        const exp = Date.now() + (keep ? 30 : 0.5) * 86_400_000
+        try { const t = readTokens(); Object.keys(t).forEach((k) => { if (t[k].exp < Date.now()) delete t[k] }); t[token] = { userId: found.id, exp }; localStorage.setItem("vetflow-auth", JSON.stringify(t)) } catch { /* sem armazenamento */ }
+        setSession({ token, userId: found.id, clinic: "", exp, keep: !!keep })
+        setAudit((a) => [...a, { em: new Date().toISOString(), quem: found.displayName, acao: "login", modulo: "acesso", registro: found.username, unidade: "" }])
+        return { user: found }
       },
-      logout: () => setSession(null),
+      logout: () => {
+        try { const t = readTokens(); if (session?.token) delete t[session.token]; localStorage.setItem("vetflow-auth", JSON.stringify(t)) } catch { /* ok */ }
+        if (user) setAudit((a) => [...a, { em: new Date().toISOString(), quem: user.displayName, acao: "logout", modulo: "acesso", registro: user.username, unidade: "" }])
+        setSession(null)
+      },
+      verifyPassword: (u, password) => hashPassword(password, u.salt) === u.passwordHash,
+      changePassword: (userId, current, next) => {
+        const u = staff.find((x) => x.id === userId)
+        if (!u) return "Usuário não encontrado."
+        if (current !== null && hashPassword(current, u.salt) !== u.passwordHash) return "A senha atual está incorreta."
+        const probs = passwordProblems(next)
+        if (probs.length) return `A nova senha precisa ter ${probs.join(", ")}.`
+        if (hashPassword(next, u.salt) === u.passwordHash) return "A nova senha precisa ser diferente da atual."
+        const salt = newSalt()
+        setStaff((cur) => cur.map((x) => (x.id === userId ? { ...x, salt, passwordHash: hashPassword(next, salt), mustChange: false } : x)))
+        setAudit((a) => [...a, { em: new Date().toISOString(), quem: user?.displayName || u.displayName, acao: "senha", modulo: "acesso", registro: u.username, unidade: "" }])
+        return null
+      },
+      resetPassword: (userId) => {
+        const temp = tempPassword()
+        const salt = newSalt()
+        setStaff((cur) => cur.map((x) => (x.id === userId ? { ...x, salt, passwordHash: hashPassword(temp, salt), mustChange: true } : x)))
+        const u = staff.find((x) => x.id === userId)
+        setAudit((a) => [...a, { em: new Date().toISOString(), quem: user?.displayName || "Sistema", acao: "senha", modulo: "acesso", registro: `redefinição · ${u?.username || userId}`, unidade: "" }])
+        return temp
+      },
+      audit,
+      termsAccepted,
+      acceptTerms: () => {
+        try {
+          const rec = JSON.parse(localStorage.getItem("vetflow-terms") || "{}")
+          rec._version = TERMS_VERSION
+          rec[user?.id || "anon"] = { versao: TERMS_VERSION, em: new Date().toISOString(), quem: user?.displayName || "" }
+          localStorage.setItem("vetflow-terms", JSON.stringify(rec))
+        } catch { /* sem armazenamento */ }
+        setTermsAccepted(true)
+        setAudit((a) => [...a, { em: new Date().toISOString(), quem: user?.displayName || "Usuário", acao: "termos", modulo: "LGPD", registro: `versão ${TERMS_VERSION}`, unidade: "" }])
+      },
       user,
       staff,
       saveStaff: (u) => setStaff((cur) => (cur.some((x) => x.id === u.id) ? cur.map((x) => (x.id === u.id ? u : x)) : [...cur, u])),
@@ -2036,6 +2169,8 @@ export function VetFlowProvider({ children }: { children: ReactNode }) {
       effectiveUnitId,
       addUnit,
       updateUnit,
+      audit,
+      termsAccepted,
     ],
   )
 

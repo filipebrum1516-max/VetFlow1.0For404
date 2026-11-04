@@ -3,7 +3,7 @@ import { useNavigate } from "react-router"
 import { ArrowRight, GitCompare, PenLine, Plus, Printer } from "lucide-react"
 import { useVetFlow, type Item } from "../../store"
 import { usePageForms } from "../hooks"
-import { fmtDate, hash, itemDate, matches, Modal, Page, Pager, SearchBox, Seg, StatusPill, usePaged, useQueryParam } from "../ui"
+import { fmtDate, itemDate, matches, Modal, Page, Pager, SearchBox, Seg, StatusPill, usePaged, useQueryParam } from "../ui"
 
 type Attr = { n: string; u: string; min: number; max: number }
 const templates: [RegExp, Attr[]][] = [
@@ -17,16 +17,11 @@ const capColor = (name: string) => (/hemo|pré|check/i.test(name) ? "#b4322a" : 
 const liquid = (status: string) => (/conclu/i.test(status) ? 0.92 : /aguard/i.test(status) ? 0.62 : /urgent/i.test(status) ? 0.45 : 0.28)
 
 function results(item: Item): { n: string; u: string; min: number; max: number; v: number }[] | undefined {
-  if (item.extra?.resultados) return item.extra.resultados
-  const attrs = attrsFor(item.name)
-  if (!attrs || !/conclu/i.test(item.status)) return undefined
-  return attrs.map((attr, index) => {
-    const seed = (hash(item.id + attr.n) % 1000) / 1000
-    const span = attr.max - attr.min
-    const v = attr.min - span * 0.15 + seed * span * (index === 2 ? 1.5 : 1.25)
-    return { ...attr, v: Math.round(v * (attr.max < 2 ? 1000 : 10)) / (attr.max < 2 ? 1000 : 10) }
-  })
+  // Só mostra valores que alguém lançou de verdade (nada inventado).
+  return item.extra?.resultados
 }
+/** Código curto e legível do tubo (M-25). */
+const tubeCode = (item: Item) => `EX-${String(item.id.split("-").pop() || "").replace(/\D/g, "").slice(-4).padStart(4, "0")}`
 
 export default function Exames() {
   const { data, updateItem } = useVetFlow()
@@ -39,6 +34,7 @@ export default function Exames() {
   const [entering, setEntering] = useState(false)
   const [comparing, setComparing] = useState(false)
   const [draft, setDraft] = useState<Record<string, string>>({})
+  const [entryError, setEntryError] = useState("")
   const list = useMemo(
     () =>
       data.exames
@@ -57,9 +53,13 @@ export default function Exames() {
   const outOfRange = rows?.filter((row) => row.v < row.min || row.v > row.max) || []
 
   const advance = (item: Item) => {
-    const next = /solicit|urgent/i.test(item.status) ? "Aguardando resultado" : "Concluído"
-    if (next === "Concluído" && !item.extra?.resultados && attrsFor(item.name)) {
+    if (/assinatura/i.test(item.status)) { setSelectedId(item.id); forms.toast("Resultado lançado. Falta assinar o laudo."); return }
+    const next = /solicit|urgent/i.test(item.status) ? "Aguardando resultado" : "Aguardando assinatura"
+    // B-03 / M-24: nunca conclui sem resultado — abre o formulário próprio do tipo de exame.
+    if (next === "Aguardando assinatura") {
       setSelectedId(item.id)
+      setDraft({})
+      setEntryError("")
       setEntering(true)
       return
     }
@@ -68,17 +68,22 @@ export default function Exames() {
   }
   const saveResults = () => {
     if (!selected) return
-    const attrs = attrsFor(selected.name) || []
-    const resultados = attrs.map((attr) => ({ ...attr, v: Number(String(draft[attr.n] || "").replace(",", ".")) || 0 }))
-    updateItem("exames", selected.id, { status: "Concluído", extra: { ...(selected.extra || {}), resultados } })
+    const attrs = attrsFor(selected.name)
+    if (attrs) {
+      const missing = attrs.filter((attr) => !String(draft[attr.n] || "").trim() || !Number.isFinite(Number(String(draft[attr.n]).replace(",", "."))))
+      if (missing.length) return setEntryError(`Preencha com números: ${missing.map((m) => m.n).join(", ")}.`)
+    } else if ((draft.laudo || "").trim().length < 10) return setEntryError("Escreva o laudo descritivo (mínimo de 10 letras).")
+    const resultados = attrs?.map((attr) => ({ ...attr, v: Number(String(draft[attr.n]).replace(",", ".")) }))
+    updateItem("exames", selected.id, { status: "Aguardando assinatura", extra: { ...(selected.extra || {}), ...(resultados ? { resultados } : {}), laudo: draft.laudo || selected.extra?.laudo || "", anexo: draft.anexo || "", lancadoEm: new Date().toISOString() } })
     setEntering(false)
     setDraft({})
-    forms.toast("Resultado lançado e laudo liberado para assinatura.")
+    forms.toast("Resultado lançado. O laudo aguarda assinatura.")
   }
   const sign = () => {
     if (!selected) return
+    if (!selected.extra?.resultados && !selected.extra?.laudo) { forms.toast("Lance o resultado antes de assinar."); return }
     updateItem("exames", selected.id, { status: "Concluído", extra: { ...(selected.extra || {}), assinado: true, assinadoEm: new Date().toISOString() } })
-    forms.toast("Laudo assinado digitalmente.")
+    forms.toast("Laudo marcado como assinado (registro interno, sem certificado digital).")
   }
 
   return (
@@ -86,8 +91,8 @@ export default function Exames() {
       bg="#f1eefa"
       blobs={[["#c9b8ff", 40, 240, 560, 480], ["#a7e3f0", "45%", -80, 380, 380], ["#ffc9d4", "85%", "70%", 340, 340]]}
       crumb="Exames"
-      title="Bancada do laboratório"
-      sub="Cada amostra é um tubo. Ele enche conforme avança: coleta → análise → laudo."
+      title="Exames"
+      sub="Pedidos de exame por etapa: Solicitado → Aguardando resultado → Aguardando assinatura → Concluído."
       actions={
         <>
           <SearchBox value={query} onChange={setQuery} placeholder="Buscar exame ou paciente" />
@@ -108,7 +113,7 @@ export default function Exames() {
                   <span className="glass">
                     <span style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: `${liquid(item.status) * 100}%`, background: capColor(item.name), opacity: 0.75, transition: "height .4s ease" }} />
                     <span style={{ position: "absolute", left: 6, top: 14, width: 5, height: "70%", borderRadius: 3, background: "rgba(255,255,255,.75)" }} />
-                    <span className="tag">EX-{item.id.split("-").pop()}</span>
+                    <span className="tag">{tubeCode(item)}</span>
                   </span>
                 </button>
               ))}
@@ -119,9 +124,10 @@ export default function Exames() {
             {paged.visible.map((item) => (
               <div key={item.id} style={{ textAlign: "center", minWidth: 0 }}>
                 <div style={{ fontWeight: 800, fontSize: 13 }}>{item.animal}</div>
-                <div style={{ fontSize: 11, color: "var(--vx-muted)", overflow: "hidden", textOverflow: "ellipsis" }}>{item.name}</div>
+                <div style={{ fontSize: 12, color: "var(--vx-muted)", overflow: "hidden", textOverflow: "ellipsis" }}>{item.name}</div>
+                <div style={{ fontSize: 12, fontWeight: 700, marginTop: 2 }}>{tubeCode(item)} · {item.status}</div>
                 <button className="vx-chip" style={{ marginTop: 6, minHeight: 24, fontSize: 11 }} onClick={() => advance(item)} disabled={/conclu/i.test(item.status)} aria-label={`Avançar ${item.name} de ${item.animal}`}>
-                  {/conclu/i.test(item.status) ? "Laudo pronto" : <>Avançar <ArrowRight size={12} /></>}
+                  {/conclu/i.test(item.status) ? "Laudo pronto" : /assinatura/i.test(item.status) ? "Assinar" : /aguard/i.test(item.status) ? <>Lançar resultado <ArrowRight size={12} /></> : <>Amostra colhida <ArrowRight size={12} /></>}
                 </button>
               </div>
             ))}
@@ -141,7 +147,7 @@ export default function Exames() {
           <div className="vx-laudo" style={{ transform: "rotate(1deg)" }}>
             <div className="vx-row" style={{ justifyContent: "space-between", borderBottom: "1.5px dashed rgba(26,34,51,.2)", paddingBottom: 12, gap: 10 }}>
               <div>
-                <div style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 11, color: "#5b6474" }}>LAUDO EX-{selected.id.split("-").pop()} · {fmtDate(itemDate(selected))}</div>
+                <div style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 11, color: "#5b6474" }}>LAUDO {tubeCode(selected)} · {fmtDate(itemDate(selected))}</div>
                 <div style={{ fontSize: 19, fontWeight: 800 }}>{selected.name} · {selected.animal}</div>
               </div>
               <StatusPill status={selected.status} />
@@ -174,7 +180,7 @@ export default function Exames() {
               })
             ) : (
               <div style={{ padding: "18px 0", color: "#5b6474", fontSize: 13 }}>
-                {/conclu/i.test(selected.status) ? "Laudo descritivo anexado ao prontuário (exame de imagem)." : "Resultado ainda não liberado. Avance o tubo quando a amostra for analisada."}
+                {selected.extra?.laudo ? <span style={{ whiteSpace: "pre-wrap", color: "#1a2233" }}>{selected.extra.laudo}{selected.extra?.anexo ? `\nAnexo: ${selected.extra.anexo}` : ""}</span> : /conclu/i.test(selected.status) ? "Concluído sem resultado registrado neste sistema." : "Resultado ainda não lançado."}
               </div>
             )}
             {rows && (
@@ -184,7 +190,7 @@ export default function Exames() {
               </div>
             )}
             <div className="vx-row" style={{ gap: 8, flexWrap: "wrap" }}>
-              {!/conclu/i.test(selected.status) && (
+              {!/conclu|assinatura/i.test(selected.status) && (
                 <button className="vx-btn vx-btn-g vx-btn-sm" onClick={() => advance(selected)}>
                   <ArrowRight /> {/solicit|urgent/i.test(selected.status) ? "Amostra em análise" : "Lançar resultado"}
                 </button>
@@ -198,7 +204,7 @@ export default function Exames() {
                 <Printer /> Imprimir
               </button>
               <button className="vx-btn vx-btn-g vx-btn-sm" onClick={() => navigate(`/exames/${selected.id}`)}>Ficha</button>
-              {/conclu/i.test(selected.status) && !selected.extra?.assinado && (
+              {/assinatura|conclu/i.test(selected.status) && !selected.extra?.assinado && (selected.extra?.resultados || selected.extra?.laudo) && (
                 <button className="vx-btn vx-btn-p vx-btn-sm" onClick={sign}>
                   <PenLine /> Assinar laudo
                 </button>
@@ -212,16 +218,23 @@ export default function Exames() {
       {entering && selected && (
         <Modal
           title={`Resultado · ${selected.name}`}
-          text={`${selected.animal} · informe os valores medidos`}
+          text={attrsFor(selected.name) ? `${selected.animal} · informe os valores medidos (valores de referência ao lado)` : `${selected.animal} · exame descritivo: escreva o laudo e, se houver, anexe o arquivo`}
           onClose={() => setEntering(false)}
           actions={
             <>
               <button className="vx-btn vx-btn-g" onClick={() => setEntering(false)}>Cancelar</button>
-              <button className="vx-btn vx-btn-p" onClick={saveResults}>Liberar laudo</button>
+              <button className="vx-btn vx-btn-p" onClick={saveResults}>Salvar resultado</button>
             </>
           }
         >
           <div className="vx-g">
+            {!attrsFor(selected.name) && (
+              <>
+                <label className="vx-f" style={{ gridColumn: "1 / -1" }}><span className="vx-fl">Laudo descritivo *</span><textarea className="vx-in" rows={5} value={draft.laudo || ""} onChange={(event) => setDraft({ ...draft, laudo: event.target.value })} /></label>
+                <label className="vx-f" style={{ gridColumn: "1 / -1" }}><span className="vx-fl">Anexo (imagem ou PDF)</span><input className="vx-in" type="file" accept="image/*,application/pdf" onChange={(event) => setDraft({ ...draft, anexo: event.target.files?.[0]?.name || "" })} /></label>
+              </>
+            )}
+            {entryError && <div role="alert" style={{ gridColumn: "1 / -1", color: "#b4322a", fontSize: 13, fontWeight: 600 }}>{entryError}</div>}
             {(attrsFor(selected.name) || []).map((attr) => (
               <label key={attr.n} className="vx-f vx-c3">
                 <span className="vx-fl">{attr.n} ({attr.u || "—"}) · ref. {attr.min}–{attr.max}</span>

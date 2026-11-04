@@ -5,6 +5,7 @@ import './index.css'
 import { applyFavicon } from './favicon'
 
 applyFavicon()
+document.documentElement.lang = 'pt-BR'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

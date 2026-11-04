@@ -44,8 +44,8 @@ export default function Servicos() {
       bg="#f6eee2"
       blobs={[["#f4c99a", 200, 240, 600, 500], ["#a8e2b8", "85%", -60, 360, 360]]}
       crumb="Serviços"
-      title="O cardápio"
-      sub="Tudo o que a clínica oferece, com preço por porte — do jeito que o tutor entende. Toque num item para abrir."
+      title="Serviços"
+      sub="Serviços da clínica com preço e duração. Toque num serviço para abrir ou editar."
       actions={
         <>
           <SearchBox value={query} onChange={setQuery} placeholder="Buscar serviço" />

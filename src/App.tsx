@@ -1,3 +1,6 @@
+import { localDateTime, localISO } from "./date"
+import { registerUnits } from "./vfx/vendasShared"
+import ClienteForm, { fromItem, toItem } from "./vfx/ClienteForm"
 import {
   Suspense,
   lazy,
@@ -42,6 +45,8 @@ import {
   LockKeyhole,
   LogOut,
   Mail,
+  Eye,
+  EyeOff,
   MapPin,
   Menu,
   MessageCircle,
@@ -142,7 +147,6 @@ const VxPerfil = lazy(() => import("./vfx/pages/Sistema").then((m) => ({ default
 const VxConfig = lazy(() => import("./vfx/pages/Sistema").then((m) => ({ default: m.Configuracoes })))
 const VxAjuda = lazy(() => import("./vfx/pages/Sistema").then((m) => ({ default: m.Ajuda })))
 const VxDashProposta = lazy(() => import("./vfx/pages/DashboardProposta"))
-const VxLanding = lazy(() => import("./vfx/pages/Landing"))
 const VxNotFound = lazy(() => import("./vfx/pages/Sistema").then((m) => ({ default: m.NaoEncontrada })))
 
 function PageLoader() {
@@ -186,35 +190,17 @@ const moduleIcons: Record<ModuleSlug, LucideIcon> = {
   relatorios: FileChartColumn,
 }
 
+/* ordem do menu pelo fluxo da clínica (N-04); cada perfil só vê os seus itens (N-03) */
 const navGroups: [string, ModuleSlug[]][] = [
-  ["Vendas", ["vendas", "caixa", "entregas"]],
-  [
-    "Clínica",
-    [
-      "animais",
-      "tutores",
-      "prontuarios",
-      "consultas",
-      "agendas",
-      "profissionais",
-    ],
-  ],
-  [
-    "Saúde",
-    [
-      "vacinas",
-      "prescricoes",
-      "medicamentos",
-      "exames",
-      "procedimentos",
-      "cirurgias",
-      "internacoes",
-      "protocolos",
-    ],
-  ],
-  ["Gestão", ["servicos", "estoque", "financeiro", "convenios", "unidades"]],
-  ["Relacionamento", ["teleatendimentos", "comunicacao", "publicacoes"]],
-  ["Sistema", ["documentos", "ocorrencias", "usuarios", "relatorios"]],
+  ["Hoje", ["agendas", "consultas"]],
+  ["Pacientes", ["animais", "tutores", "prontuarios"]],
+  ["Atendimento", ["vacinas", "exames", "prescricoes", "procedimentos", "protocolos", "teleatendimentos"]],
+  ["Internação e cirurgia", ["internacoes", "cirurgias"]],
+  ["Vendas e caixa", ["vendas", "caixa", "entregas"]],
+  ["Estoque", ["estoque", "medicamentos", "servicos"]],
+  ["Financeiro", ["financeiro", "convenios", "relatorios"]],
+  ["Comunicação", ["comunicacao", "publicacoes"]],
+  ["Administração", ["profissionais", "usuarios", "unidades", "documentos", "ocorrencias"]],
 ]
 
 const reports = [
@@ -433,11 +419,12 @@ function Sidebar({
   const navigate = useNavigate()
   const role = user?.role
   const groups = navGroups.map(([g, slugs]) => [g, slugs.filter((slug) => canAccess(role, slug))] as [string, ModuleSlug[]]).filter(([, slugs]) => slugs.length)
+  const todayKey = localISO()
   const openAgendaCount = data.agendas.filter(
-    (item) => item.status !== "Concluído",
+    (item) => item.date === todayKey && !/conclu|cancel|falt/i.test(item.status),
   ).length
   const saleQueueCount = (data.vendas || []).filter((item) => item.status === "Aguardando pagamento").length
-  const deliveryCount = (data.vendas || []).filter((item) => item.extra?.entrega && /separar|pronta|rota|não entregue/i.test(item.extra.entrega.status)).length
+  const deliveryCount = (data.vendas || []).filter((item) => item.kind === "Venda" && item.extra?.entrega && /aguardando|separar|pronta|rota|não entregue|reagend/i.test(item.extra.entrega.status)).length
   return (
     <aside
       className={`sidebar ${collapsed ? "sidebar-collapsed" : ""} ${
@@ -559,6 +546,11 @@ function GlobalSearch({ close }: { close: () => void }) {
   const { data } = useVetFlow()
   const navigate = useNavigate()
   const [query, setQuery] = useState("")
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") { event.preventDefault(); close() } }
+    document.addEventListener("keydown", onKey)
+    return () => document.removeEventListener("keydown", onKey)
+  }, [close])
   const results = useMemo(() => {
     if (!query.trim()) return []
     return modules.flatMap(([slug, label]) =>
@@ -591,7 +583,7 @@ function GlobalSearch({ close }: { close: () => void }) {
             autoFocus
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Buscar animais, tutores, exames, serviços…"
+            placeholder="Buscar paciente, tutor, consulta, venda…"
           />
           <IconButton label="Fechar busca" onClick={close}>
             <X size={18} />
@@ -749,7 +741,7 @@ function Header({ openMobile }: { openMobile: () => void }) {
         </div>
         <button className="global-search" onClick={() => setSearchOpen(true)}>
           <Search size={17} />
-          <span>Pesquisar em tudo…</span>
+          <span>Buscar paciente, tutor, consulta…</span>
           <kbd>⌘ K</kbd>
         </button>
         <div className="header-actions">
@@ -956,19 +948,24 @@ function PrintHead() {
 }
 
 function Shell() {
-  const { authenticated, clinic, user } = useVetFlow()
+  const { authenticated, clinic, user, units } = useVetFlow()
+  registerUnits(units)
   const location = useLocation()
   const tabletWidth = () => typeof window !== "undefined" && window.innerWidth > 900 && window.innerWidth <= 1180
-  const [collapsed, setCollapsed] = useState(tabletWidth)
+  const menuKey = `vetflow-menu-${user?.id || "anon"}`
+  const [collapsed, setCollapsedRaw] = useState(() => { try { const v = localStorage.getItem(menuKey); if (v !== null) return v === "1" } catch { /* ok */ } return tabletWidth() })
+  const setCollapsed = (v: boolean) => { setCollapsedRaw(v); try { localStorage.setItem(menuKey, v ? "1" : "0") } catch { /* ok */ } }
+  useEffect(() => { window.scrollTo(0, 0); document.querySelector(".app-main")?.scrollTo?.(0, 0) }, [location.pathname])
   useEffect(() => {
     /* tablets e notebooks pequenos: menu vira trilho de ícones para dar espaço ao conteúdo */
     let last = tabletWidth()
-    const onResize = () => { const t = tabletWidth(); if (t !== last) { last = t; setCollapsed(t) } }
+    const onResize = () => { const t = tabletWidth(); if (t !== last) { last = t; setCollapsedRaw(t) } }
     window.addEventListener("resize", onResize)
     return () => window.removeEventListener("resize", onResize)
   }, [])
   const [mobileOpen, setMobileOpen] = useState(false)
-  if (!authenticated) return <Navigate to="/site" replace />
+  if (!authenticated) return <Navigate to="/login" replace />
+  if (user?.mustChange) return <Navigate to="/login" replace />
   if (!clinic) return <Navigate to="/escolher-clinica" replace />
   const area = location.pathname === "/" ? "dashboard" : location.pathname.split("/")[1]
   if (user && !canAccess(user.role, area)) return <Navigate to={ROLE_HOME[user.role]} replace />
@@ -1006,13 +1003,17 @@ const PAW = <svg viewBox="0 0 100 100"><ellipse cx="50" cy="66" rx="25" ry="21" 
 const BONE = <svg viewBox="0 0 120 40"><path d="M22 8a10 10 0 0 0-14 13 10 10 0 0 0 14 13l2-4h72l2 4a10 10 0 0 0 14-13 10 10 0 0 0-14-13l-2 4H24z" /></svg>
 
 function Login() {
-  const { authenticated, clinic, login } = useVetFlow()
+  const { authenticated, clinic, login, user, changePassword, termsAccepted, acceptTerms, logout } = useVetFlow()
   const navigate = useNavigate()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
-  const [accepted, setAccepted] = useState(() => { try { return localStorage.getItem("vetflow-lgpd") === "1" } catch { return false } })
-  if (authenticated) return <Navigate to={clinic ? "/" : "/escolher-clinica"} replace />
-
+  const [show, setShow] = useState(false)
+  const [keep, setKeep] = useState(false)
+  const [accepted, setAccepted] = useState(false)
+  const [np1, setNp1] = useState("")
+  const [np2, setNp2] = useState("")
+  const mustChange = authenticated && !!user?.mustChange
+  if (authenticated && !mustChange) return <Navigate to={clinic ? "/" : "/escolher-clinica"} replace />
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -1020,22 +1021,29 @@ function Login() {
     const id = String(values.get("email") || "").trim()
     const pass = String(values.get("password") || "")
     if (!id || !pass) return setError("Informe usuário, e-mail ou CPF e a senha.")
-    if (!accepted) return setError("Para entrar, aceite os Termos de Uso e a Política de Privacidade.")
+    if (!termsAccepted && !accepted) return setError("Para entrar, leia e aceite os Termos de Uso e a Política de Privacidade.")
     setLoading(true)
+    setError("")
     window.setTimeout(() => {
-      const u = login(id, pass)
-      if (!u) {
-        setLoading(false)
-        setError("Usuário ou senha incorretos.")
-        return
-      }
-      try { localStorage.setItem("vetflow-lgpd", "1") } catch { /* sem armazenamento */ }
-      navigate("/escolher-clinica")
-    }, 350)
+      const res = login(id, pass, keep)
+      setLoading(false)
+      if (!res.user) { setError(res.error || "Usuário ou senha incorretos."); return }
+      if (!termsAccepted) acceptTerms()
+      if (!res.user.mustChange) navigate("/escolher-clinica")
+    }, 250)
+  }
+  const submitChange = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!user) return
+    if (np1 !== np2) return setError("As duas senhas não são iguais.")
+    const err = changePassword(user.id, null, np1)
+    if (err) return setError(err)
+    setError("")
+    navigate("/escolher-clinica")
   }
   return (
     <div className="login-page">
-      <section className="login-scene" aria-label="VetFlow 1.0">
+      <section className="login-scene" aria-label="VetFlow">
         <span className="ls-paw p1" aria-hidden="true">{PAW}</span>
         <span className="ls-paw p2" aria-hidden="true">{PAW}</span>
         <span className="ls-paw p3" aria-hidden="true">{PAW}</span>
@@ -1044,56 +1052,81 @@ function Login() {
           <img className="ls-word ls-word-l" src="/assets/vetflow-wordmark-dark.png" alt="VetFlow" />
           <img className="ls-word ls-word-d" src="/assets/vetflow-wordmark-light.png" alt="" aria-hidden="true" />
           <span className="ls-bone b2" aria-hidden="true">{BONE}</span>
-          <span className="ls-ver">1.0</span>
         </div>
         <img className="ls-dog" src="/assets/vetflow-login-dog.png" alt="Cachorro corgi sorrindo" />
       </section>
       <section className="login-form-panel">
-        <form className="login-form-card" onSubmit={submit}>
-          <img src="/assets/vetflow-logo.png" alt="VetFlow" />
-          <span className="eyebrow">LOGIN</span>
-          <h2>Bem-vindo ao VetFlow</h2>
-          <p>Entre com seu usuário, e-mail ou CPF e sua senha.</p>
-          <label>
-            <span>Usuário, e-mail ou CPF</span>
-            <div className="input-control">
-              <Mail size={18} />
-              <input name="email" type="text" autoComplete="username" placeholder="Digite seu usuário, e-mail ou CPF" />
-            </div>
-          </label>
-          <label>
-            <span>Senha</span>
-            <div className="input-control">
-              <LockKeyhole size={18} />
-              <input name="password" type="password" autoComplete="current-password" placeholder="Digite sua senha" />
-            </div>
-          </label>
-          <label className="login-terms">
-            <input type="checkbox" checked={accepted} onChange={(event) => setAccepted(event.target.checked)} />
-            <span>Li e aceito os <a href="/privacidade" target="_blank" rel="noreferrer">Termos de Uso e a Política de Privacidade</a> (LGPD).</span>
-          </label>
-          {error && (
-            <div className="form-error">
-              <AlertTriangle size={16} />
-              {error}
-            </div>
-          )}
-          <Button type="submit" disabled={loading}>
-            {loading ? "Entrando…" : "Entrar no VetFlow"}
-          </Button>
-          <button type="button" className="text-link" onClick={() => setError("Peça ao administrador da clínica para redefinir sua senha em Usuários e acessos.")}>
-            Esqueci minha senha
-          </button>
-          <div className="login-accounts" aria-label="Acessos de teste">
-            <b>Acessos de teste</b>
-            {[["Administrador", "admin", "admin123"], ["Vendedor", "vendedor", "vendedor123"], ["Caixa", "caixa", "caixa123"], ["Estoque", "estoque", "estoque123"], ["Veterinário", "veterinario", "vet123"], ["Entregador", "entregador", "entrega123"]].map(([r, u, pw]) => (
-              <span key={u} className={`role-${normalize(r)}`}><i>{r}</i><code>{u}</code><code>{pw}</code></span>
-            ))}
-          </div>
-          <button type="button" className="text-link" onClick={() => navigate("/site")}>
-            ← Voltar ao site
-          </button>
-        </form>
+        {mustChange ? (
+          <form className="login-form-card" onSubmit={submitChange}>
+            <img src="/assets/vetflow-logo.png" alt="VetFlow" />
+            <span className="eyebrow">PRIMEIRO ACESSO</span>
+            <h2>Crie a sua senha</h2>
+            <p>Olá, {user?.displayName}. Por segurança, troque a senha provisória antes de continuar. Use pelo menos 8 caracteres, com letra, número e símbolo.</p>
+            <label>
+              <span>Nova senha</span>
+              <div className="input-control">
+                <LockKeyhole size={18} />
+                <input type={show ? "text" : "password"} autoComplete="new-password" value={np1} onChange={(e) => setNp1(e.target.value)} placeholder="Nova senha" autoFocus />
+                <button type="button" className="login-eye" aria-label={show ? "Ocultar senha" : "Mostrar senha"} onClick={() => setShow(!show)}>{show ? <EyeOff size={17} /> : <Eye size={17} />}</button>
+              </div>
+            </label>
+            <label>
+              <span>Repita a nova senha</span>
+              <div className="input-control">
+                <LockKeyhole size={18} />
+                <input type={show ? "text" : "password"} autoComplete="new-password" value={np2} onChange={(e) => setNp2(e.target.value)} placeholder="Repita a nova senha" />
+              </div>
+            </label>
+            {error && <div className="form-error" role="alert"><AlertTriangle size={16} />{error}</div>}
+            <Button type="submit">Salvar senha e entrar</Button>
+            <button type="button" className="text-link" onClick={() => { logout(); setError("") }}>Sair</button>
+          </form>
+        ) : (
+          <form className="login-form-card" onSubmit={submit}>
+            <img src="/assets/vetflow-logo.png" alt="VetFlow" />
+            <span className="eyebrow">LOGIN</span>
+            <h2>Bem-vindo ao VetFlow</h2>
+            <p>Entre com seu usuário, e-mail ou CPF e sua senha.</p>
+            <label>
+              <span>Usuário, e-mail ou CPF</span>
+              <div className="input-control">
+                <Mail size={18} />
+                <input name="email" type="text" autoComplete="username" placeholder="Digite seu usuário, e-mail ou CPF" />
+              </div>
+            </label>
+            <label>
+              <span>Senha</span>
+              <div className="input-control">
+                <LockKeyhole size={18} />
+                <input name="password" type={show ? "text" : "password"} autoComplete="current-password" placeholder="Digite sua senha" />
+                <button type="button" className="login-eye" aria-label={show ? "Ocultar senha" : "Mostrar senha"} onClick={() => setShow(!show)}>{show ? <EyeOff size={17} /> : <Eye size={17} />}</button>
+              </div>
+            </label>
+            <label className="login-terms login-keep">
+              <input type="checkbox" checked={keep} onChange={(event) => setKeep(event.target.checked)} />
+              <span>Manter conectado neste computador</span>
+            </label>
+            {!termsAccepted && (
+              <label className="login-terms">
+                <input type="checkbox" checked={accepted} onChange={(event) => setAccepted(event.target.checked)} />
+                <span>Li e aceito os <a href="/privacidade" target="_blank" rel="noreferrer">Termos de Uso e a Política de Privacidade</a> (LGPD).</span>
+              </label>
+            )}
+            {error && (
+              <div className="form-error" role="alert">
+                <AlertTriangle size={16} />
+                {error}
+              </div>
+            )}
+            <Button type="submit" disabled={loading}>
+              {loading ? "Entrando…" : "Entrar no VetFlow"}
+            </Button>
+            <button type="button" className="text-link" onClick={() => setError("Peça ao administrador da clínica para gerar uma senha provisória em Usuários e acessos. No primeiro acesso você cria a sua.")}>
+              Esqueci minha senha
+            </button>
+            <a className="text-link login-priv" href="/privacidade" target="_blank" rel="noreferrer">Política de Privacidade e Termos de Uso</a>
+          </form>
+        )}
       </section>
     </div>
   )
@@ -1214,7 +1247,7 @@ function moduleIndicators(
       total,
       metric(
         "Hoje",
-        (item) => item.date === new Date().toISOString().slice(0, 10),
+        (item) => item.date === localISO(),
         "agenda do dia",
         "blue",
       ),
@@ -1622,6 +1655,24 @@ function Dashboard() {
   )
 }
 
+function TutorEdit({ item, close }: { item: Item; close: () => void }) {
+  const { data, updateItem, activeUnit } = useVetFlow()
+  return (
+    <ClienteForm
+      initial={fromItem(item)}
+      existing={item}
+      tutores={data.tutores}
+      unitCity={activeUnit.city}
+      onClose={close}
+      onSave={(d) => {
+        const patch = toItem(d, activeUnit.city)
+        updateItem("tutores", item.id, { ...patch, status: item.status, extra: { ...(item.extra || {}), ...(patch.extra || {}) } })
+        close()
+      }}
+    />
+  )
+}
+
 function RecordForm({
   module,
   item,
@@ -1710,6 +1761,14 @@ function RecordForm({
       prontuarios: ["name", "animalId", "professionalId", "date"],
       consultas: ["service", "animalId", "professionalId", "date", "time"],
       agendas: ["service", "animalId", "professionalId", "date", "time"],
+    }
+    if (module === "animais") {
+      if (form.birthDate && form.birthDate > localISO()) return setError("A data de nascimento não pode ser no futuro.")
+      if (form.weight) {
+        const kg = Number(String(form.weight).replace(/[^\d,.]/g, "").replace(",", "."))
+        if (!Number.isFinite(kg) || kg <= 0 || kg > 150) return setError("Informe o peso em quilos, apenas números (ex.: 12,5).")
+        form.weight = `${kg.toLocaleString("pt-BR")} kg`
+      }
     }
     const required = requiredByModule[module] || ["name", "subtitle"]
     if (
@@ -1819,11 +1878,11 @@ function RecordForm({
               </label>
               <label>
                 <span>Data de nascimento</span>
-                <input name="birthDate" type="date" defaultValue={item?.birthDate} />
+                <input name="birthDate" type="date" max={localISO()} defaultValue={item?.birthDate} />
               </label>
               <label>
                 <span>Peso atual</span>
-                <input name="weight" defaultValue={item?.weight} placeholder="Ex.: 12,5 kg" />
+                <input name="weight" inputMode="decimal" defaultValue={item?.weight?.replace(/\s*kg$/i, "")} placeholder="Ex.: 12,5 (kg)" />
               </label>
               <label>
                 <span>Status</span>
@@ -2337,7 +2396,7 @@ function ModuleList() {
         />
       )}
       {toast && (
-        <div className="toast">
+        <div className="toast" role="status">
           <Check size={17} />
           {toast}
         </div>
@@ -2524,11 +2583,7 @@ function RouteError() {
 const router = createBrowserRouter([
   {
     path: "/site",
-    element: (
-      <Suspense fallback={<PageLoader />}>
-        <VxLanding />
-      </Suspense>
-    ),
+    element: <Navigate to="/login" replace />,
   },
   {
     path: "/login",
@@ -2596,9 +2651,7 @@ const router = createBrowserRouter([
         path: ":module/:id",
         element: (
           <Detail
-            renderLegacyForm={(module, item, close) => (
-              <RecordForm module={module} item={item} close={close} success={close} />
-            )}
+            renderLegacyForm={(module, item, close) => (module === "tutores" ? <TutorEdit item={item} close={close} /> : <RecordForm module={module} item={item} close={close} success={close} />)}
           />
         ),
       },

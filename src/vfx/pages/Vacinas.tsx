@@ -45,7 +45,7 @@ export default function Vacinas() {
       addItem("comunicacao", { name: "Lembrete de vacina", animalId: petId, status: "Enviada", category: "WhatsApp", extra: { mensagem: "Olá! A vacina do seu pet está atrasada. Responda para agendar." } })
       sent++
     })
-    forms.toast(`${sent} lembretes enviados por WhatsApp. Veja em Comunicação.`)
+    forms.toast(`${sent} lembretes registrados em Comunicação (envio simulado: nenhuma mensagem real sai desta versão).`)
   }
 
   return (
@@ -53,8 +53,8 @@ export default function Vacinas() {
       bg="#eef6f0"
       blobs={[["#9fe3c6", 160, 200, 560, 520], ["#ffd39a", "80%", -60, 380, 380], ["#ffb8b0", "65%", 600, 300, 300]]}
       crumb="Vacinas"
-      title="Carteirinha de vacinação"
-      sub="Cada dose aplicada vira um carimbo. Espaço tracejado é dose que ainda vem."
+      title="Vacinas"
+      sub="Vacinas aplicadas e próximas doses de cada paciente."
       actions={
         <>
           <div style={{ position: "relative" }}>
@@ -76,8 +76,8 @@ export default function Vacinas() {
           <button className="vx-btn vx-btn-g" onClick={() => window.print()}>
             <Printer /> Imprimir
           </button>
-          <button className="vx-btn vx-btn-p" onClick={() => forms.open("vacinas", undefined, { animalId })}>
-            <Plus /> Aplicar dose
+          <button className="vx-btn vx-btn-p" onClick={() => forms.open("vacinas", undefined, paramAnimal ? { animalId } : undefined)}>
+            <Plus /> Registrar aplicação
           </button>
         </>
       }
@@ -86,11 +86,11 @@ export default function Vacinas() {
         <div className="vx-booklet">
           <div className="spine" />
           <div className="pg">
-            <div className="vx-lbl" style={{ color: "var(--vx-teal)" }}>Carteira nº {animal?.id.split("-").pop()?.padStart(4, "0")} · {animal ? "ativa" : "—"}</div>
+            <div className="vx-lbl" style={{ color: "var(--vx-teal)" }}>Carteira nº {animal ? String(data.animais.indexOf(animal) + 1).padStart(4, "0") : "—"} · {animal ? "ativa" : "—"}</div>
             {animal ? (
               <>
                 <div className="vx-row" style={{ gap: 16 }}>
-                  <span className="vx-av" style={{ width: 84, height: 84, fontSize: 28, borderRadius: 26, background: colorFor(animal.name) }}>{initials(animal.name)}</span>
+                  <span className="vx-av" style={{ width: 84, height: 84, fontSize: 28, borderRadius: 26, background: colorFor(animal.id) }}>{initials(animal.name)}</span>
                   <div>
                     <div style={{ fontSize: 30, fontWeight: 800, letterSpacing: "-.03em" }}>{animal.name}</div>
                     <div style={{ fontSize: 14, color: "var(--vx-muted)" }}>{animal.subtitle} · {animal.sex || "sexo não informado"}</div>

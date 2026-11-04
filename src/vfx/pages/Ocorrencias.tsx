@@ -1,9 +1,9 @@
 import { useMemo, useState } from "react"
 import { useNavigate } from "react-router"
-import { ArrowLeft, ArrowRight, Edit3, Plus } from "lucide-react"
+import { ArrowLeft, ArrowRight, Edit3, Plus, Trash2 } from "lucide-react"
 import { useVetFlow, type Item } from "../../store"
 import { usePageForms } from "../hooks"
-import { daysBetween, fmtDate, hash, itemDate, matches, Page, SearchBox, Seg, todayISO } from "../ui"
+import { Confirm, daysBetween, fmtDate, hash, itemDate, matches, Page, SearchBox, Seg, todayISO } from "../ui"
 
 const columns = ["Aberta", "Em análise", "Resolvida"] as const
 const colors = ["#ffe58a", "#ffc4d6", "#bfe8c4", "#c7dcff", "#ffd2a6"]
@@ -11,7 +11,7 @@ const pins = ["#e5483d", "#2457c5", "#0f766e", "#6d4bc2"]
 const gravityOf = (item: Item) => item.extra?.gravidade || (item.urgency ? "Alta" : item.category === "Urgente" ? "Alta" : "Média")
 
 export default function Ocorrencias() {
-  const { data, updateItem, addItem } = useVetFlow()
+  const { data, updateItem, addItem, deleteItem } = useVetFlow()
   const navigate = useNavigate()
   const forms = usePageForms("ocorrencias")
   const [query, setQuery] = useState("")
@@ -20,19 +20,23 @@ export default function Ocorrencias() {
   const [dragId, setDragId] = useState("")
   const [over, setOver] = useState("")
   const [quick, setQuick] = useState("")
+  const [resolving, setResolving] = useState<Item | null>(null)
+  const [removing, setRemoving] = useState<Item | null>(null)
   const filtered = useMemo(
     () => data.ocorrencias.filter((item) => matches(item, query) && (gravity === "Todas" || gravityOf(item) === gravity)).sort((a, b) => itemDate(b).localeCompare(itemDate(a))),
     [data.ocorrencias, query, gravity],
   )
   const resolved = data.ocorrencias.filter((item) => item.status === "Resolvida")
   const avg = resolved.length
-    ? Math.round(resolved.reduce((sum, item) => sum + Math.max(0, item.extra?.resolvidoEm ? daysBetween(itemDate(item), item.extra.resolvidoEm) : 1 + (hash(item.id) % 6)), 0) / resolved.length)
+    ? Math.round(resolved.reduce((sum, item) => sum + Math.max(0, item.extra?.resolvidoEm ? daysBetween(itemDate(item), item.extra.resolvidoEm) : 0), 0) / resolved.length)
     : 0
   const critical = data.ocorrencias.filter((item) => item.status !== "Resolvida" && ["Alta", "Crítica"].includes(gravityOf(item))).length
 
   const move = (item: Item, status: string) => {
     if (item.status === status) return
-    updateItem("ocorrencias", item.id, { status, extra: { ...(item.extra || {}), status, ...(status === "Resolvida" ? { resolvidoEm: todayISO() } : {}) } })
+    // B-24: para resolver, pede a causa e a solução.
+    if (status === "Resolvida") { setResolving(item); return }
+    updateItem("ocorrencias", item.id, { status, extra: { ...(item.extra || {}), status } })
     forms.toast(`"${item.name}" movida para ${status}.`)
   }
   const addQuick = () => {
@@ -46,8 +50,8 @@ export default function Ocorrencias() {
       bg="#f7f1df"
       blobs={[["#ffe58a", -80, -40, 440, 380], ["#ffc4d6", "78%", 140, 380, 340], ["#bfe8c4", "40%", "80%", 360, 320]]}
       crumb="Ocorrências"
-      title="Mural da equipe"
-      sub="Cada problema é um post-it. Arraste entre as colunas (ou use as setas) até resolver."
+      title="Ocorrências"
+      sub="Problemas registrados pela equipe por situação: Aberta → Em análise → Resolvida."
       actions={
         <>
           <SearchBox value={query} onChange={setQuery} placeholder="Buscar ocorrência" />
@@ -117,6 +121,7 @@ export default function Ocorrencias() {
                         <span className="vx-row" style={{ gap: 4 }}>
                           <button className="vx-mini-x" aria-label="Voltar coluna" disabled={columnIndex === 0} onClick={() => move(item, columns[columnIndex - 1])} style={{ position: "static" }}><ArrowLeft size={14} /></button>
                           <button className="vx-mini-x" aria-label="Editar" onClick={() => forms.open("ocorrencias", item)} style={{ position: "static" }}><Edit3 size={14} /></button>
+                          {column === "Aberta" && <button className="vx-mini-x" aria-label="Excluir registro feito por engano" title="Excluir (registro feito por engano)" onClick={() => setRemoving(item)} style={{ position: "static" }}><Trash2 size={14} /></button>}
                           <button className="vx-mini-x" aria-label="Avançar coluna" disabled={columnIndex === 2} onClick={() => move(item, columns[columnIndex + 1])} style={{ position: "static" }}><ArrowRight size={14} /></button>
                         </span>
                       </div>
@@ -135,6 +140,30 @@ export default function Ocorrencias() {
           )
         })}
       </div>
+      {resolving && (
+        <Confirm
+          title={`Resolver "${resolving.name}"`}
+          text="Explique a causa e o que foi feito. Isso fica registrado na ocorrência."
+          confirm="Marcar como resolvida"
+          reason="Causa e solução"
+          onCancel={() => setResolving(null)}
+          onConfirm={(why) => {
+            updateItem("ocorrencias", resolving.id, { status: "Resolvida", extra: { ...(resolving.extra || {}), status: "Resolvida", resolvidoEm: todayISO(), causa: why } })
+            forms.toast(`"${resolving.name}" resolvida.`)
+            setResolving(null)
+          }}
+        />
+      )}
+      {removing && (
+        <Confirm
+          danger
+          title={`Excluir "${removing.name}"?`}
+          text="Use só para registros feitos por engano. A exclusão fica no registro de auditoria."
+          confirm="Excluir"
+          onCancel={() => setRemoving(null)}
+          onConfirm={() => { deleteItem("ocorrencias", removing.id); forms.toast("Ocorrência excluída."); setRemoving(null) }}
+        />
+      )}
       {forms.node}
     </Page>
   )

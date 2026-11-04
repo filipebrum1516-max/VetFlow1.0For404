@@ -1,3 +1,4 @@
+import { localDateTime, localISO } from "../../date"
 import { useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router"
 import { ChevronLeft, ChevronRight, Edit3, Lock, Plus, RotateCcw, Save, ShieldCheck, Unlock } from "lucide-react"
@@ -28,7 +29,7 @@ export default function Usuarios() {
   /* o chaveiro mostra exatamente a mesma equipe de "Equipe e acessos" */
   const keys = useMemo(() => staff.map((u) => ({
     id: u.id, name: u.displayName, subtitle: u.role, email: u.email, category: u.role, createdAt: "", unitId: "",
-    status: u.active ? "Ativo" : "Bloqueado", date: new Date().toISOString().slice(0, 10),
+    status: u.active ? "Ativo" : "Bloqueado", date: localISO(),
     extra: { papel: u.role, permissoes: u.perms, log: u.log },
   }) as unknown as Item), [staff])
   const navigate = useNavigate()
@@ -85,15 +86,15 @@ export default function Usuarios() {
     <Page
       bg="#f3efe6"
       blobs={[["#ffd98a", -60, -40, 420, 380], ["#a8e2dc", "70%", 200, 400, 360], ["#d2bdf5", "30%", "80%", 360, 320]]}
-      crumb="Usuários e Acessos"
-      title="Chaveiro"
-      sub="Cada pessoa é uma chave com a cor do papel. Escolha uma para ver e mudar as portas que ela abre."
+      crumb="Permissões detalhadas"
+      title="Permissões detalhadas"
+      sub="Escolha uma pessoa para ver e ajustar o que ela pode acessar em cada área."
       actions={
         <>
           <SearchBox value={query} onChange={setQuery} placeholder="Buscar pessoa ou e-mail" />
           <Seg options={["Todos", "Ativo", "Bloqueado"]} value={status} onChange={setStatus} />
           <button className="vx-btn vx-btn-p" onClick={() => navigate("/usuarios")}>
-            <Plus /> Nova chave
+            <Plus /> Novo usuário
           </button>
         </>
       }
@@ -157,7 +158,7 @@ export default function Usuarios() {
                 <StatusPill status={selected.status} />
               </div>
               <div className="vx-row" style={{ gap: 8, marginTop: 14, flexWrap: "wrap" }}>
-                <button className="vx-btn vx-btn-g vx-btn-sm" onClick={() => navigate(`/usuarios?u=${selected.id}`)}><Edit3 /> Editar chave</button>
+                <button className="vx-btn vx-btn-g vx-btn-sm" onClick={() => navigate(`/usuarios?u=${selected.id}`)}><Edit3 /> Editar usuário</button>
                 {selected.status === "Bloqueado" ? (
                   <button className="vx-btn vx-btn-g vx-btn-sm" onClick={() => setUserStatus("Ativo", "Acesso desbloqueado")}><Unlock /> Desbloquear</button>
                 ) : (

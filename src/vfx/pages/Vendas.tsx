@@ -1,3 +1,4 @@
+import { localDateTime, localISO } from "../../date"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate } from "react-router"
 import { AlertTriangle, Check, Clock, FileText, Lock, MapPin, Package, Pencil, ScanBarcode, Search, Send, ShoppingCart, Trash2, Truck, User, UserPlus, X } from "lucide-react"
@@ -24,7 +25,7 @@ const BLANK_OUTRAS = { pedidoCliente: "", cpfNota: true, placa: "", destino: "",
 const Tag = ({ s }: { s: string }) => <span className={`op-tag ${saleTone(s)}`}>{s}</span>
 
 export default function Vendas() {
-  const { data, activeUnit, profile, addItem, updateItem, staff, user, units } = useVetFlow()
+  const { data, activeUnit, profile, addItem, updateItem, staff, user, units, verifyPassword } = useVetFlow()
   const navigate = useNavigate()
   const seller = profile?.displayName || "Recepção"
   const all = data.vendas || []
@@ -43,6 +44,7 @@ export default function Vendas() {
   const [descMode, setDescMode] = useState<"%" | "R$">("%")
   const [descValue, setDescValue] = useState("")
   const [sugerida, setSugerida] = useState("Pix")
+  const [docEmitir, setDocEmitir] = useState("Cupom não fiscal")
   const [obs, setObs] = useState("")
   const [addr, setAddr] = useState({ ...BLANK_ADDR, data: todayISO() })
   const [useCadastro, setUseCadastro] = useState(true)
@@ -52,6 +54,7 @@ export default function Vendas() {
   const [adminUser, setAdminUser] = useState("")
   const [approvalErr, setApprovalErr] = useState("")
   const [approvalTries, setApprovalTries] = useState(0)
+  const [descMotivo, setDescMotivo] = useState("")
   const [askApproval, setAskApproval] = useState(false)
   const [sent, setSent] = useState<Item | null>(null)
   const [errors, setErrors] = useState<string[]>([])
@@ -254,7 +257,7 @@ export default function Vendas() {
   const confirmApproval = () => {
     if (approvalTries >= 5) { setApprovalErr("Muitas tentativas. Chame o administrador até o balcão."); return }
     const adm = admins.find((u) => u.id === adminUser)
-    if (!adm || adm.password !== adminPass) {
+    if (!adm || !verifyPassword(adm, adminPass)) {
       setApprovalTries((t) => t + 1)
       setApprovalErr(`Senha do administrador incorreta.${approvalTries + 1 >= 3 ? ` ${5 - approvalTries - 1} tentativa(s) restante(s).` : ""}`)
       setAdminPass("")
@@ -276,7 +279,7 @@ export default function Vendas() {
   const reset = (release = true) => {
     if (release) releaseLock()
     setEditing(null); setTipo("Balcão"); setClientId(""); setCart([]); setDescValue(""); setSugerida("Pix"); setObs("")
-    setAddr({ ...BLANK_ADDR, data: todayISO() }); setUseCadastro(true); setApproval(null); setApprovalTries(0); setErrors([]); setCepMsg("")
+    setAddr({ ...BLANK_ADDR, data: todayISO() }); setUseCadastro(true); setApproval(null); setApprovalTries(0); setDescMotivo(""); setErrors([]); setCepMsg("")
     setRegistro("Venda"); setSec("Vendas"); setPlano("À vista"); setOutras({ ...BLANK_OUTRAS }); setAjudanteId(""); setVendedorId(user?.id || ""); setSvcMode(false); setSelLine(null); setObsLine(null)
     window.setTimeout(() => clientRef.current?.focus(), 0)
   }
@@ -321,6 +324,7 @@ export default function Vendas() {
       if (!cart.length) { setErrors(["Adicione pelo menos um produto."]); return }
     } else {
       if (!validate()) return
+      if (acimaLimite && !descMotivo.trim()) { setErrors([`Informe o motivo do desconto acima de ${LIMITE_DESCONTO}% (fica registrado na venda).`]); return }
       if (needApproval) { openApproval(); return }
     }
     const entrega: Entrega | undefined = tipo === "Entrega" ? {
@@ -335,8 +339,8 @@ export default function Vendas() {
       amountValue: total,
       extra: {
         ...(editing?.extra || {}),
-        itens: cart, subtotal, desconto, taxaEntrega: taxa, tipo, formaSugerida: sugerida, obs, pago: 0, pagamentos: [], entrega,
-        descontoPct: pctPedido, descontoLiberado: acimaLimite ? (isAdmin ? { por: user?.displayName, em: stamp(), pct: pctPedido } : approval) : undefined,
+        itens: cart, subtotal, desconto, taxaEntrega: taxa, tipo, formaSugerida: sugerida, documentoEmitir: docEmitir, obs, pago: 0, pagamentos: [], entrega,
+        descontoPct: pctPedido, descontoLiberado: acimaLimite ? { ...(isAdmin ? { por: user?.displayName, em: stamp(), pct: pctPedido } : approval), motivo: descMotivo.trim() } : undefined,
         interno, registro: asQuote ? "Orçamento" : "Venda", plano, documento: documentoLabel, vendedorCodigo: vendCode, operador: seller,
         ajudante: staff.find((u) => u.id === ajudanteId)?.displayName || undefined, outras,
         enviadaAs: nowTime(),
@@ -346,7 +350,7 @@ export default function Vendas() {
       },
     }
     if (asQuote) {
-      const q = addItem("vendas", { ...base, id: `${activeUnit.id}-vendas-orc-${Date.now()}`, name: nextNumber(all, "ORC"), kind: "Orçamento", status: "Aberto", date: todayISO(), time: nowTime(), dueDate: (() => { const d = new Date(); d.setDate(d.getDate() + 7); return d.toISOString().slice(0, 10) })() })
+      const q = addItem("vendas", { ...base, id: `${activeUnit.id}-vendas-orc-${Date.now()}`, name: nextNumber(all, "ORC"), kind: "Orçamento", status: "Aberto", date: todayISO(), time: nowTime(), dueDate: (() => { const d = new Date(); d.setDate(d.getDate() + 7); return localISO(d) })() })
       showToast(`Orçamento ${q.name} salvo (válido por 7 dias).`)
       reset()
       return
@@ -381,7 +385,7 @@ export default function Vendas() {
   /* Ctrl+P: com itens, imprime a pré-venda em A4 (orçamento/conferência); sem itens, imprime a tela */
   const imprimir = () => {
     if (!cart.length) { window.print(); return }
-    const due = (() => { const d = new Date(); d.setDate(d.getDate() + 7); return d.toISOString().slice(0, 10) })()
+    const due = (() => { const d = new Date(); d.setDate(d.getDate() + 7); return localISO(d) })()
     const draft = { id: "draft", name: numero, subtitle: "", status: "Rascunho", createdAt: new Date().toISOString(), kind: "Venda", date: todayISO(), time: nowTime(), dueDate: due, owner: client?.name || "Consumidor final", ownerId: client?.id, professional: vendName, amountValue: total, extra: { itens: cart, subtotal, desconto, taxaEntrega: taxa, tipo, formaSugerida: sugerida, plano, entrega: tipo === "Entrega" ? { ...addr, taxa, aCobrar: 0, status: "", entregador: "" } : undefined } } as Item
     printHtml(numero, orcamentoHtml(draft, activeUnit.name, client || undefined), true)
   }
@@ -492,7 +496,7 @@ export default function Vendas() {
   }
 
   return (
-    <Page bg="#f6eee2" blobs={[["#ffc9a3", -80, 140, 520, 460], ["#a8e2b8", "72%", -60, 380, 360]]} crumb="Vendas" title="Balcão de vendas" sub="Monte a venda, consulte o estoque e envie direto para o caixa. Tudo online, sem papel.">
+    <Page bg="#f6eee2" blobs={[["#ffc9a3", -80, 140, 520, 460], ["#a8e2b8", "72%", -60, 380, 360]]} crumb="Vendas" title="Balcão" sub="Monte a venda, consulte o estoque e envie direto para o caixa. Tudo online, sem papel.">
       <div className="op op-vx">
       <div className="op-bar">
         <h1><ShoppingCart size={18} /> Vendas</h1>
@@ -549,8 +553,11 @@ export default function Vendas() {
                 <label className="op-f"><span>Plano de pagamento</span>
                   <select className="op-in" value={plano} onChange={(e) => setPlano(e.target.value)}>{PLANOS.map((p) => <option key={p}>{p}</option>)}</select>
                 </label>
-                <label className="op-f"><span>Tipo de documento</span>
+                <label className="op-f"><span>Forma de pagamento sugerida</span>
                   <select className="op-in" value={sugerida} onChange={(e) => setSugerida(e.target.value)}>{DOCUMENTOS.map(([l, v]) => <option key={v} value={v}>{l}</option>)}</select>
+                </label>
+                <label className="op-f"><span>Documento a emitir</span>
+                  <select className="op-in" value={docEmitir} onChange={(e) => setDocEmitir(e.target.value)}>{["Cupom não fiscal", "Recibo", "Nota fiscal (em breve)"].map((d) => <option key={d} disabled={/em breve/.test(d)}>{d}</option>)}</select>
                 </label>
               </div>
               <div className="op-erp-tabs" role="tablist">
@@ -558,12 +565,12 @@ export default function Vendas() {
               </div>
               {sec === "Faturamento" && (() => {
                 const pi = planoInfo(plano)
-                const venc = (i: number) => { const d = new Date(); d.setMonth(d.getMonth() + (pi.entrada ? i : i + (pi.total > 1 ? 1 : 0))); return d.toISOString().slice(0, 10) }
+                const venc = (i: number) => { const d = new Date(); d.setMonth(d.getMonth() + (pi.entrada ? i : i + (pi.total > 1 ? 1 : 0))); return localISO(d) }
                 const v = pi.total ? total / pi.total : total
                 return (
                   <div className="op-cb">
                     <div className="op-table">
-                      <div className="op-tr op-th" style={{ gridTemplateColumns: "70px minmax(0,1fr) 130px 120px" }}><span>Parcela</span><span>Documento</span><span>Vencimento</span><span className="r">Valor</span></div>
+                      <div className="op-tr op-th" style={{ gridTemplateColumns: "70px minmax(0,1fr) 130px 120px" }}><span>Parcela</span><span>Forma</span><span>Vencimento</span><span className="r">Valor</span></div>
                       {Array.from({ length: pi.total }, (_, i) => (
                         <div key={i} className="op-tr" style={{ gridTemplateColumns: "70px minmax(0,1fr) 130px 120px" }}><span className="mono">{i + 1}/{pi.total}</span><span>{pi.entrada && i === 0 ? "Entrada" : documentoLabel}</span><span className="num">{fmtDate(i === 0 && (pi.entrada || pi.total === 1) ? todayISO() : venc(i))}</span><b className="r num">{brl(v)}</b></div>
                       ))}
@@ -684,7 +691,7 @@ export default function Vendas() {
                 </div>
               </div>
               <div className="op-table">
-                <div className="op-tr op-th" style={{ gridTemplateColumns: "24px minmax(0,1fr) 96px 54px 84px 58px 94px 40px 26px" }}><span>#</span><span>Código · Descrição</span><span>Quant.</span><span className="r" title="Estoque atual">Est. at.</span><span className="r">Preço</span><span className="r">Desc. %</span><span className="r">Vl. total</span><span className="r">Vend.</span><span /></div>
+                <div className="op-tr op-th" style={{ gridTemplateColumns: "24px minmax(0,1fr) 96px 54px 84px 58px 94px 40px 26px" }}><span>#</span><span>Código · Descrição</span><span>Quant.</span><span className="r" title="Disponível = estoque menos o que já está reservado em outras vendas (mesmo número da busca)">Disp.</span><span className="r">Preço</span><span className="r">Desc. %</span><span className="r">Vl. total</span><span className="r">Vend.</span><span /></div>
                 {cart.length === 0 && <div className="op-empty">Nenhum produto. Busque pelo nome ou passe o leitor de código de barras.</div>}
                 {cart.map((line, i) => {
                   const st = stockOf(line.ref)
@@ -695,7 +702,7 @@ export default function Vendas() {
                       <span><small className="mono" style={{ marginTop: 0 }}>{line.codigo || "—"}</small><strong>{line.descricao.replace(/ • lote \d+/, "")}</strong><small>{line.tipo === "Serviço" ? "Serviço" : <>Lote {line.lote || "—"}{line.validade ? ` · val. ${fmtDate(line.validade, { month: "2-digit", year: "2-digit" })}` : ""}{disp - line.qtd < (st?.minimum || 0) && st ? " · estoque ficará baixo" : ""}</>}</small>{line.obs ? <small style={{ color: "var(--or)" }}>Obs.: {line.obs}</small> : null}
                         {obsLine === i && <input className="op-in" autoFocus style={{ height: 28, marginTop: 4 }} placeholder="Observação do item (Enter salva)" defaultValue={line.obs || ""} onClick={(e) => e.stopPropagation()} onKeyDown={(e) => { if (e.key === "Enter") { setLine(i, { obs: (e.target as HTMLInputElement).value }); setObsLine(null) } if (e.key === "Escape") { e.stopPropagation(); setObsLine(null) } }} onBlur={(e) => { setLine(i, { obs: e.target.value }); setObsLine(null) }} />}</span>
                       <span className="op-qty"><button onClick={() => setLine(i, { qtd: Math.max(1, line.qtd - 1) })}>−</button><input value={line.qtd} onChange={(e) => setLine(i, { qtd: Math.max(1, Math.min(disp, Number(e.target.value.replace(/\D/g, "")) || 1)) })} aria-label="Quantidade" /><button onClick={() => setLine(i, { qtd: Math.min(disp, line.qtd + 1) })}>+</button></span>
-                      <span className="r num">{st ? <b style={{ color: (st.quantity || 0) - line.qtd <= 0 ? "var(--red, #b4322a)" : (st.quantity || 0) - line.qtd < (st.minimum || 0) ? "var(--amber)" : undefined }}>{st.quantity ?? 0}</b> : <span className="muted">—</span>}</span>
+                      <span className="r num">{st ? <b style={{ color: available(st) - line.qtd < 0 ? "var(--red, #b4322a)" : available(st) - line.qtd < (st.minimum || 0) ? "var(--amber)" : undefined }}>{available(st)}</b> : <span className="muted">—</span>}</span>
                       <span className="r num">{brl(line.preco)}</span>
                       <input className="op-in r" style={{ height: 30 }} value={line.desconto || ""} placeholder="0" onChange={(e) => setLine(i, { desconto: Math.min(100, Number(e.target.value.replace(",", ".").replace(/[^\d.]/g, "")) || 0) })} aria-label="Desconto do item" />
                       <b className="r num">{brl(lineTotal(line))}</b>
@@ -745,7 +752,8 @@ export default function Vendas() {
               <div className="op-ch"><h2>Resumo</h2><span className="op-num">{numero}</span></div>
               <div className="op-cb op-sum">
                 <div><span>Itens</span><b>{itensCount}</b></div>
-                <div><span>Subtotal</span><b>{brl(subtotal)}</b></div>
+                <div><span>Subtotal</span><b>{brl(bruto)}</b></div>
+                {bruto - subtotal > 0.004 && <div><span className="muted">Descontos nos itens</span><b>− {brl(bruto - subtotal)}</b></div>}
                 <div>
                   <span style={{ display: "flex", alignItems: "center", gap: 6 }}>Desconto
                     <span className="op-tabs" style={{ padding: 2 }}>{(["%", "R$"] as const).map((m) => <button key={m} style={{ height: 22, padding: "0 7px" }} className={descMode === m ? "on" : ""} onClick={() => setDescMode(m)}>{m}</button>)}</span>
@@ -755,6 +763,7 @@ export default function Vendas() {
                 {desconto > 0 && <div><span className="muted">Desconto aplicado ({descPct.toFixed(1).replace(".", ",")}%)</span><b>− {brl(desconto)}</b></div>}
                 {tipo === "Entrega" && <div><span>Taxa de entrega</span><b>{brl(taxa)}</b></div>}
                 {pctPedido > 0 && <div className="op-desc-meter"><span>Desconto total {pctPedido.toFixed(1).replace(".", ",")}%</span><span className="bar"><i className={acimaLimite ? "over" : ""} style={{ width: `${Math.min(100, (pctPedido / (LIMITE_DESCONTO * 2)) * 100)}%` }} /><em style={{ left: "50%" }} title={`Limite ${LIMITE_DESCONTO}%`} /></span><small>limite {LIMITE_DESCONTO}%</small></div>}
+                {acimaLimite && <label className="op-f"><span>Motivo do desconto acima de {LIMITE_DESCONTO}% *</span><input className="op-in" value={descMotivo} placeholder="Ex.: cliente antigo, produto com avaria" onChange={(e) => setDescMotivo(e.target.value)} /></label>}
                 {needApproval && <div className="op-note warn" style={{ alignItems: "center" }}><Lock size={14} /> Desconto acima de {LIMITE_DESCONTO}%: precisa da senha do administrador. <button className="op-link" onClick={openApproval}>Liberar agora</button></div>}
                 {acimaLimite && isAdmin && <div className="op-note ok"><Check /> Você é administrador: desconto acima de {LIMITE_DESCONTO}% permitido.</div>}
                 {approved && acimaLimite && !isAdmin && <div className="op-note ok"><Check /> Liberado por {approval!.por} até {approval!.pct.toFixed(1).replace(".", ",")}%.</div>}
@@ -765,7 +774,7 @@ export default function Vendas() {
               <div className="op-ch"><h2>Pagamento</h2><span className="op-tag plain">{plano}{planoInfo(plano).total > 1 ? ` · ${planoInfo(plano).total}× ${brl(total / planoInfo(plano).total)}` : ""}</span></div>
               <div className="op-cb" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 <div className="op-chips">{DOCUMENTOS.map(([l, f]) => <button key={f} className={`op-chip ${sugerida === f ? "on" : ""}`} onClick={() => setSugerida(f)}>{l}</button>)}</div>
-                <p className="muted" style={{ margin: 0, fontSize: 12 }}>Tipo de documento e plano são uma indicação: o recebimento é feito e confirmado no caixa.</p>
+                <p className="muted" style={{ margin: 0, fontSize: 12 }}>Forma de pagamento e plano são uma indicação: o recebimento é feito e confirmado no caixa.</p>
               </div>
             </div>
             {errors.length > 0 && <div className="op-note bad" style={{ flexDirection: "column", gap: 4 }}>{errors.map((e) => <span key={e}>• {e}</span>)}</div>}
@@ -777,7 +786,7 @@ export default function Vendas() {
             {cart.length > 0 && (
               <div ref={printRef} className="op-card op-cb" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 <span className="muted" style={{ fontSize: 11.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em" }}>Imprimir antes de finalizar</span>
-                <PrintBar sale={{ id: "draft", name: numero, subtitle: "", status: "Rascunho", createdAt: new Date().toISOString(), kind: "Venda", date: todayISO(), time: nowTime(), dueDate: (() => { const d = new Date(); d.setDate(d.getDate() + 7); return d.toISOString().slice(0, 10) })(), owner: client?.name || "Consumidor final", ownerId: client?.id, professional: seller, amountValue: total, extra: { itens: cart, subtotal, desconto, taxaEntrega: taxa, tipo, formaSugerida: sugerida, entrega: tipo === "Entrega" ? { ...addr, taxa, aCobrar: 0, status: "", entregador: "" } : undefined } } as Item} unitName={activeUnit.name} tutor={client || undefined} only={["Orçamento", "Conferência", "Duplicata"]} />
+                <PrintBar sale={{ id: "draft", name: numero, subtitle: "", status: "Rascunho", createdAt: new Date().toISOString(), kind: "Venda", date: todayISO(), time: nowTime(), dueDate: (() => { const d = new Date(); d.setDate(d.getDate() + 7); return localISO(d) })(), owner: client?.name || "Consumidor final", ownerId: client?.id, professional: seller, amountValue: total, extra: { itens: cart, subtotal, desconto, taxaEntrega: taxa, tipo, formaSugerida: sugerida, entrega: tipo === "Entrega" ? { ...addr, taxa, aCobrar: 0, status: "", entregador: "" } : undefined } } as Item} unitName={activeUnit.name} tutor={client || undefined} only={["Orçamento", "Conferência", "Duplicata"]} />
               </div>
             )}
           </div>

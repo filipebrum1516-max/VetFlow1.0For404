@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { useLocation, useNavigate } from "react-router"
-import { ArrowLeft, Building2, ChevronDown, Keyboard, LifeBuoy, Mail, Moon, RotateCcw, Save, Sun, UserRound } from "lucide-react"
+import { ArrowLeft, Building2, ChevronDown, Download, History, Keyboard, LifeBuoy, Mail, Moon, RotateCcw, Save, Sun, Upload, UserRound } from "lucide-react"
 import { modules, useVetFlow, type UserProfile } from "../../store"
 import { Confirm, initials, Page, useToast } from "../ui"
 
@@ -67,7 +67,32 @@ const zones = [
 ]
 
 export function Configuracoes() {
-  const { theme, toggleTheme, timeZone, setTimeZone, units, activeUnitId, setActiveUnitId } = useVetFlow()
+  const { theme, toggleTheme, timeZone, setTimeZone, units, activeUnitId, setActiveUnitId, audit, user } = useVetFlow()
+  const isAdmin = user?.role === "Administrador"
+  const [restoreFile, setRestoreFile] = useState<Record<string, string> | null>(null)
+  const [auditAll, setAuditAll] = useState(false)
+  // I-12: cópia de segurança dos dados deste navegador (sem senhas nem sessão).
+  const BACKUP_KEYS = (key: string) => key.startsWith("vetflow-") && !/auth|session|terms/.test(key)
+  const exportBackup = () => {
+    const payload: Record<string, string> = {}
+    for (let i = 0; i < localStorage.length; i++) { const key = localStorage.key(i) || ""; if (BACKUP_KEYS(key)) payload[key] = localStorage.getItem(key) || "" }
+    try { const staff = JSON.parse(payload["vetflow-staff"] || "[]"); payload["vetflow-staff"] = JSON.stringify(staff.map((u: Record<string, unknown>) => ({ ...u, passwordHash: undefined, salt: undefined, password: undefined }))) } catch { /* ok */ }
+    const url = URL.createObjectURL(new Blob([JSON.stringify({ app: "VetFlow", versao: 1, geradoEm: new Date().toISOString(), dados: payload }, null, 2)], { type: "application/json" }))
+    const a = document.createElement("a"); a.href = url; a.download = `vetflow-backup-${new Date().toISOString().slice(0, 10)}.json`; a.click(); window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+    show("Cópia de segurança baixada (senhas não são incluídas).")
+  }
+  const readBackup = (file?: File) => {
+    if (!file) return
+    file.text().then((text) => {
+      try { const json = JSON.parse(text); if (json.app !== "VetFlow" || typeof json.dados !== "object") throw new Error("x"); setRestoreFile(json.dados) } catch { show("Arquivo inválido: escolha uma cópia gerada pelo VetFlow.") }
+    })
+  }
+  const exportAudit = () => {
+    const rows = [["Quando", "Quem", "Ação", "Módulo", "Registro", "Unidade"], ...audit.map((a) => [new Date(a.em).toLocaleString("pt-BR"), a.quem, a.acao, a.modulo, a.registro, a.unidade])]
+    const csv = "\ufeff" + rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(";")).join("\r\n")
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }))
+    const a = document.createElement("a"); a.href = url; a.download = "vetflow-auditoria.csv"; a.click(); window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+  }
   const navigate = useNavigate()
   const [toast, show] = useToast()
   const [reset, setReset] = useState(false)
@@ -105,12 +130,70 @@ export function Configuracoes() {
         <div className="vx-glass" style={{ padding: 22 }}>
           <div className="vx-lbl">Dados de demonstração</div>
           <p className="vx-hint" style={{ marginTop: 8 }}>Apaga todos os cadastros e alterações feitos neste navegador e volta aos dados iniciais.</p>
-          <button className="vx-btn vx-btn-d" style={{ marginTop: 10 }} onClick={() => setReset(true)}><RotateCcw /> Restaurar dados iniciais</button>
+          <button className="vx-btn vx-btn-d" style={{ marginTop: 10 }} onClick={() => setReset(true)}><RotateCcw /> Restaurar dados de exemplo</button>
+        </div>
+        <div className="vx-glass" style={{ padding: 22 }}>
+          <div className="vx-lbl">Cópia de segurança</div>
+          <p className="vx-hint" style={{ marginTop: 8 }}>Baixe um arquivo com os dados deste navegador ou restaure uma cópia anterior. Senhas não entram na cópia.</p>
+          <div className="vx-row" style={{ gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+            <button className="vx-btn vx-btn-g" onClick={exportBackup}><Download /> Baixar cópia</button>
+            {isAdmin && (
+              <label className="vx-btn vx-btn-g" style={{ cursor: "pointer" }}>
+                <Upload /> Restaurar cópia
+                <input type="file" accept="application/json,.json" style={{ display: "none" }} onChange={(event) => { readBackup(event.target.files?.[0]); event.target.value = "" }} />
+              </label>
+            )}
+          </div>
         </div>
       </div>
+      {isAdmin && (
+        <div className="vx-glass" style={{ padding: 22, marginTop: 18 }}>
+          <div className="vx-row" style={{ justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+            <div>
+              <div className="vx-lbl"><History size={13} /> Registro de auditoria</div>
+              <p className="vx-hint" style={{ marginTop: 4 }}>Quem criou, editou ou excluiu cada registro, entradas no sistema e trocas de senha. {audit.length} eventos guardados neste navegador.</p>
+            </div>
+            <button className="vx-btn vx-btn-g vx-btn-sm" onClick={exportAudit} disabled={!audit.length}><Download /> Exportar CSV</button>
+          </div>
+          <div className="vx-table" style={{ marginTop: 12 }}>
+            <div className="vx-tr vx-th" style={{ gridTemplateColumns: "150px minmax(0,1fr) 90px minmax(0,1fr) minmax(0,1.4fr)" }}><span>Quando</span><span>Quem</span><span>Ação</span><span>Módulo</span><span>Registro</span></div>
+            {(auditAll ? [...audit].reverse() : [...audit].reverse().slice(0, 12)).map((a, i) => (
+              <div key={`${a.em}-${i}`} className="vx-tr" style={{ gridTemplateColumns: "150px minmax(0,1fr) 90px minmax(0,1fr) minmax(0,1.4fr)" }}>
+                <span className="vx-mono">{new Date(a.em).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>
+                <span>{a.quem}</span><span>{a.acao}</span><span>{a.modulo}</span><span>{a.registro}</span>
+              </div>
+            ))}
+            {!audit.length && <div className="vx-empty">Nenhum evento registrado ainda.</div>}
+          </div>
+          {audit.length > 12 && <button className="vx-btn vx-btn-g vx-btn-sm" style={{ marginTop: 10 }} onClick={() => setAuditAll(!auditAll)}>{auditAll ? "Mostrar menos" : `Mostrar todos (${audit.length})`}</button>}
+        </div>
+      )}
+      {restoreFile && (
+        <Confirm
+          danger
+          title="Restaurar cópia de segurança?"
+          text="Os dados atuais deste navegador serão substituídos pelos da cópia. As senhas atuais continuam valendo."
+          confirm="Restaurar cópia"
+          onCancel={() => setRestoreFile(null)}
+          onConfirm={() => {
+            try {
+              const currentStaff = JSON.parse(localStorage.getItem("vetflow-staff") || "[]") as Record<string, unknown>[]
+              Object.entries(restoreFile).forEach(([key, value]) => {
+                if (!BACKUP_KEYS(key)) return
+                if (key === "vetflow-staff") {
+                  const incoming = JSON.parse(value) as Record<string, unknown>[]
+                  const merged = incoming.map((u) => { const old = currentStaff.find((c) => c.id === u.id); return old ? { ...u, passwordHash: old.passwordHash, salt: old.salt, mustChange: old.mustChange } : null }).filter(Boolean)
+                  localStorage.setItem(key, JSON.stringify(merged.length ? merged : currentStaff))
+                } else localStorage.setItem(key, value)
+              })
+            } catch { /* ok */ }
+            window.location.assign("/")
+          }}
+        />
+      )}
       {reset && (
         <Confirm
-          title="Restaurar dados iniciais?"
+          title="Restaurar dados de exemplo?"
           text="Todos os registros criados ou alterados neste navegador serão descartados. Você continuará conectado."
           confirm="Restaurar"
           danger

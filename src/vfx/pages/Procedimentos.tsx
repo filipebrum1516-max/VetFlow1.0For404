@@ -29,6 +29,9 @@ export default function Procedimentos() {
   const [suit, setSuit] = useState("Todos")
   const [query, setQuery] = useState("")
   const [page, setPage] = useState(1)
+  // D-04 / M-26: a lista é a visão padrão; as cartas viram a visão "Visual" opcional.
+  const [mode, setMode] = useState<"lista" | "visual">(() => { try { return (localStorage.getItem("vetflow-proc-view") as "lista" | "visual") || "lista" } catch { return "lista" } })
+  const changeMode = (value: "lista" | "visual") => { setMode(value); try { localStorage.setItem("vetflow-proc-view", value) } catch { /* ok */ } }
   const cards = useMemo(() => {
     const map = new Map<string, Card>()
     data.procedimentos.forEach((item) => {
@@ -60,19 +63,35 @@ export default function Procedimentos() {
       bg="#fbeff1"
       blobs={[["#ffb8c6", 60, 260, 640, 520], ["#ffd39a", "75%", -60, 380, 380], ["#b8d4ff", "88%", "70%", 320, 320]]}
       crumb="Procedimentos"
-      title="O baralho da clínica"
-      sub="Cada procedimento é uma carta: naipe = categoria, canto = preço, verso = protocolo da equipe."
+      title="Procedimentos"
+      sub="Procedimentos oferecidos, com categoria, preço e protocolo da equipe."
       actions={
         <>
-          <SearchBox value={query} onChange={(value) => { setQuery(value); setPage(1) }} placeholder="Buscar carta" />
+          <SearchBox value={query} onChange={(value) => { setQuery(value); setPage(1) }} placeholder="Buscar procedimento" />
+          <Seg label="Modo de exibição" options={[["lista", "Lista"], ["visual", "Visual"]]} value={mode} onChange={(value) => changeMode(value as "lista" | "visual")} />
           <Seg options={[["Todos", `Todos ${cards.length}`], ...Object.entries(suits).map(([key, [mark]]) => [key, `${mark} ${key}`] as [string, string])]} value={suit} onChange={(value) => { setSuit(value); setPage(1) }} />
           <button className="vx-btn vx-btn-p" onClick={() => forms.open("procedimentos")}>
-            <Plus /> Nova carta
+            <Plus /> Novo procedimento
           </button>
         </>
       }
     >
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 460px", gap: 20, alignItems: "start" }} className="vx-proc-grid">
+        {mode === "lista" ? (
+          <div className="vx-table">
+            <div className="vx-tr vx-th" style={{ gridTemplateColumns: "minmax(0,2fr) 120px 110px 90px 110px" }}><span>Procedimento</span><span>Categoria</span><span>Duração</span><span>Feitos</span><span className="r">Preço</span></div>
+            {filtered.map((card) => (
+              <button key={card.name} className={`vx-tr ${current?.name === card.name ? "on" : ""}`} style={{ gridTemplateColumns: "minmax(0,2fr) 120px 110px 90px 110px", textAlign: "left", font: "inherit", color: "inherit", background: current?.name === card.name ? "rgba(233,79,23,.08)" : undefined, border: 0, width: "100%", cursor: "pointer" }} onClick={() => setSelected(card.name)}>
+                <strong>{card.name}</strong>
+                <span>{(suits[card.suit] || suits.Clínico)[0]} {card.suit}</span>
+                <span>{card.duration}</span>
+                <span className="vx-mono">{card.uses.length}</span>
+                <b className="r">{card.price ? brl(card.price) : "—"}</b>
+              </button>
+            ))}
+            {!filtered.length && <div className="vx-empty">Nenhum procedimento encontrado. <button className="vx-btn vx-btn-g vx-btn-sm" onClick={() => forms.open("procedimentos")}><Plus /> Cadastrar procedimento</button></div>}
+          </div>
+        ) : (
         <div>
           <div className="vx-fan" style={{ zIndex: 1 }}>
             {hand.map((card, index) => {
@@ -106,10 +125,11 @@ export default function Procedimentos() {
             <Pager page={Math.min(page, pages)} pages={pages} onPage={setPage} label={`Mão ${Math.min(page, pages)} de ${pages}`} />
           </div>
         </div>
+        )}
 
         {current && (
           <div style={{ display: "flex", gap: 18, alignItems: "flex-start", flexWrap: "wrap", position: "relative", zIndex: 1000 }}>
-            <div style={{ width: 210, height: 320, flex: "none", borderRadius: 24, background: `linear-gradient(160deg, ${color}, #1a2233)`, color: "#fff", padding: 18, display: "flex", flexDirection: "column", boxShadow: "0 34px 60px -26px rgba(26,34,51,.7)", transform: "rotate(-3deg)", position: "relative", overflow: "hidden" }}>
+            <div style={{ width: 210, height: 320, flex: "none", borderRadius: 24, background: `linear-gradient(160deg, ${color}, #1a2233)`, color: "#fff", padding: 18, display: "flex", flexDirection: "column", boxShadow: "0 34px 60px -26px rgba(26,34,51,.7)", position: "relative", overflow: "hidden" }}>
               <div style={{ position: "absolute", right: -40, top: -40, width: 180, height: 180, borderRadius: "50%", border: "1.5px solid rgba(255,255,255,.2)" }} />
               <div className="vx-suit" style={{ fontSize: 34 }}>{symbol}</div>
               <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".1em", opacity: 0.85 }}>{current.suit.toUpperCase()}</div>

@@ -1,10 +1,1 @@
-{
-  "description": "VetFlow is an integrated management platform for veterinary clinics, streamlining clinical, administrative, and financial processes to enhance operational efficiency.",
-  "robots": {
-    "index": false
-  },
-  "accessibility": {
-    "addBypassLinks": false,
-    "ignoreReducedMotion": false
-  }
-}
+{}

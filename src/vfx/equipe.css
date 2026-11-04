@@ -51,3 +51,8 @@
 @media (prefers-reduced-motion: reduce) { .eq-card, .eq-edit { animation: none; } }
 [data-theme="dark"] .eq-card, [data-theme="dark"] .eq-perm, [data-theme="dark"] .eq-roles button { background: rgba(22,28,38,.72); color: #eef2f7; border-color: #263041; }
 [data-theme="dark"] .eq-fields input, [data-theme="dark"] .eq-fields select { background: #121821; color: #eef2f7; border-color: #263041; }
+.eq-passinfo { display: flex; flex-direction: column; gap: 4px; }
+.eq-passinfo > span { font-size: 10.5px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: #5b6474; }
+.eq-passinfo p { margin: 0; font-size: 12.5px; line-height: 1.45; color: #3a4356; padding: 9px 12px; border-radius: 12px; background: rgba(26,34,51,.05); }
+.eq-temp { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; padding: 12px 14px; border-radius: 14px; background: #fff7f2; border: 1px solid #ffd9c7; font-size: 13px; }
+.eq-temp b { font-size: 16px; }

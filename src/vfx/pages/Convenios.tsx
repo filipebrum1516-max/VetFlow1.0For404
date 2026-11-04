@@ -49,8 +49,8 @@ export default function Convenios() {
       bg="#eef0fa"
       blobs={[["#b3c3ff", 60, 200, 560, 520], ["#ffc9a8", "45%", -80, 380, 360], ["#a8e2b8", "88%", "72%", 320, 320]]}
       crumb="Convênios"
-      title="Wallet de planos"
-      sub="Cada convênio é um cartão na carteira. Toque para puxar e ver coberturas, repasses e guias."
+      title="Convênios"
+      sub="Planos e convênios aceitos, coberturas, repasses e glosas."
       actions={
         <>
           <SearchBox value={query} onChange={(value) => { setQuery(value); setStart(0) }} placeholder="Buscar convênio" />

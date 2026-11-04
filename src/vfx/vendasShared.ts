@@ -1,4 +1,5 @@
-import type { Item } from "../store"
+import { localDateTime, localISO } from "../date"
+import type { Item, Unit } from "../store"
 import { brl, fmtDate } from "./ui"
 
 export type Line = { tipo: string; ref?: string; codigo?: string; descricao: string; qtd: number; preco: number; desconto: number; lote?: string; validade?: string; obs?: string; vendedor?: string }
@@ -42,7 +43,7 @@ export const LIMITE_DESCONTO = 7
 
 export const lineTotal = (line: Line) => Math.max(0, line.qtd * line.preco * (1 - (line.desconto || 0) / 100))
 export const nowTime = () => new Date().toTimeString().slice(0, 5)
-export const stamp = () => `${fmtDate(new Date().toISOString().slice(0, 10), { day: "2-digit", month: "2-digit" })} ${nowTime()}`
+export const stamp = () => `${fmtDate(localISO(), { day: "2-digit", month: "2-digit" })} ${nowTime()}`
 export const two = (n: number) => String(n).padStart(2, "0")
 
 export const codeOf = (item: Item) => {
@@ -60,7 +61,7 @@ export function nextNumber(items: Item[], prefix: string) {
 
 export function minutesSince(date?: string, time?: string) {
   if (!time) return ""
-  const today = new Date().toISOString().slice(0, 10)
+  const today = localISO()
   if (date && date !== today) return fmtDate(date, { day: "2-digit", month: "2-digit" })
   const [h, m] = time.split(":").map(Number)
   const now = new Date()
@@ -85,7 +86,7 @@ export function addMonths(iso: string, months: number, days = 0) {
   const d = new Date(`${iso}T12:00:00`)
   if (months) d.setMonth(d.getMonth() + months)
   if (days) d.setDate(d.getDate() + days)
-  return d.toISOString().slice(0, 10)
+  return localISO(d)
 }
 
 export function printHtml(title: string, body: string, a4 = false) {
@@ -128,12 +129,21 @@ export function printHtml(title: string, body: string, a4 = false) {
   }
 }
 
+/* Dados da unidade (CNPJ, endereço, telefone) para cabeçalho de recibos e cupons (M-04). */
+let knownUnits: Unit[] = []
+export function registerUnits(units: Unit[]) { knownUnits = units }
+function unitLine(unitName: string) {
+  const u = knownUnits.find((unit) => unit.name === unitName || unit.shortName === unitName)
+  if (!u) return ""
+  return [u.cnpj && `CNPJ ${u.cnpj}`, [u.street, u.number].filter(Boolean).join(", ") + (u.city ? ` · ${u.city}/${u.state}` : ""), u.phone].filter(Boolean).join(" · ")
+}
+
 export function saleSlipHtml(sale: Item, unitName: string, kind: "pre" | "comprovante" | "romaneio") {
   const itens: Line[] = sale.extra?.itens || []
   const pays: Pay[] = sale.extra?.pagamentos || []
   const e: Entrega | undefined = sale.extra?.entrega
   const head = kind === "pre" ? "PRÉ-VENDA · leve ao caixa" : kind === "romaneio" ? "ROMANEIO DE ENTREGA" : "COMPROVANTE NÃO FISCAL"
-  return `<h1>VetFlow · ${unitName}</h1><div>${head}</div><div class="code">${sale.name}</div>
+  return `<h1>VetFlow · ${unitName}</h1><div style="font-size:10px">${unitLine(unitName)}</div><div>${head}</div><div class="code">${sale.name}</div>
   <div>${fmtDate(sale.date)} ${sale.time || ""} · Vendedor: ${sale.professional || "—"}</div>
   <div>Cliente: ${sale.owner || "Consumidor final"}</div>
   <table><tr><th>Item</th><th>Qtd</th><th>Total</th></tr>${itens.map((l) => `<tr><td>${l.descricao}</td><td>${l.qtd}</td><td>${brl(lineTotal(l))}</td></tr>`).join("")}</table>
@@ -203,7 +213,7 @@ const A4_CSS = `
   @media print{body{margin:0}.doc{border-color:#000}}`
 
 function unitHead(unitName: string, title: string, right: string) {
-  return `<div class="hd"><div><h1>VetFlow · ${unitName}</h1><small>Gestão veterinária</small></div><div style="text-align:right"><div class="big">${title}</div><small>${right}</small></div></div>`
+  return `<div class="hd"><div><h1>VetFlow · ${unitName}</h1><small>${unitLine(unitName) || "Gestão veterinária"}</small></div><div style="text-align:right"><div class="big">${title}</div><small>${right}</small></div></div>`
 }
 function clientBox(sale: Item, tutor?: Item) {
   return `<div class="box"><span class="lbl">Cliente</span><b>${sale.owner || "Consumidor final"}</b>${tutor?.cpf ? ` · CPF ${tutor.cpf}` : ""}${tutor?.phone ? ` · ${tutor.phone}` : ""}<br>${tutor?.address?.replace(" • ", " · ") || ""}</div>`
@@ -224,7 +234,7 @@ export function orcamentoHtml(sale: Item, unitName: string, tutor?: Item) {
 
 export function duplicatasHtml(sale: Item, unitName: string, tutor?: Item) {
   let pays: Pay[] = (sale.extra?.pagamentos || []).filter((p: Pay) => p.forma === "Duplicata" || p.forma === "Boleto")
-  if (!pays.length) pays = [{ forma: "Duplicata", valor: sale.amountValue || 0, parcelas: 1, vencimentos: [addMonths(sale.date || new Date().toISOString().slice(0, 10), 1)] }]
+  if (!pays.length) pays = [{ forma: "Duplicata", valor: sale.amountValue || 0, parcelas: 1, vencimentos: [addMonths(sale.date || localISO(), 1)] }]
   const out: string[] = []
   for (const p of pays) {
     const n = Math.max(1, p.parcelas)

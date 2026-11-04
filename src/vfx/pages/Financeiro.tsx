@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react"
+import { useState } from "react"
 import { useNavigate } from "react-router"
 import { ChevronLeft, ChevronRight, Plus, Receipt } from "lucide-react"
 import { useVetFlow, type Item } from "../../store"
@@ -13,10 +13,7 @@ export default function Financeiro() {
   const { data } = useVetFlow()
   const navigate = useNavigate()
   const forms = usePageForms("financeiro", (saved) => { setDay(itemDate(saved)); setLens("dia") })
-  const ref = useMemo(() => {
-    const dates = data.financeiro.map(itemDate).filter((value) => value <= todayISO()).sort()
-    return dates[dates.length - 1] || todayISO()
-  }, [data.financeiro])
+  const ref = todayISO()
   const [period, setPeriod] = useState<"7" | "30" | "90">("30")
   const [day, setDay] = useState(ref)
   const [lens, setLens] = useState<Lens>("dia")
@@ -26,9 +23,13 @@ export default function Financeiro() {
   const saiu = sum(inPeriod.filter((item) => !isIn(item) && /pago/i.test(item.status)))
   const bank = sum(data.financeiro.filter((item) => isIn(item) && /receb/i.test(item.status))) - sum(data.financeiro.filter((item) => !isIn(item) && /pago/i.test(item.status)))
   const receivable = data.financeiro.filter((item) => isIn(item) && /a receber/i.test(item.status))
-  const payable = data.financeiro.filter((item) => !isIn(item) && /a pagar|pendente/i.test(item.status))
+  const payable = data.financeiro.filter((item) => !isIn(item) && /a pagar|pendente|vencid/i.test(item.status))
   const overdue = data.financeiro.filter((item) => /vencid/i.test(item.status))
-  const cash = sum(data.financeiro.filter((item) => isIn(item) && itemDate(item) === ref && /receb/i.test(item.status)))
+  // Mesmo número da tela Caixa: o que foi recebido hoje nos caixas da recepção (B-11).
+  const caixasHoje = new Set(data.caixa.filter((item) => itemDate(item) === ref).map((item) => item.id))
+  const cash = data.vendas
+    .filter((sale) => caixasHoje.has(sale.extra?.caixaId) && !/cancel|estorn/i.test(sale.status))
+    .reduce((total, sale) => total + ((sale.extra?.pagamentos || []) as { valor: number }[]).reduce((a, p) => a + (p.valor || 0), 0), 0)
   const revenueItems = data.financeiro.filter(isIn)
   const ticket = revenueItems.length ? sum(revenueItems) / revenueItems.length : 0
   const delinquency = revenueItems.length ? (overdue.filter(isIn).length / revenueItems.length) * 100 : 0
@@ -49,7 +50,7 @@ export default function Financeiro() {
   const cards: [string, string, number, string, Lens][] = [
     ["Banco · conta PJ", "saldo acumulado", bank, "linear-gradient(135deg,#2457c5,#18418f)", "dia"],
     ["Cartões / a receber", `${receivable.length} lançamentos`, sum(receivable), "linear-gradient(135deg,#e94f17,#b9500a)", "receber"],
-    ["Caixa da recepção", `recebido em ${fmtDate(ref, { day: "2-digit", month: "2-digit" })}`, cash, "linear-gradient(135deg,#2b7a4b,#1e5a37)", "dia"],
+    ["Caixa da recepção", "recebido hoje", cash, "linear-gradient(135deg,#2b7a4b,#1e5a37)", "dia"],
   ]
 
   return (
@@ -57,8 +58,8 @@ export default function Financeiro() {
       bg="#eef6f0"
       blobs={[["#a8e2b8", -100, 180, 560, 480], ["#ffd39a", "45%", 380, 420, 380], ["#b3c3ff", "85%", -60, 320, 320]]}
       crumb="Financeiro"
-      title="A carteira da clínica"
-      sub="Onde o dinheiro está, como ele corre e o recibo de cada movimento. Toque num cartão para ver os lançamentos."
+      title="Financeiro"
+      sub="Saldo, contas a receber e a pagar, entradas e saídas e os lançamentos do período."
       actions={
         <>
           <Seg options={[["7", "Semana"], ["30", "Mês"], ["90", "Trimestre"]]} value={period} onChange={setPeriod} />
@@ -66,7 +67,7 @@ export default function Financeiro() {
             <Receipt /> Relatório
           </button>
           <button className="vx-btn vx-btn-p" onClick={() => forms.open("financeiro", undefined, { date: todayISO() })}>
-            <Plus /> Lançamento
+            <Plus /> Novo lançamento
           </button>
         </>
       }
@@ -97,7 +98,7 @@ export default function Financeiro() {
 
         <div className="vx-glass" style={{ padding: 22, display: "flex", flexDirection: "column", gap: 12, minHeight: 520 }}>
           <div className="vx-row" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-            <strong style={{ fontSize: 17 }}>O rio do caixa</strong>
+            <strong style={{ fontSize: 17 }}>Entradas e saídas</strong>
             <div className="vx-row" style={{ gap: 12, fontSize: 12, color: "var(--vx-muted)" }}>
               <span className="vx-row" style={{ gap: 6 }}><span className="vx-dot" style={{ background: "#2b7a4b" }} />Entradas</span>
               <span className="vx-row" style={{ gap: 6 }}><span className="vx-dot" style={{ background: "#b4322a" }} />Saídas</span>
@@ -117,9 +118,9 @@ export default function Financeiro() {
             <span style={{ color: "var(--vx-accent)" }}>{fmtDate(ref, { day: "2-digit", month: "short" })}</span>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0,1fr))", gap: 10, paddingTop: 12, borderTop: "1px solid var(--vx-line)" }}>
-            <div><div className="vx-lbl" style={{ fontSize: 10 }}>Entrou</div><div className="vx-num" style={{ fontSize: 22, color: "var(--vx-green)" }}>{brl(entrou)}</div></div>
-            <div><div className="vx-lbl" style={{ fontSize: 10 }}>Saiu</div><div className="vx-num" style={{ fontSize: 22, color: "var(--vx-red)" }}>{brl(saiu)}</div></div>
-            <div><div className="vx-lbl" style={{ fontSize: 10 }}>Sobrou</div><div className="vx-num" style={{ fontSize: 22 }}>{brl(entrou - saiu)}</div></div>
+            <div><div className="vx-lbl" style={{ fontSize: 10 }}>Entradas</div><div className="vx-num" style={{ fontSize: 22, color: "var(--vx-green)" }}>{brl(entrou)}</div></div>
+            <div><div className="vx-lbl" style={{ fontSize: 10 }}>Saídas</div><div className="vx-num" style={{ fontSize: 22, color: "var(--vx-red)" }}>{brl(saiu)}</div></div>
+            <div><div className="vx-lbl" style={{ fontSize: 10 }}>Saldo do período</div><div className="vx-num" style={{ fontSize: 22 }}>{brl(entrou - saiu)}</div></div>
           </div>
         </div>
 

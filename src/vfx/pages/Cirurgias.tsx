@@ -32,11 +32,7 @@ export default function Cirurgias() {
     const timer = window.setInterval(() => setTick((value) => value + 1), 2000)
     return () => window.clearInterval(timer)
   }, [])
-  const days = useMemo(() => [...new Set(data.cirurgias.map(itemDate))].sort(), [data.cirurgias])
-  const [day, setDay] = useState(() => {
-    const today = todayISO()
-    return days.includes(today) ? today : [...days].reverse().find((value) => value <= today) || today
-  })
+  const [day, setDay] = useState(() => todayISO())
   const dayItems = data.cirurgias.filter((item) => itemDate(item) === day && !/cancel/i.test(item.status)).sort((a, b) => minutes(timeOf(a)) - minutes(timeOf(b)))
   const roomItem = (room: string) => {
     const inRoom = dayItems.filter((item) => roomOf(item) === room)
@@ -72,8 +68,8 @@ export default function Cirurgias() {
       className="vx-or"
       blobs={[["#0f766e", -120, 200, 560, 460], ["#3e2a80", "80%", 80, 460, 420]]}
       crumb="Cirurgias"
-      title="Centro cirúrgico"
-      sub={<span style={{ color: "rgba(255,255,255,.7)" }}>Modo escuro de propósito: é o monitor da sala. Uma tela por sala, em tempo real.</span>}
+      title="Cirurgias"
+      sub={<span style={{ color: "rgba(255,255,255,.75)" }}>Salas do dia, cirurgias agendadas e checklist de cirurgia segura.</span>}
       actions={
         <>
           <Seg options={[["salas", "Salas"], ["lista", "Todas as cirurgias"]]} value={view} onChange={setView} />

@@ -229,7 +229,17 @@ textarea.vx-in { height: auto; min-height: 84px; padding: 10px 12px; line-height
 [data-theme="dark"] .vx-s-green { background: rgba(110,231,168,.14); color: #8ff0bd; } [data-theme="dark"] .vx-s-orange { background: rgba(255,154,107,.16); color: #ffb38f; } [data-theme="dark"] .vx-s-red { background: rgba(255,143,135,.16); color: #ffaba4; } [data-theme="dark"] .vx-s-blue { background: rgba(143,179,255,.16); color: #b5ccff; } [data-theme="dark"] .vx-s-violet { background: rgba(184,165,255,.16); color: #cfc2ff; } [data-theme="dark"] .vx-s-gray { background: rgba(255,255,255,.08); color: #cfd6e1; }
 
 /* ---------- Dashboard: órbita ---------- */
-.vx-dash { display: grid; grid-template-columns: 290px minmax(0, 1fr) 290px; gap: 22px; align-items: center; }
+.vx-dash { display: grid; grid-template-columns: 290px minmax(0, 1fr) 290px; gap: 22px; align-items: start; }
+.vx-timeline { display: flex; flex-direction: column; gap: 14px; padding: 18px; min-height: 420px; }
+.vx-tl-focus { display: flex; flex-direction: column; gap: 2px; text-align: left; font: inherit; color: inherit; background: rgba(255,255,255,.7); border: 2px solid; border-radius: 14px; padding: 12px 14px; cursor: pointer; }
+.vx-tl-focus small { font-weight: 800; font-size: 12px; } .vx-tl-focus strong { font-size: 17px; } .vx-tl-focus span { font-size: 13px; color: var(--vx-muted); }
+.vx-tl { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; max-height: 560px; overflow-y: auto; }
+.vx-tl li { display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 10px; align-items: start; }
+.vx-tl time { font-weight: 800; font-variant-numeric: tabular-nums; padding-top: 10px; font-size: 14px; }
+.vx-tl li button { display: flex; flex-direction: column; justify-content: center; gap: 2px; text-align: left; font: inherit; color: inherit; background: rgba(255,255,255,.75); border: 1px solid var(--vx-line); border-left: 5px solid; border-radius: 12px; padding: 8px 12px; cursor: pointer; min-height: 44px; }
+.vx-tl li button:hover, .vx-tl li button:focus-visible { background: #fff; }
+.vx-tl li button strong { font-size: 14px; } .vx-tl li button small { font-size: 12px; color: var(--vx-muted); }
+.vx-tl li.past { opacity: .55; } .vx-tl li.live button { box-shadow: 0 0 0 2px var(--vx-ink); }
 .vx-orbit { position: relative; width: min(600px, 100%); aspect-ratio: 1; justify-self: center; }
 .vx-orbit svg { width: 100%; height: 100%; display: block; }
 .vx-orbit-core { position: absolute; left: 22%; top: 22%; width: 56%; height: 56%; border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 3px; padding: 20px; }
@@ -325,7 +335,7 @@ textarea.vx-in { height: auto; min-height: 84px; padding: 10px 12px; line-height
 .vx-tube .cap { width: 50px; height: 26px; border-radius: 8px 8px 4px 4px; box-shadow: inset 0 -4px 0 rgba(0,0,0,.15); }
 .vx-tube .glass { width: 40px; height: 250px; border-radius: 4px 4px 22px 22px; background: rgba(255,255,255,.5); border: 1.5px solid rgba(255,255,255,.95); position: relative; overflow: hidden; box-shadow: inset 6px 0 10px rgba(255,255,255,.6), 0 16px 26px -16px rgba(60,40,120,.5); }
 [data-theme="dark"] .vx-tube .glass { background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.2); }
-.vx-tube .tag { position: absolute; left: 3px; right: 3px; top: 40px; padding: 6px 0; background: rgba(255,255,255,.95); border-radius: 4px; font-family: "JetBrains Mono", monospace; font-size: 9px; font-weight: 800; writing-mode: vertical-rl; transform: rotate(180deg); height: 96px; color: #1a2233; display: flex; align-items: center; justify-content: center; }
+.vx-tube .tag { position: absolute; left: 3px; right: 3px; top: 40px; padding: 6px 0; background: rgba(255,255,255,.95); border-radius: 4px; font-family: "JetBrains Mono", monospace; font-size: 10px; font-weight: 800; height: auto; line-height: 1.1; text-align: center; word-break: break-all; color: #1a2233; display: flex; align-items: center; justify-content: center; }
 .vx-tube.on .glass { outline: 3px solid var(--vx-accent-bg); outline-offset: 3px; }
 .vx-laudo { background: #fff; color: #1a2233; border-radius: 6px; box-shadow: 0 36px 60px -30px rgba(60,40,120,.45); padding: 22px 24px; display: flex; flex-direction: column; gap: 12px; }
 .vx-laudo .vx-lbl, .vx-laudo .vx-hint { color: #5b6474; }
@@ -1051,3 +1061,19 @@ textarea.vx-in { height: auto; min-height: 84px; padding: 10px 12px; line-height
   .bc-brand .bc-logo { display: inline-flex !important; }
 }
 @media (max-width: 520px) { .bc-page { display: none; } }
+
+.vx-help { position: relative; display: inline-flex; vertical-align: middle; margin-left: 10px; }
+.vx-help-btn { width: 28px; height: 28px; border-radius: 50%; border: 1.5px solid currentColor; background: transparent; color: var(--vx-muted, #4f5868); font: 800 14px/1 Inter, sans-serif; cursor: pointer; opacity: .8; }
+.vx-help-btn:hover { opacity: 1; }
+.vx-help-pop { position: absolute; z-index: 60; top: 36px; left: 0; width: min(340px, 80vw); padding: 12px 34px 12px 14px; border-radius: 14px; background: #1a2233; color: #fff; font: 500 13px/1.45 Inter, sans-serif; letter-spacing: 0; box-shadow: 0 18px 40px -18px rgba(0,0,0,.5); }
+.vx-help-pop button { position: absolute; right: 8px; top: 6px; border: 0; background: transparent; color: #fff; font-size: 18px; cursor: pointer; }
+
+.vx-pub-cal { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.vx-pub-cal > b { font-size: 12px; text-align: center; color: var(--vx-muted); padding: 4px 0; }
+.vx-pub-cal > div { min-height: 84px; border-radius: 10px; background: rgba(255,255,255,.7); padding: 4px; display: flex; flex-direction: column; gap: 2px; overflow: hidden; }
+.vx-pub-cal > div.off { background: transparent; }
+.vx-pub-cal small { font-weight: 800; font-size: 12px; }
+.vx-pub-cal button { border: 0; border-radius: 6px; padding: 2px 4px; font: 600 11px/1.2 Inter, sans-serif; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+.vx-pub-cal button.pub { background: #d5f3ec; color: #0b5a52; } .vx-pub-cal button.ag { background: #dce7ff; color: #1b3f8f; } .vx-pub-cal button.ra { background: #eceef2; color: #3a4356; }
+.vx-pub-cal em { font-size: 11px; color: var(--vx-muted); }
+@media (max-width: 640px) { .vx-pub-cal > div { min-height: 56px; } .vx-pub-cal button { font-size: 0; padding: 4px; } .vx-pub-cal button::first-letter { font-size: 11px; } }

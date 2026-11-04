@@ -18,10 +18,11 @@ const ROLE_DESC: Record<Role, string> = {
 const AREAS: [string, string][] = [["dashboard", "Dashboard"], ["vendas", "Vendas"], ["caixa", "Caixa"], ["entregas", "Entregas"], ["estoque", "Estoque"], ["tutores", "Clientes / tutores"], ["agendas", "Agenda"], ["prontuarios", "Prontuários"], ["financeiro", "Financeiro"], ["usuarios", "Equipe e acessos"]]
 const label = (slug: string) => AREAS.find(([s]) => s === slug)?.[1] || modules.find(([s]) => s === slug)?.[1] || slug
 const maskCpf = (v: string) => v.replace(/\D/g, "").slice(0, 11).replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d{1,2})$/, "$1-$2")
-const BLANK: StaffUser = { id: "", name: "", displayName: "", username: "", email: "", cpf: "", password: "", role: "Vendedor", code: "", active: true }
+const BLANK: StaffUser = { id: "", name: "", displayName: "", username: "", email: "", cpf: "", passwordHash: "", salt: "", mustChange: true, role: "Vendedor", code: "", active: true }
 
 export default function Equipe() {
-  const { staff, saveStaff, user } = useVetFlow()
+  const { staff, saveStaff, user, resetPassword } = useVetFlow()
+  const [tempShown, setTempShown] = useState<{ name: string; user: string; pass: string } | null>(null)
   const navigate = useNavigate()
   const [toast, show] = useToast()
   const [query, setQuery] = useState("")
@@ -47,7 +48,7 @@ export default function Equipe() {
   const edit = (patch: Partial<StaffUser>) => setDraft({ ...(form || BLANK), ...patch })
   const novo = () => {
     const nextCode = String(Math.max(0, ...staff.map((u) => Number(u.code) || 0)) + 1).padStart(3, "0")
-    setSelId(""); setDraft({ ...BLANK, id: `u-${Date.now()}`, code: nextCode, password: Math.random().toString(36).slice(2, 10) }); setErrors([]); setShowPass(true)
+    setSelId(""); setDraft({ ...BLANK, id: `u-${Date.now()}`, code: nextCode }); setErrors([]); setShowPass(false)
   }
   const save = () => {
     if (!draft) return
@@ -56,19 +57,26 @@ export default function Equipe() {
     if (!/^[a-z0-9._-]{3,}$/i.test(draft.username)) e.push("Usuário: mínimo 3 letras ou números, sem espaços.")
     if (!/^\S+@\S+\.\S+$/.test(draft.email)) e.push("E-mail inválido.")
     if (draft.cpf && draft.cpf.replace(/\D/g, "").length !== 11) e.push("CPF deve ter 11 dígitos.")
-    if (draft.password.length < 6) e.push("A senha precisa de pelo menos 6 caracteres.")
     const dup = staff.find((u) => u.id !== draft.id && (u.username.toLowerCase() === draft.username.toLowerCase() || u.email.toLowerCase() === draft.email.toLowerCase() || (draft.cpf && u.cpf.replace(/\D/g, "") === draft.cpf.replace(/\D/g, ""))))
     if (dup) e.push(`Usuário, e-mail ou CPF já usado por ${dup.displayName}.`)
     if (user?.id === draft.id && (!draft.active || draft.role !== "Administrador") && user.role === "Administrador") e.push("Você não pode remover o seu próprio acesso de administrador.")
     setErrors(e)
     if (e.length) return
+    const isNew = !staff.some((u) => u.id === draft.id)
     const out = { ...draft, displayName: draft.displayName.trim() || draft.name.trim() }
     saveStaff(out)
     setSelId(out.id); setDraft(null); setShowPass(false)
-    show(`${out.displayName} salvo. ${out.active ? "Já pode entrar com usuário, e-mail ou CPF." : "Acesso desativado."}`)
+    if (isNew) {
+      /* senha provisória gerada pelo sistema, mostrada uma única vez; o usuário cria a dele no 1º acesso */
+      window.setTimeout(() => setTempShown({ name: out.displayName, user: out.username, pass: resetPassword(out.id) }), 0)
+    } else show(`${out.displayName} salvo. ${out.active ? "" : "Acesso desativado."}`)
   }
   const toggleActive = () => { if (form) setDraft({ ...form, active: !form.active }) }
-  const resetPass = () => { if (form) { setDraft({ ...form, password: Math.random().toString(36).slice(2, 10) }); setShowPass(true) } }
+  const resetPass = () => {
+    if (!selected) return
+    if (!window.confirm(`Gerar uma senha provisória para ${selected.displayName}? A senha atual deixa de funcionar e a pessoa cria uma nova no próximo acesso.`)) return
+    setTempShown({ name: selected.displayName, user: selected.username, pass: resetPassword(selected.id) })
+  }
   const access = form ? ROLE_ACCESS[form.role] : []
   const can = (slug: string) => access.includes("*") || access.includes(slug)
 
@@ -76,8 +84,8 @@ export default function Equipe() {
     <Page
       bg="#f3eefb"
       blobs={[["#d6c8ff", -120, 80, 520, 420], ["#ffc9a3", "78%", -40, 380, 340]]}
-      crumb="Equipe e acessos"
-      title="Equipe e acessos"
+      crumb="Usuários e acessos"
+      title="Usuários e acessos"
       sub="Um usuário para cada pessoa. Cada um entra com usuário, e-mail ou CPF e senha, e vê só as abas do seu perfil."
       actions={
         <>
@@ -123,9 +131,7 @@ export default function Equipe() {
                 <label><span>Usuário (login) *</span><input className="mono" value={form.username} onChange={(e) => edit({ username: e.target.value.trim().toLowerCase() })} /></label>
                 <label><span>E-mail *</span><input type="email" value={form.email} onChange={(e) => edit({ email: e.target.value.trim() })} /></label>
                 <label><span>CPF</span><input className="mono" inputMode="numeric" value={form.cpf} onChange={(e) => edit({ cpf: maskCpf(e.target.value) })} /></label>
-                <label><span>Senha *</span>
-                  <span className="eq-pass"><input className="mono" type={showPass ? "text" : "password"} value={form.password} onChange={(e) => edit({ password: e.target.value })} /><button type="button" aria-label={showPass ? "Ocultar senha" : "Mostrar senha"} onClick={() => setShowPass(!showPass)}>{showPass ? <EyeOff size={15} /> : <Eye size={15} />}</button></span>
-                </label>
+                <div className="eq-passinfo"><span>Senha</span><p>{draft && !selected ? "Uma senha provisória é gerada ao salvar. A pessoa cria a própria senha no primeiro acesso." : form.mustChange ? "Senha provisória ativa: será trocada no próximo acesso." : "Definida pelo próprio usuário. Por segurança, a senha nunca é exibida."}</p></div>
                 <label><span>Código (vendedor)</span><input className="mono" value={form.code || ""} onChange={(e) => edit({ code: e.target.value.replace(/\D/g, "").slice(0, 4) })} /></label>
                 {(form.role === "Veterinário" || form.crmv) && <label><span>CRMV</span><input value={form.crmv || ""} placeholder="CRMV-UF 0.000" onChange={(e) => edit({ crmv: e.target.value })} /></label>}
               </div>
@@ -141,7 +147,7 @@ export default function Equipe() {
             </div>
             {errors.length > 0 && <div className="eq-err">{errors.map((e) => <span key={e}>• {e}</span>)}</div>}
             <div className="eq-actions">
-              {selected && <button className="vx-btn vx-btn-g" onClick={resetPass}><KeyRound /> Gerar nova senha</button>}
+              {selected && <button className="vx-btn vx-btn-g" onClick={resetPass}><KeyRound /> Redefinir senha</button>}
               {selected && <button className="vx-btn vx-btn-g" onClick={toggleActive}><UserX /> {form.active ? "Desativar" : "Reativar"}</button>}
               <span style={{ flex: 1 }} />
               {draft && <button className="vx-btn vx-btn-g" onClick={() => { setDraft(null); setErrors([]); if (!selected) setSelId(staff[0]?.id || "") }}>Cancelar</button>}
@@ -151,6 +157,19 @@ export default function Equipe() {
           </div>
         )}
       </div>
+      {tempShown && (
+        <div className="vx-modal-layer" role="dialog" aria-modal="true" aria-label="Senha provisória" onMouseDown={() => setTempShown(null)}>
+          <div className="vx-modal" onMouseDown={(e) => e.stopPropagation()}>
+            <strong style={{ fontSize: 18, display: "block" }}>Senha provisória de {tempShown.name}</strong>
+            <p style={{ fontSize: 13.5, color: "var(--vx-muted)", margin: "8px 0 14px" }}>Entregue pessoalmente. Ela aparece só agora e precisa ser trocada no primeiro acesso.</p>
+            <div className="eq-temp"><span>Usuário</span><b className="mono">{tempShown.user}</b><span>Senha provisória</span><b className="mono">{tempShown.pass}</b></div>
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 16 }}>
+              <button className="vx-btn vx-btn-g" onClick={() => { void navigator.clipboard?.writeText(tempShown.pass); show("Senha copiada.") }}>Copiar senha</button>
+              <button className="vx-btn vx-btn-p" autoFocus onClick={() => setTempShown(null)}>Entendi</button>
+            </div>
+          </div>
+        </div>
+      )}
       {toast}
     </Page>
   )

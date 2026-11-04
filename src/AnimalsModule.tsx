@@ -1,3 +1,5 @@
+import { clinicMetrics } from "./metrics"
+import { localISO } from "./date"
 import {
   ArrowLeft,
   CalendarDays,
@@ -41,6 +43,17 @@ type AnimalRow = {
   microchip: string
   lastVisit: string
   doctor: string
+  facts?: string
+}
+
+function ageOf(birth?: string) {
+  if (!birth) return ""
+  const b = new Date(`${birth}T12:00:00`)
+  const now = new Date()
+  let months = (now.getFullYear() - b.getFullYear()) * 12 + now.getMonth() - b.getMonth()
+  if (now.getDate() < b.getDate()) months--
+  if (months < 0) return ""
+  return months < 12 ? `${months} ${months === 1 ? "mês" : "meses"}` : `${Math.floor(months / 12)} ${Math.floor(months / 12) === 1 ? "ano" : "anos"}`
 }
 
 type TutorOption = {
@@ -175,6 +188,7 @@ export default function AnimalsModule() {
         microchip: animal.extra?.microchip || "",
         lastVisit: visit?.date ? visit.date.split("-").reverse().join("/") : "—",
         doctor: visit?.professional || "",
+        facts: [animal.sex, animal.birthDate && `${animal.birthDate.split("-").reverse().join("/")} (${ageOf(animal.birthDate)})`, animal.weight].filter(Boolean).join(" · "),
       }
     })
   }, [data.animais, data.tutores, lastVisits])
@@ -187,7 +201,7 @@ export default function AnimalsModule() {
   const [status, setStatus] = useState("Todos os status")
   const [species, setSpecies] = useState("Todos os tipos")
   const [sort, setSort] = useState("Mais recentes")
-  const [drawerOpen, setDrawerOpen] = useState(false)
+  const [drawerOpen, setDrawerOpen] = useState(() => new URLSearchParams(window.location.search).get("novo") === "1")
   const [toast, setToast] = useState("")
   const [page, setPage] = useState(1)
 
@@ -248,32 +262,35 @@ export default function AnimalsModule() {
   useEffect(() => {
     setPage((current) => Math.min(current, pages))
   }, [pages])
+  const metrics = clinicMetrics(data)
+  const pct = (n: number) => (data.animais.length ? `${((n / data.animais.length) * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}% do total` : "—")
+  const newThisMonth = data.animais.filter((a) => (a.date || "").slice(0, 7) === localISO().slice(0, 7)).length
   const indicators = [
     {
       label: "Total de animais",
-      value: total,
-      detail: "+14 este mês",
+      value: data.animais.length,
+      detail: `${newThisMonth} cadastrados este mês`,
       icon: <PawPrint />,
       tone: "orange",
     },
     {
-      label: "Ativos",
-      value: rows.filter((item) => item.status === "Ativo").length,
-      detail: "86,3% do total",
+      label: "Pacientes ativos",
+      value: metrics.patients,
+      detail: pct(metrics.patients),
       icon: <ShieldCheck />,
       tone: "aqua",
     },
     {
       label: "Em tratamento",
-      value: rows.filter((item) => item.status === "Em tratamento").length,
-      detail: "8,6% do total",
+      value: metrics.inTreatment,
+      detail: pct(metrics.inTreatment),
       icon: <HeartPulse />,
       tone: "orange",
     },
     {
       label: "Vacinas em atraso",
-      value: rows.filter((item) => item.status === "Inativo").length,
-      detail: "5,1% precisam de atenção",
+      value: metrics.lateVaccines,
+      detail: metrics.lateVaccines ? "precisam de atenção" : "tudo em dia",
       icon: <Syringe />,
       tone: "red",
     },
@@ -283,8 +300,9 @@ export default function AnimalsModule() {
     setToast(message)
     window.setTimeout(() => setToast(""), 3400)
   }
-  const handleSaved = (animal: AnimalRow, ownerId: string) => {
+  const handleSaved = (animal: AnimalRow, ownerId: string, more: Partial<Item> = {}) => {
     addItem("animais", {
+      ...more,
       id: animal.id,
       name: animal.name,
       subtitle: `${animal.species === "Felino" ? "Gato" : animal.species === "Canino" ? "Cão" : animal.species} • ${animal.breed}`,
@@ -293,7 +311,7 @@ export default function AnimalsModule() {
       ownerId,
       species: animal.species === "Felino" ? "Gato" : animal.species === "Canino" ? "Cão" : animal.species,
       breed: animal.breed,
-      extra: { code: animal.code, microchip: animal.microchip },
+      extra: { ...(more.extra || {}), code: animal.code, microchip: animal.microchip },
     })
     setDrawerOpen(false)
     flash(`Animal cadastrado e vinculado a ${animal.owner}.`)
@@ -415,6 +433,7 @@ export default function AnimalsModule() {
                     <span>
                       <strong>{animal.species}</strong>
                       <small>{animal.breed}</small>
+                      {animal.facts && <small className="animal-facts">{animal.facts}</small>}
                     </span>
                   </div>
                   <span
@@ -507,22 +526,39 @@ export default function AnimalsModule() {
           close={() => setDrawerOpen(false)}
           save={handleSaved}
           nextCode={rows.length + 1}
+          presetTutor={new URLSearchParams(window.location.search).get("tutor") || ""}
         />
       )}
       {confirmDelete && (
         <div className="vx-modal-layer" onMouseDown={() => setConfirmDelete(null)}>
           <div className="vx-modal" role="alertdialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
-            <h3 style={{ margin: 0, fontSize: 20 }}>Excluir {confirmDelete.name}?</h3>
-            <p style={{ margin: "8px 0 18px", color: "var(--vx-muted)", fontSize: 14 }}>O cadastro sai da unidade ativa e não poderá ser recuperado.</p>
-            <div className="vx-row" style={{ gap: 8, justifyContent: "flex-end" }}>
-              <button className="vx-btn vx-btn-g" onClick={() => setConfirmDelete(null)}>Cancelar</button>
-              <button className="vx-btn vx-btn-d" onClick={() => { deleteItem("animais", confirmDelete.id); flash(`${confirmDelete.name} excluído.`); setConfirmDelete(null) }}>Excluir</button>
-            </div>
+            {(() => {
+              const history = (["consultas", "prontuarios", "vacinas", "exames", "prescricoes", "internacoes", "cirurgias", "agendas"] as const).reduce((n, slug) => n + data[slug].filter((r) => r.animalId === confirmDelete.id).length, 0)
+              return history > 0 ? (
+                <>
+                  <h3 style={{ margin: 0, fontSize: 20 }}>{confirmDelete.name} tem histórico</h3>
+                  <p style={{ margin: "8px 0 18px", color: "var(--vx-muted)", fontSize: 14 }}>Há {history} registro(s) clínicos ligados a este animal. Para não perder o prontuário, ele não pode ser excluído. Você pode inativá-lo.</p>
+                  <div className="vx-row" style={{ gap: 8, justifyContent: "flex-end" }}>
+                    <button className="vx-btn vx-btn-g" onClick={() => setConfirmDelete(null)}>Voltar</button>
+                    <button className="vx-btn vx-btn-p" onClick={() => { updateItem("animais", confirmDelete.id, { status: "Inativo" }); flash(`${confirmDelete.name} inativado.`); setConfirmDelete(null) }}>Inativar</button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <h3 style={{ margin: 0, fontSize: 20 }}>Excluir {confirmDelete.name}?</h3>
+                  <p style={{ margin: "8px 0 18px", color: "var(--vx-muted)", fontSize: 14 }}>Este animal não tem histórico. O cadastro sai da unidade ativa e não poderá ser recuperado.</p>
+                  <div className="vx-row" style={{ gap: 8, justifyContent: "flex-end" }}>
+                    <button className="vx-btn vx-btn-g" onClick={() => setConfirmDelete(null)}>Cancelar</button>
+                    <button className="vx-btn vx-btn-d" onClick={() => { deleteItem("animais", confirmDelete.id); flash(`${confirmDelete.name} excluído.`); setConfirmDelete(null) }}>Excluir</button>
+                  </div>
+                </>
+              )
+            })()}
           </div>
         </div>
       )}
       {toast && (
-        <div className="animals-toast">
+        <div className="animals-toast" role="status">
           <ShieldCheck />
           {toast}
         </div>
@@ -558,14 +594,17 @@ function AnimalDrawer({
   close,
   save,
   nextCode,
+  presetTutor = "",
 }: {
   tutors: TutorOption[]
   close: () => void
-  save: (animal: AnimalRow, ownerId: string) => void
+  save: (animal: AnimalRow, ownerId: string, more?: Partial<Item>) => void
   nextCode: number
+  presetTutor?: string
 }) {
   const [tutorQuery, setTutorQuery] = useState("")
-  const [selectedTutor, setSelectedTutor] = useState<TutorOption | null>(null)
+  const [selectedTutor, setSelectedTutor] = useState<TutorOption | null>(() => tutors.find((t) => t.id === presetTutor) || null)
+  const [formError, setFormError] = useState("")
   const [tutorError, setTutorError] = useState(false)
   const [nameError, setNameError] = useState(false)
   const [sex, setSex] = useState("")
@@ -599,6 +638,14 @@ function AnimalDrawer({
     setTutorError(missingTutor)
     setNameError(missingName)
     if (missingTutor || missingName || !values.species || !values.breed) return
+    if (values.birthDate && values.birthDate > localISO()) return setFormError("A data de nascimento não pode ser no futuro.")
+    let weight = ""
+    if (values.weight) {
+      const kg = Number(values.weight.replace(",", "."))
+      if (!Number.isFinite(kg) || kg <= 0 || kg > 150) return setFormError("Peso inválido: use apenas números, em quilos (ex.: 12,5).")
+      weight = `${kg.toLocaleString("pt-BR")} kg`
+    }
+    setFormError("")
     const id = `created-${Date.now()}`
     save(
       {
@@ -615,6 +662,7 @@ function AnimalDrawer({
         doctor: "—",
       },
       selectedTutor.id,
+      { sex: values.sex || "", birthDate: values.birthDate || "", weight, date: localISO(), extra: { castrado: values.sterilization || "", pelagem: values.coat || "", pedigree: values.pedigree || "", pedigreeNumero: values.pedigreeNumber || "" } },
     )
   }
 
@@ -731,7 +779,7 @@ function AnimalDrawer({
                 <ChevronDown />
               </Field>
               <Field label="Nascimento" className="wide">
-                <input name="birthDate" type="date" />
+                <input name="birthDate" type="date" max={localISO()} />
                 <CalendarDays />
               </Field>
               <Field label="Espécie" required>
@@ -757,7 +805,10 @@ function AnimalDrawer({
                 </select>
                 <ChevronDown />
               </Field>
-              <Field label="Pelagem" className="wide">
+              <Field label="Peso (kg)">
+                <input name="weight" inputMode="decimal" placeholder="Ex.: 12,5" />
+              </Field>
+              <Field label="Pelagem">
                 <input name="coat" placeholder="Cor e características da pelagem" />
               </Field>
               <Field label="Microchip" className="wide">
@@ -785,7 +836,8 @@ function AnimalDrawer({
             )}
           </div>
           <footer>
-            <button type="submit">Salvar</button>
+            {formError && <em role="alert" style={{ color: "#c0392b", fontSize: 13, marginRight: "auto" }}>{formError}</em>}
+            <button type="submit">Salvar animal</button>
           </footer>
         </form>
       </aside>

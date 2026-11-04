@@ -1,3 +1,4 @@
+import { clinicMetrics } from "../../metrics"
 import { useState } from "react"
 import { useNavigate } from "react-router"
 import { Edit3, LogIn, MapPinned, Plus, Power } from "lucide-react"
@@ -17,12 +18,13 @@ export default function Unidades() {
   const statsOf = (unit: Unit) => {
     const data = allData[unit.id]
     if (!data) return { team: 0, beds: 0, consults: 0, revenue: 0, patients: 0 }
+    const m = clinicMetrics(data)
     return {
-      team: data.profissionais.length,
-      beds: data.internacoes.filter((item) => ["Em andamento", "Em observação"].includes(item.status)).length,
-      consults: data.consultas.length,
-      revenue: data.financeiro.filter((item) => item.category === "Receita").reduce((sum, item) => sum + (item.amountValue || 0), 0),
-      patients: data.animais.length,
+      team: m.team,
+      beds: m.hospitalized,
+      consults: data.consultas.filter((item) => !/cancel/i.test(item.status)).length,
+      revenue: m.revenue(30),
+      patients: m.patients,
     }
   }
   // pinos sempre na faixa livre do mapa (entre a lista e o cartão da unidade)

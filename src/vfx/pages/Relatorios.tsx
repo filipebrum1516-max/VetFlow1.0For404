@@ -1,3 +1,4 @@
+import { localDateTime, localISO } from "../../date"
 import { useEffect, useMemo, useState } from "react"
 import { useNavigate, useParams } from "react-router"
 import { ArrowLeft, ChevronRight, Download, FileText, Printer, Search } from "lucide-react"
@@ -52,7 +53,7 @@ const rowsOf = (report: ReportDef, data: UnitData) =>
 const latestDate = (data: UnitData) => {
   let max = ""
   for (const slug of ["consultas", "financeiro", "agendas"] as ModuleSlug[]) for (const item of data[slug]) if ((item.date || "") > max) max = item.date || ""
-  const today = new Date().toISOString().slice(0, 10)
+  const today = localISO()
   /* nunca usa datas futuras (agendamentos marcados) como fim do período */
   return !max || max > today ? today : max
 }
@@ -60,7 +61,7 @@ const since = (end: string, days: string) => {
   if (days === "all") return ""
   const date = new Date(`${end}T12:00:00`)
   date.setDate(date.getDate() - Number(days))
-  return date.toISOString().slice(0, 10)
+  return localISO(date)
 }
 const csvCell = (value: unknown) => `"${String(value ?? "").replace(/"/g, '""')}"`
 
@@ -168,7 +169,17 @@ export function Relatorio() {
       acc[key].v += item.amountValue || 0
       return acc
     }, {}),
-  ).sort((a, b) => b[1].v - a[1].v || b[1].n - a[1].n).slice(0, 8)
+  ).sort((a, b) => b[1].v - a[1].v || b[1].n - a[1].n)
+  // M-44: o resumo sempre soma o total de registros (o que passa de 8 linhas vira "Outros").
+  if (byGroup.length > 8) {
+    const rest = byGroup.splice(7)
+    byGroup.push(["Outros", rest.reduce((acc, [, v]) => ({ n: acc.n + v.n, v: acc.v + v.v }), { n: 0, v: 0 })])
+  }
+  // B-26: as caixas de situação somam o total; o restante aparece como "Outras situações".
+  const statusSlots = report?.money ? 3 : 4
+  const statusCards: (readonly [string, number])[] = byStatus.length > statusSlots
+    ? [...byStatus.slice(0, statusSlots - 1), ["Outras situações", byStatus.slice(statusSlots - 1).reduce((n, [, c]) => n + c, 0)] as const]
+    : byStatus
   const perPage = 25
   const pages = Math.max(1, Math.ceil(filtered.length / perPage))
   const visible = printAll ? filtered : filtered.slice((page - 1) * perPage, page * perPage)
@@ -187,8 +198,11 @@ export function Relatorio() {
   }, [reportSlug])
   const exportCsv = () => {
     const header = ["Registro", "Detalhes", "Paciente", "Tutor", "Profissional", "Data", "Situação", "Valor"]
-    const lines = filtered.map(({ item }) => [item.name, item.subtitle, item.animal, item.owner, item.professional, itemDate(item), item.status, item.amountValue ?? ""].map(csvCell).join(";"))
-    const blob = new Blob(["﻿" + [header.join(";"), ...lines].join("\n")], { type: "text/csv;charset=utf-8" })
+    // B-33: padrão brasileiro — separador ";", vírgula decimal e data dd/mm/aaaa.
+    const brNumber = (value?: number) => (value === undefined || value === null ? "" : value.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2, useGrouping: false }))
+    const lines = filtered.map(({ item }) => [item.name, item.subtitle, item.animal, item.owner, item.professional, itemDate(item).split("-").reverse().join("/"), item.status, brNumber(item.amountValue)].map(csvCell).join(";"))
+    const totalLine = report?.money ? [csvCell("TOTAL"), "", "", "", "", "", csvCell(`${filtered.length} registros`), csvCell(brNumber(total))].join(";") : ""
+    const blob = new Blob(["﻿" + [`${csvCell(`Período: ${start ? `${fmtDate(start)} a ${fmtDate(end)}` : "todo o histórico"}`)}`, header.join(";"), ...lines, ...(totalLine ? [totalLine] : [])].join("\r\n")], { type: "text/csv;charset=utf-8" })
     const url = URL.createObjectURL(blob)
     const link = document.createElement("a")
     link.href = url
@@ -249,7 +263,7 @@ export function Relatorio() {
       <div className="vx-rep-kpis">
         <div><small>Registros</small><strong>{filtered.length.toLocaleString("pt-BR")}</strong><span>de {all.length.toLocaleString("pt-BR")} no total</span></div>
         {report.money && <div><small>Valor total</small><strong>{brl(total)}</strong><span>média {brl(filtered.length ? total / filtered.length : 0)}</span></div>}
-        {byStatus.slice(0, report.money ? 3 : 4).map(([name, n]) => (
+        {statusCards.map(([name, n]) => (
           <div key={name}><small>{name}</small><strong>{n.toLocaleString("pt-BR")}</strong><span>{filtered.length ? Math.round((n / filtered.length) * 100) : 0}% do período</span></div>
         ))}
       </div>

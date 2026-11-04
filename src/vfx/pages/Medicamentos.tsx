@@ -47,8 +47,11 @@ export default function Medicamentos() {
     const term = normalize(baseName(item.name)).split(" ")[0]
     const lots = data.estoque.filter((stock) => normalize(stock.name).startsWith(term))
     if (!lots.length) return item.quantity !== undefined ? { quantity: item.quantity, minimum: item.minimum || 0, due: item.extra?.validade } : undefined
-    const main = lots.find((lot) => normalize(lot.name) === normalize(item.name)) || lots[0]
-    return { quantity: main.quantity || 0, minimum: main.minimum || 0, due: main.dueDate }
+    // M-23: a quantidade é a do Estoque (soma dos lotes do mesmo item), nunca uma segunda contagem.
+    const exact = lots.filter((lot) => normalize(lot.name) === normalize(item.name))
+    const same = exact.length ? exact : [lots[0]]
+    const due = same.map((lot) => lot.dueDate).filter(Boolean).sort()[0]
+    return { quantity: same.reduce((n, lot) => n + (lot.quantity || 0), 0), minimum: Math.max(...same.map((lot) => lot.minimum || 0)), due }
   }
   const level = (item: Item) => {
     const stock = stockOf(item)
@@ -76,8 +79,8 @@ export default function Medicamentos() {
       bg="#eaf4f7"
       blobs={[["#b9e6f2", 100, 220, 600, 500], ["#ffd1b0", "70%", -100, 360, 360], ["#c9b8ff", "85%", "75%", 340, 340]]}
       crumb="Medicamentos"
-      title="A farmácia"
-      sub="O nível do líquido é o estoque. Frasco quase vazio pede reposição."
+      title="Medicamentos"
+      sub="Medicamentos do estoque com quantidade e situação. É a mesma quantidade da tela Estoque."
       actions={
         <>
           <SearchBox value={query} onChange={setQuery} placeholder="Princípio ativo ou nome" />
@@ -85,7 +88,7 @@ export default function Medicamentos() {
             <PackagePlus /> Repor estoque
           </button>
           <button className="vx-btn vx-btn-p" onClick={() => forms.open()}>
-            <Plus /> Cadastrar
+            <Plus /> Novo medicamento
           </button>
         </>
       }
