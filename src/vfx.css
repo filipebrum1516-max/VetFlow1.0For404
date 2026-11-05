@@ -484,7 +484,7 @@ textarea.vx-in { height: auto; min-height: 84px; padding: 10px 12px; line-height
   .vx-header .user-profile > span:nth-child(2) { display: none; }
   .vx-header .user-profile { padding: 3px; margin-left: 4px; border-left: 1px solid rgba(255,255,255,.85); }
 }
-@media (max-width: 900px) {
+@media (max-width: 1100px) {
   .vx-header .header-clock .clock-date { display: none; }
   .vx-header .breadcrumb { display: none; }
 }
@@ -542,7 +542,7 @@ textarea.vx-in { height: auto; min-height: 84px; padding: 10px 12px; line-height
 
 /* ---------- conversas no celular ---------- */
 .vx-chat-back { display: none !important; }
-@media (max-width: 760px) {
+@media (max-width: 1100px) {
   .vx-chat { min-height: 0; }
   .vx-chat.has-thread > :first-child { display: none !important; }
   .vx-chat:not(.has-thread) > :nth-child(2) { display: none !important; }
@@ -1407,7 +1407,7 @@ textarea.vx-in { height: auto; min-height: 84px; padding: 10px 12px; line-height
   min-width: 0;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1100px) {
   .procedures-page,
   .consultations-page {
     overflow-x: clip;
@@ -1597,7 +1597,7 @@ textarea.vx-in { height: auto; min-height: 84px; padding: 10px 12px; line-height
   }
 }
 
-@media (max-width: 760px) {
+@media (max-width: 1100px) {
   .animals-page,
   .tutors-module {
     max-width: 100%;
@@ -1727,6 +1727,7 @@ textarea.vx-in { height: auto; min-height: 84px; padding: 10px 12px; line-height
   .animal-actions,
   .tutor-row > .vx-ra {
     width: 100%;
+    min-width: 0;
     flex-wrap: wrap;
     justify-content: flex-start;
     padding: 0 !important;
@@ -1835,6 +1836,122 @@ textarea.vx-in { height: auto; min-height: 84px; padding: 10px 12px; line-height
   .animal-actions,
   .tutor-row > .vx-ra {
     grid-column: 1;
+  }
+}
+
+/* Tabelas clínicas usam a mesma casca, ritmo de linha e ações em todos os módulos. */
+.app-main .animals-table-card,
+.app-main .tutors-list-card,
+.app-main .consultations-page .vx-table,
+.app-main .pr-page .pr-panel {
+  overflow: hidden;
+  border: 1px solid var(--vx-line, #e3e7ed) !important;
+  border-radius: 20px !important;
+  background: var(--vx-card, #fff) !important;
+  box-shadow: 0 18px 42px -34px rgba(26, 34, 51, .42) !important;
+}
+.app-main .animals-table-head,
+.app-main .tutors-list-head,
+.app-main .consultations-page .vx-th,
+.app-main .pr-page .pr-head {
+  min-height: 50px;
+  background: var(--vx-soft, #f6f7f9) !important;
+  border-bottom: 1px solid var(--vx-line, #e3e7ed);
+  color: var(--vx-muted, #5d6675) !important;
+}
+.app-main .animals-table-row,
+.app-main .tutor-row,
+.app-main .consultations-page .vx-tr:not(.vx-th),
+.app-main .pr-page .pr-row:not(.pr-head) {
+  min-height: 78px;
+  background: transparent !important;
+  border-bottom: 1px solid var(--vx-line, #e3e7ed);
+  transition: background .16s ease, box-shadow .16s ease;
+}
+.app-main .animals-table-row:hover,
+.app-main .tutor-row:hover,
+.app-main .consultations-page .vx-tr:not(.vx-th):hover,
+.app-main .pr-page .pr-row:not(.pr-head):hover {
+  background: color-mix(in srgb, var(--vx-accent, #e94f17) 4%, transparent) !important;
+  box-shadow: inset 3px 0 var(--vx-accent, #e94f17);
+}
+.app-main .animals-table-head,
+.app-main .animals-table-row {
+  grid-template-columns: minmax(250px, 1.25fr) minmax(155px, .8fr) minmax(170px, .85fr) 130px minmax(150px, .75fr) 214px !important;
+}
+.app-main .animal-actions {
+  min-width: 214px;
+  justify-content: flex-end;
+}
+.app-main .animal-actions .vx-ra > button,
+.app-main .animal-actions .vx-ra > span > button,
+.app-main .tutor-row .vx-ra > button,
+.app-main .tutor-row .vx-ra > span > button,
+.app-main .consultations-page .vx-ra > button,
+.app-main .consultations-page .vx-ra > span > button,
+.app-main .pr-page .vx-ra > button,
+.app-main .pr-page .vx-ra > span > button {
+  box-sizing: border-box;
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  min-height: 36px;
+  padding: 0;
+  border: 1px solid var(--vx-line, #dde2e9);
+  border-radius: 10px;
+  background: var(--vx-card, #fff);
+  color: var(--vx-ink2, #3b4656);
+  box-shadow: none;
+  transform: none;
+}
+.app-main .animal-actions .vx-ra > button:hover,
+.app-main .animal-actions .vx-ra > span > button:hover,
+.app-main .tutor-row .vx-ra > button:hover,
+.app-main .tutor-row .vx-ra > span > button:hover,
+.app-main .consultations-page .vx-ra > button:hover,
+.app-main .consultations-page .vx-ra > span > button:hover,
+.app-main .pr-page .vx-ra > button:hover,
+.app-main .pr-page .vx-ra > span > button:hover {
+  border-color: color-mix(in srgb, var(--vx-accent, #e94f17) 42%, var(--vx-line, #dde2e9));
+  background: color-mix(in srgb, var(--vx-accent, #e94f17) 8%, var(--vx-card, #fff));
+  color: var(--vx-accent, #e94f17);
+}
+@media (max-width: 1100px) {
+  .app-main .animal-actions {
+    min-width: 0;
+  }
+  .app-main .animals-table-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+  .app-main .animals-table-card,
+  .app-main .tutors-list-card,
+  .app-main .consultations-page .vx-table,
+  .app-main .pr-page .pr-panel {
+    overflow: visible;
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+}
+@media (max-width: 560px) {
+  .app-main .animals-table-row {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+@media (max-width: 760px) {
+  .app-main .animal-actions .vx-ra > button,
+  .app-main .animal-actions .vx-ra > span > button,
+  .app-main .tutor-row .vx-ra > button,
+  .app-main .tutor-row .vx-ra > span > button,
+  .app-main .consultations-page .vx-ra > button,
+  .app-main .consultations-page .vx-ra > span > button,
+  .app-main .pr-page .vx-ra > button,
+  .app-main .pr-page .vx-ra > span > button {
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+    min-height: 44px;
+    border-radius: 11px;
   }
 }
 

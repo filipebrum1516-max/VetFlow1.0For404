@@ -12,10 +12,12 @@ import {
   CircleEllipsis,
   Dog,
   Eye,
+  FileText,
   Filter,
   HeartPulse,
   Mars,
   PawPrint,
+  Phone,
   Plus,
   Search,
   ShieldCheck,
@@ -31,7 +33,7 @@ import {
   useState,
 } from "react"
 import { useNavigate } from "react-router"
-import { useVetFlow, type Item } from "./store"
+import { useVetFlow, type Item, type UnitData } from "./store"
 
 type AnimalRow = {
   id: string
@@ -196,7 +198,8 @@ export default function AnimalsModule() {
   }, [data.animais, data.tutores, lastVisits])
   const [menuId, setMenuId] = useState("")
   const [confirmDelete, setConfirmDelete] = useState<AnimalRow | null>(null)
-  const [editingAnimal, setEditingAnimal] = useState<Item | null>(null)
+  const [recordAnimal, setRecordAnimal] = useState<Item | null>(null)
+  const [recordEditing, setRecordEditing] = useState(false)
   const [perPage, setPerPage] = useState(6)
   const [query, setQuery] = useState(
     () => new URLSearchParams(window.location.search).get("animal") || "",
@@ -305,7 +308,6 @@ export default function AnimalsModule() {
   }
   const closeAnimalDrawer = () => {
     setDrawerOpen(false)
-    setEditingAnimal(null)
   }
   const handleSaved = (animal: AnimalRow, ownerId: string, more: Partial<Item> = {}) => {
     const patch: Partial<Item> = {
@@ -318,20 +320,20 @@ export default function AnimalsModule() {
       species: animal.species === "Felino" ? "Gato" : animal.species === "Canino" ? "Cão" : animal.species,
       breed: animal.breed,
       extra: {
-        ...(editingAnimal?.extra || {}),
         ...(more.extra || {}),
         code: animal.code,
         microchip: animal.microchip,
       },
     }
-    if (editingAnimal) {
-      updateItem("animais", editingAnimal.id, patch)
-      flash(`${animal.name} atualizado com sucesso.`)
-    } else {
-      addItem("animais", { ...patch, id: animal.id })
-      flash(`Animal cadastrado e vinculado a ${animal.owner}.`)
-    }
+    addItem("animais", { ...patch, id: animal.id })
+    flash(`Animal cadastrado e vinculado a ${animal.owner}.`)
     closeAnimalDrawer()
+  }
+  const openAnimalRecord = (id: string, editing = false) => {
+    const item = data.animais.find((candidate) => candidate.id === id)
+    if (!item) return
+    setRecordAnimal(item)
+    setRecordEditing(editing)
   }
 
   return (
@@ -408,7 +410,7 @@ export default function AnimalsModule() {
             </select>
             <ChevronDown />
           </label>
-          <button className="new-animal-button" onClick={() => { setEditingAnimal(null); setDrawerOpen(true) }}>
+          <button className="new-animal-button" onClick={() => setDrawerOpen(true)}>
             <Plus /> Novo registro
           </button>
         </div>
@@ -467,14 +469,8 @@ export default function AnimalsModule() {
                   <div className="animal-actions" data-label="Ações">
                     <RowActions
                       name={animal.name}
-                      onView={() => navigate(`/animais/${animal.id}`)}
-                      onEdit={() => {
-                        const item = data.animais.find((candidate) => candidate.id === animal.id)
-                        if (item) {
-                          setEditingAnimal(item)
-                          setDrawerOpen(true)
-                        }
-                      }}
+                      onView={() => openAnimalRecord(animal.id)}
+                      onEdit={() => openAnimalRecord(animal.id, true)}
                       onDelete={() => setConfirmDelete(animal)}
                     >
                     <RowButton title="Agendar" onClick={() => navigate(`/agendas?locate=1&pet=${encodeURIComponent(animal.name)}&client=${encodeURIComponent(animal.owner)}`)}>
@@ -482,7 +478,7 @@ export default function AnimalsModule() {
                     </RowButton>
                     <RowMenu
                       items={[
-                        ["Abrir ficha completa", () => navigate(`/animais/${animal.id}`)],
+                        ["Abrir ficha completa", () => openAnimalRecord(animal.id)],
                         ["Nova consulta", () => navigate(`/consultas?novo=1&animal=${animal.id}`)],
                         ["Aplicar vacina", () => navigate(`/vacinas?novo=1&animal=${animal.id}`)],
                         ["Solicitar exame", () => navigate(`/exames?novo=1&animal=${animal.id}`)],
@@ -545,13 +541,36 @@ export default function AnimalsModule() {
 
       {drawerOpen && (
         <AnimalDrawer
-          key={editingAnimal?.id || "new-animal"}
+          key="new-animal"
           tutors={tutors}
           close={closeAnimalDrawer}
           save={handleSaved}
           nextCode={rows.length + 1}
           presetTutor={new URLSearchParams(window.location.search).get("tutor") || ""}
-          item={editingAnimal || undefined}
+        />
+      )}
+      {recordAnimal && (
+        <AnimalRecordDrawer
+          key={`${recordAnimal.id}-${recordEditing ? "edit" : "view"}`}
+          item={recordAnimal}
+          tutors={tutors}
+          data={data}
+          editing={recordEditing}
+          close={() => {
+            setRecordAnimal(null)
+            setRecordEditing(false)
+          }}
+          setEditing={setRecordEditing}
+          save={(patch) => {
+            updateItem("animais", recordAnimal.id, patch)
+            setRecordAnimal({ ...recordAnimal, ...patch })
+            setRecordEditing(false)
+            flash(`${patch.name || recordAnimal.name} atualizado com sucesso.`)
+          }}
+          schedule={() => {
+            setRecordAnimal(null)
+            navigate(`/consultas?novo=1&animal=${recordAnimal.id}`)
+          }}
         />
       )}
       {confirmDelete && (
@@ -611,6 +630,190 @@ function Field({
       </span>
       {children}
     </label>
+  )
+}
+
+function AnimalRecordDrawer({
+  item,
+  tutors,
+  data,
+  editing,
+  close,
+  setEditing,
+  save,
+  schedule,
+}: {
+  item: Item
+  tutors: TutorOption[]
+  data: UnitData
+  editing: boolean
+  close: () => void
+  setEditing: (value: boolean) => void
+  save: (patch: Partial<Item>) => void
+  schedule: () => void
+}) {
+  const [tab, setTab] = useState("Dados")
+  const owner = tutors.find((tutor) => tutor.id === item.ownerId) || tutors.find((tutor) => normalize(tutor.name) === normalize(item.owner || ""))
+  const species = /gat|felin/i.test(item.species || "") ? "Gato" : /c[aã]o|canin/i.test(item.species || "") ? "Cão" : item.species || "Outro"
+  const [form, setForm] = useState({
+    name: item.name || "",
+    ownerId: owner?.id || item.ownerId || "",
+    status: item.status || "Ativo",
+    species,
+    breed: item.breed || "",
+    sex: item.sex || "",
+    birthDate: item.birthDate || "",
+    weight: item.weight || "",
+    coat: item.extra?.pelagem || item.extra?.coat || "",
+    microchip: item.extra?.microchip || item.microchip || "",
+    sterilization: item.extra?.castrado || item.extra?.sterilization || "",
+    notes: item.notes || "",
+  })
+  const history = [...data.consultas, ...data.prontuarios]
+    .filter((record) => record.animalId === item.id)
+    .sort((a, b) => (b.date || "").localeCompare(a.date || ""))
+    .slice(0, 8)
+  const vaccines = data.vacinas.filter((record) => record.animalId === item.id).slice(0, 8)
+  const documents = data.documentos.filter((record) => record.animalId === item.id).slice(0, 8)
+  const date = (value?: string) => value ? value.split("-").reverse().join("/") : "—"
+  const initials = (value = "") => value.split(/\s+/).filter(Boolean).map((part) => part[0]).join("").slice(0, 2).toUpperCase() || "VF"
+  const field = (name: keyof typeof form, value: string) => setForm((current) => ({ ...current, [name]: value }))
+  const submit = () => {
+    if (!form.name.trim()) return
+    const selectedOwner = tutors.find((tutor) => tutor.id === form.ownerId)
+    save({
+      name: form.name.trim(),
+      ownerId: selectedOwner?.id || item.ownerId,
+      owner: selectedOwner?.name || item.owner,
+      phone: selectedOwner?.phone || item.phone,
+      status: form.status,
+      species: form.species,
+      breed: form.breed,
+      sex: form.sex,
+      birthDate: form.birthDate,
+      weight: form.weight,
+      microchip: form.microchip,
+      notes: form.notes,
+      subtitle: `${form.species} • ${form.breed || "SRD"}`,
+      extra: {
+        ...(item.extra || {}),
+        coat: form.coat,
+        pelagem: form.coat,
+        microchip: form.microchip,
+        sterilization: form.sterilization,
+        castrado: form.sterilization,
+      },
+    })
+  }
+
+  return (
+    <div className="tf-overlay animal-overlay" onMouseDown={close}>
+      <aside className="animal-info-drawer" aria-label={`Ficha de ${item.name}`} onMouseDown={(event) => event.stopPropagation()}>
+        <header>
+          <button type="button" onClick={close} aria-label="Voltar"><ArrowLeft size={22} /></button>
+          <strong>{editing ? `Editar ${item.name}` : item.name}</strong>
+          <button type="button" onClick={close} aria-label="Fechar"><X size={21} /></button>
+        </header>
+        <div className="animal-panel-scroll">
+          <section className="animal-profile">
+            <i className="animal-profile-placeholder"><PawPrint /></i>
+            <h2>{item.name}</h2>
+            <p>{species} • {item.breed || "Sem raça definida"}</p>
+            <span>{item.status || "Ativo"}</span>
+          </section>
+
+          <section className="animal-owner-card">
+            <small>Tutor responsável</small>
+            <div>
+              <i>{initials(owner?.name || item.owner)}</i>
+              <span>
+                <strong>{owner?.name || item.owner || "Não informado"}</strong>
+                <small><Phone size={12} /> {owner?.phone || item.phone || "Telefone não informado"}</small>
+              </span>
+              {owner && <button type="button" onClick={() => window.location.assign(`/tutores?tutor=${encodeURIComponent(owner.name)}`)}>Ver tutor</button>}
+            </div>
+          </section>
+
+          <div className="animal-tabs" role="tablist">
+            {["Dados", "Histórico", "Vacinas", "Documentos"].map((name) => (
+              <button type="button" role="tab" aria-selected={tab === name} className={tab === name ? "active" : ""} onClick={() => setTab(name)} key={name}>{name}</button>
+            ))}
+          </div>
+
+          {tab === "Dados" && editing && (
+            <form className="tf-form animal-edit-form" onSubmit={(event) => { event.preventDefault(); submit() }}>
+              <div className="tf-two-fields">
+                <label className="tf-field"><span>Nome *</span><input value={form.name} onChange={(event) => field("name", event.target.value)} /></label>
+                <label className="tf-field"><span>Situação</span><select value={form.status} onChange={(event) => field("status", event.target.value)}>{["Ativo", "Em tratamento", "Internado", "Inativo", "Falecido"].map((value) => <option key={value}>{value}</option>)}</select></label>
+              </div>
+              <label className="tf-field"><span>Tutor responsável</span><select value={form.ownerId} onChange={(event) => field("ownerId", event.target.value)}><option value="">Não informado</option>{tutors.map((tutor) => <option key={tutor.id} value={tutor.id}>{tutor.name}</option>)}</select></label>
+              <div className="tf-two-fields">
+                <label className="tf-field"><span>Espécie</span><select value={form.species} onChange={(event) => field("species", event.target.value)}>{["Cão", "Gato", "Bovino", "Equino", "Ave", "Roedor", "Réptil", "Outro"].map((value) => <option key={value}>{value}</option>)}</select></label>
+                <label className="tf-field"><span>Raça</span><input value={form.breed} onChange={(event) => field("breed", event.target.value)} /></label>
+              </div>
+              <div className="tf-two-fields">
+                <label className="tf-field"><span>Sexo</span><select value={form.sex} onChange={(event) => field("sex", event.target.value)}><option value="">Não informado</option><option>Macho</option><option>Fêmea</option></select></label>
+                <label className="tf-field"><span>Esterilização</span><select value={form.sterilization} onChange={(event) => field("sterilization", event.target.value)}><option value="">Não informado</option><option>Castrado</option><option>Não castrado</option></select></label>
+              </div>
+              <div className="tf-two-fields">
+                <label className="tf-field"><span>Nascimento</span><input type="date" value={form.birthDate} onChange={(event) => field("birthDate", event.target.value)} /></label>
+                <label className="tf-field"><span>Peso</span><input value={form.weight} onChange={(event) => field("weight", event.target.value)} /></label>
+              </div>
+              <div className="tf-two-fields">
+                <label className="tf-field"><span>Pelagem</span><input value={form.coat} onChange={(event) => field("coat", event.target.value)} /></label>
+                <label className="tf-field"><span>Microchip</span><input value={form.microchip} onChange={(event) => field("microchip", event.target.value)} /></label>
+              </div>
+              <label className="tf-textarea"><span>Observações</span><textarea value={form.notes} onChange={(event) => field("notes", event.target.value)} /></label>
+            </form>
+          )}
+
+          {tab === "Dados" && !editing && (
+            <div className="animal-data-grid">
+              {[
+                ["Sexo", item.sex || "Não informado"],
+                ["Esterilização", item.extra?.castrado || item.extra?.sterilization || "Não informado"],
+                ["Nascimento", item.birthDate ? `${date(item.birthDate)}${ageOf(item.birthDate) ? ` • ${ageOf(item.birthDate)}` : ""}` : "Não informado"],
+                ["Espécie", species],
+                ["Raça", item.breed || "Não informada"],
+                ["Pelagem", item.extra?.pelagem || item.extra?.coat || "Não informada"],
+                ["Peso", item.weight || "Não informado"],
+                ["Microchip", item.extra?.microchip || item.microchip || "Não informado"],
+              ].map(([label, value]) => <div key={label}><small>{label}</small><strong>{value}</strong></div>)}
+              <div className="wide"><small>Observações</small><p>{item.notes || "Nenhuma observação cadastrada."}</p></div>
+            </div>
+          )}
+
+          {tab === "Histórico" && (
+            <div className="animal-timeline">
+              {history.length ? history.map((record) => (
+                <div key={record.id}><i /><span><small>{date(record.date)}</small><strong>{record.name}</strong><p>{record.professional || record.status}</p></span></div>
+              )) : <div className="vx-empty">Nenhum histórico registrado.</div>}
+            </div>
+          )}
+          {tab === "Vacinas" && (
+            <div className="animal-list-tab">
+              {vaccines.length ? vaccines.map((record) => (
+                <div key={record.id}><Syringe /><span><strong>{record.name}</strong><small>Aplicação: {date(record.date)} • Próxima: {date(record.dueDate)}</small></span><b className={/atras/i.test(record.status) ? "late" : "ok"}>{record.status}</b></div>
+              )) : <div className="vx-empty">Nenhuma vacina registrada.</div>}
+            </div>
+          )}
+          {tab === "Documentos" && (
+            <div className="animal-list-tab">
+              {documents.length ? documents.map((record) => (
+                <div key={record.id}><FileText /><span><strong>{record.name}</strong><small>{date(record.date)}</small></span></div>
+              )) : <div className="vx-empty">Nenhum documento registrado.</div>}
+            </div>
+          )}
+        </div>
+        <footer>
+          {editing ? (
+            <><button type="button" onClick={() => setEditing(false)}>Cancelar</button><button type="button" className="animal-save" onClick={submit}>Salvar alterações</button></>
+          ) : (
+            <><button type="button" onClick={() => { setTab("Dados"); setEditing(true) }}>Editar animal</button><button type="button" onClick={schedule}>Nova consulta</button></>
+          )}
+        </footer>
+      </aside>
+    </div>
   )
 }
 
