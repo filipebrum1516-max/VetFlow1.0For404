@@ -1233,6 +1233,106 @@ textarea.vx-in { height: auto; min-height: 84px; padding: 10px 12px; line-height
 .cs-steps li:not(.on) { font-size: 0; padding: 4px; gap: 0; }
 .cs-steps li:not(.on) i { font-size: 11px; }
 .cs-steps li.done.on { background: #e6f6ec; color: #1d6b4a; }
+.cx-call-trigger {
+  width: 100%;
+  min-height: 38px;
+  justify-content: center;
+  gap: 7px;
+  white-space: nowrap;
+  box-shadow: 0 7px 16px -10px rgba(217, 96, 26, .75);
+}
+.cx-call-trigger svg,
+.cx-call-confirm svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+}
+.cx-call-summary {
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px solid var(--vx-line, #e3e7ed);
+  border-radius: 16px;
+  background: var(--vx-soft, #f6f8fb);
+}
+.cx-call-patient {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--vx-line, #e3e7ed);
+}
+.cx-call-patient > span:last-child {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.cx-call-icon {
+  width: 44px;
+  height: 44px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  color: #fff;
+  background: linear-gradient(145deg, #ef7a2b, #d65313);
+  box-shadow: 0 10px 22px -14px rgba(217, 96, 26, .85);
+}
+.cx-call-icon svg { width: 22px; height: 22px; }
+.cx-call-patient small,
+.cx-call-details small {
+  color: var(--vx-muted, #667085);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.cx-call-patient strong {
+  overflow: hidden;
+  color: var(--vx-text, #1a2233);
+  font-size: 19px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cx-call-patient em {
+  color: var(--vx-muted, #667085);
+  font-size: 13px;
+  font-style: normal;
+}
+.cx-call-details {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  gap: 12px;
+  padding-top: 14px;
+}
+.cx-call-details > span {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: center;
+  column-gap: 7px;
+}
+.cx-call-details svg {
+  grid-row: 1 / 3;
+  width: 18px;
+  color: #d9601a;
+}
+.cx-call-details strong {
+  overflow: hidden;
+  color: var(--vx-text, #1a2233);
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cx-call-owner {
+  margin: 14px 0 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--vx-line, #e3e7ed);
+  color: var(--vx-muted, #667085);
+  font-size: 13px;
+}
+.cx-call-owner strong { color: var(--vx-text, #1a2233); }
+.cx-call-confirm { min-width: 148px; justify-content: center; }
 
 /* ===== Celular e tablet: linhas viram cartões, nada passa da largura da tela ===== */
 @media (max-width: 900px) {
@@ -1404,6 +1504,11 @@ textarea.vx-in { height: auto; min-height: 84px; padding: 10px 12px; line-height
     font-size: 11px;
     white-space: normal;
     text-align: center;
+  }
+  .consultations-page .cx-call-trigger {
+    width: 100%;
+    max-width: 320px;
+    min-height: 44px;
   }
 
   .pr-page {

@@ -1,10 +1,10 @@
 import { useMemo, useState } from "react"
 import { useNavigate } from "react-router"
-import { Check, ChevronLeft, ChevronRight, Plus } from "lucide-react"
+import { Check, ChevronLeft, ChevronRight, Clock3, Plus, Stethoscope, UserRound, Volume2 } from "lucide-react"
 import { useVetFlow, type Item } from "../../store"
 import { usePageForms } from "../hooks"
 import RowActions from "../RowActions"
-import { addDays, Confirm, fmtDate, fmtLong, itemDate, matches, Page, Pager, SearchBox, StatusPill, todayISO, usePaged } from "../ui"
+import { addDays, Confirm, fmtDate, fmtLong, itemDate, matches, Modal, Page, Pager, SearchBox, StatusPill, todayISO, usePaged } from "../ui"
 
 /* Consultas: o dia em ordem de horário. Cada linha mostra a etapa e um único botão para a próxima. */
 const ETAPAS = [
@@ -14,7 +14,7 @@ const ETAPAS = [
   { key: "Concluído", label: "Finalizado", statuses: ["Concluído"], next: "" },
 ]
 const etapaIdx = (item: Item) => ETAPAS.findIndex((e) => e.statuses.includes(item.status))
-const COLS_DIA = "76px minmax(0,1.3fr) minmax(0,1fr) minmax(0,1fr) minmax(300px,1.6fr) 140px 128px"
+const COLS_DIA = "76px minmax(0,1.3fr) minmax(0,1fr) minmax(0,1fr) minmax(300px,1.6fr) 176px 128px"
 const COLS_HIST = "110px 70px minmax(0,1.3fr) minmax(0,1.1fr) minmax(0,1fr) 140px 128px"
 
 export default function Consultas() {
@@ -25,6 +25,7 @@ export default function Consultas() {
   const [query, setQuery] = useState("")
   const [day, setDay] = useState(() => todayISO())
   const [confirmDelete, setConfirmDelete] = useState<Item | null>(null)
+  const [callItem, setCallItem] = useState<Item | null>(null)
 
   const doDia = useMemo(
     () => data.consultas.filter((item) => itemDate(item) === day && matches(item, query)).sort((a, b) => (a.time || "").localeCompare(b.time || "")),
@@ -49,7 +50,19 @@ export default function Consultas() {
     const i = etapaIdx(item)
     if (i === 3) return null
     const label = i <= 0 ? "Iniciar triagem" : i === 1 ? "Chamar ao consultório" : "Finalizar"
-    return <button className="vx-btn vx-btn-p vx-btn-sm" onClick={() => avancar(item)}>{label}</button>
+    if (i === 1) {
+      return (
+        <button
+          className="vx-btn vx-btn-p vx-btn-sm cx-call-trigger"
+          aria-label={`Chamar ${item.animal || item.name} ao consultório`}
+          onClick={() => setCallItem(item)}
+        >
+          <Volume2 />
+          <span>{label}</span>
+        </button>
+      )
+    }
+    return <button className="vx-btn vx-btn-p vx-btn-sm" aria-label={`${label}: ${item.animal || item.name}`} onClick={() => avancar(item)}>{label}</button>
   }
 
   return (
@@ -173,6 +186,46 @@ export default function Consultas() {
         </>
       )}
       {forms.node}
+      {callItem && (
+        <Modal
+          title="Chamar ao consultório"
+          text="Confira os dados antes de anunciar o paciente e iniciar o atendimento."
+          onClose={() => setCallItem(null)}
+          actions={
+            <>
+              <button className="vx-btn vx-btn-g" type="button" onClick={() => setCallItem(null)}>Agora não</button>
+              <button
+                className="vx-btn vx-btn-p cx-call-confirm"
+                type="button"
+                onClick={() => {
+                  updateItem("consultas", callItem.id, { status: "Em atendimento" })
+                  forms.toast(`${callItem.animal || callItem.name} chamado ao consultório.`)
+                  setCallItem(null)
+                }}
+              >
+                <Volume2 />
+                Chamar agora
+              </button>
+            </>
+          }
+        >
+          <div className="cx-call-summary">
+            <div className="cx-call-patient">
+              <span className="cx-call-icon"><Stethoscope /></span>
+              <span>
+                <small>Paciente</small>
+                <strong>{callItem.animal || "Paciente não informado"}</strong>
+                <em>{callItem.name}</em>
+              </span>
+            </div>
+            <div className="cx-call-details">
+              <span><Clock3 /><small>Horário</small><strong>{callItem.time || "—"}</strong></span>
+              <span><UserRound /><small>Veterinário</small><strong>{callItem.professional || "Não informado"}</strong></span>
+            </div>
+            {callItem.owner && <p className="cx-call-owner">Responsável: <strong>{callItem.owner}</strong></p>}
+          </div>
+        </Modal>
+      )}
       {confirmDelete && (
         <Confirm
           danger
