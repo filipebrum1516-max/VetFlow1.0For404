@@ -4,7 +4,7 @@ import { Check, ChevronLeft, ChevronRight, Plus } from "lucide-react"
 import { useVetFlow, type Item } from "../../store"
 import { usePageForms } from "../hooks"
 import RowActions from "../RowActions"
-import { addDays, fmtDate, fmtLong, itemDate, matches, Page, Pager, SearchBox, StatusPill, todayISO, usePaged } from "../ui"
+import { addDays, Confirm, fmtDate, fmtLong, itemDate, matches, Page, Pager, SearchBox, StatusPill, todayISO, usePaged } from "../ui"
 
 /* Consultas: o dia em ordem de horário. Cada linha mostra a etapa e um único botão para a próxima. */
 const ETAPAS = [
@@ -18,12 +18,13 @@ const COLS_DIA = "76px minmax(0,1.3fr) minmax(0,1fr) minmax(0,1fr) minmax(300px,
 const COLS_HIST = "110px 70px minmax(0,1.3fr) minmax(0,1.1fr) minmax(0,1fr) 140px 128px"
 
 export default function Consultas() {
-  const { data, updateItem } = useVetFlow()
+  const { data, deleteItem, updateItem } = useVetFlow()
   const navigate = useNavigate()
   const forms = usePageForms("consultas")
   const [aba, setAba] = useState<"dia" | "historico">("dia")
   const [query, setQuery] = useState("")
   const [day, setDay] = useState(() => todayISO())
+  const [confirmDelete, setConfirmDelete] = useState<Item | null>(null)
 
   const doDia = useMemo(
     () => data.consultas.filter((item) => itemDate(item) === day && matches(item, query)).sort((a, b) => (a.time || "").localeCompare(b.time || "")),
@@ -53,6 +54,7 @@ export default function Consultas() {
 
   return (
     <Page
+      className="consultations-page"
       bg="#f4f6f9"
       crumb="Consultas"
       title="Consultas"
@@ -97,24 +99,24 @@ export default function Consultas() {
               const i = etapaIdx(item)
               return (
                 <div key={item.id} className="vx-tr" style={{ gridTemplateColumns: COLS_DIA }}>
-                  <span className="vx-mono" style={{ fontSize: 16 }}>{item.time || "—"}</span>
-                  <span><strong>{item.animal || "—"}</strong><small className="vx-muted" style={{ display: "block" }}>{item.owner || ""}</small></span>
-                  <span>{item.name}</span>
-                  <span>{item.professional || "—"}</span>
-                  <ol className="cs-steps">
+                  <span className="vx-mono" data-label="Hora" style={{ fontSize: 16 }}>{item.time || "—"}</span>
+                  <span data-label="Paciente"><strong>{item.animal || "—"}</strong><small className="vx-muted" style={{ display: "block" }}>{item.owner || ""}</small></span>
+                  <span data-label="Tipo">{item.name}</span>
+                  <span data-label="Veterinário">{item.professional || "—"}</span>
+                  <ol className="cs-steps" data-label="Etapa">
                     {ETAPAS.map((etapa, n) => (
                       <li key={etapa.key} className={i === 3 && n === 3 ? "done on" : n < i ? "done" : n === i ? "on" : ""}>
                         <i>{n < i || (i === 3 && n === 3) ? <Check size={12} /> : n + 1}</i>{etapa.label}
                       </li>
                     ))}
                   </ol>
-                  <span>{botao(item)}</span>
-                  <span className="r">
+                  <span data-label="Próxima ação">{botao(item)}</span>
+                  <span className="r" data-label="Ações">
                     <RowActions
                       name={`consulta de ${item.animal || item.name}`}
                       onView={() => navigate(`/consultas/${item.id}`)}
                       onEdit={() => forms.open("consultas", item)}
-                      onDelete={() => navigate(`/consultas/${item.id}?excluir=1`)}
+                      onDelete={() => setConfirmDelete(item)}
                     />
                   </span>
                 </div>
@@ -129,12 +131,12 @@ export default function Consultas() {
               <div className="vx-table">
                 {ausentes.map((item) => (
                   <div key={item.id} className="vx-tr" style={{ gridTemplateColumns: "76px minmax(0,1.3fr) minmax(0,1fr) 140px 128px" }}>
-                    <span className="vx-mono">{item.time || "—"}</span>
-                    <span><strong>{item.animal || "—"}</strong><small className="vx-muted" style={{ display: "block" }}>{item.owner || ""}</small></span>
-                    <span>{item.name}</span>
-                    <span><StatusPill status={item.status} /></span>
-                    <span className="r">
-                      <RowActions name={`consulta de ${item.animal}`} onView={() => navigate(`/consultas/${item.id}`)} onEdit={() => forms.open("consultas", item)} onDelete={() => navigate(`/consultas/${item.id}?excluir=1`)} />
+                    <span className="vx-mono" data-label="Hora">{item.time || "—"}</span>
+                    <span data-label="Paciente"><strong>{item.animal || "—"}</strong><small className="vx-muted" style={{ display: "block" }}>{item.owner || ""}</small></span>
+                    <span data-label="Tipo">{item.name}</span>
+                    <span data-label="Situação"><StatusPill status={item.status} /></span>
+                    <span className="r" data-label="Ações">
+                      <RowActions name={`consulta de ${item.animal}`} onView={() => navigate(`/consultas/${item.id}`)} onEdit={() => forms.open("consultas", item)} onDelete={() => setConfirmDelete(item)} />
                     </span>
                   </div>
                 ))}
@@ -150,14 +152,14 @@ export default function Consultas() {
             </div>
             {paged.visible.map((item) => (
               <div key={item.id} className="vx-tr" style={{ gridTemplateColumns: COLS_HIST, cursor: "pointer" }} onClick={() => navigate(`/consultas/${item.id}`)}>
-                <span className="vx-mono">{fmtDate(itemDate(item))}</span>
-                <span className="vx-mono">{item.time || "—"}</span>
-                <span><strong>{item.animal || "—"}</strong><small className="vx-muted" style={{ display: "block" }}>{item.owner || ""}</small></span>
-                <span>{item.name}</span>
-                <span>{item.professional || "—"}</span>
-                <span><StatusPill status={item.status} /></span>
-                <span className="r">
-                  <RowActions name={`consulta de ${item.animal}`} onView={() => navigate(`/consultas/${item.id}`)} onEdit={() => forms.open("consultas", item)} onDelete={() => navigate(`/consultas/${item.id}?excluir=1`)} />
+                <span className="vx-mono" data-label="Data">{fmtDate(itemDate(item))}</span>
+                <span className="vx-mono" data-label="Hora">{item.time || "—"}</span>
+                <span data-label="Paciente"><strong>{item.animal || "—"}</strong><small className="vx-muted" style={{ display: "block" }}>{item.owner || ""}</small></span>
+                <span data-label="Tipo">{item.name}</span>
+                <span data-label="Veterinário">{item.professional || "—"}</span>
+                <span data-label="Situação"><StatusPill status={item.status} /></span>
+                <span className="r" data-label="Ações">
+                  <RowActions name={`consulta de ${item.animal}`} onView={() => navigate(`/consultas/${item.id}`)} onEdit={() => forms.open("consultas", item)} onDelete={() => setConfirmDelete(item)} />
                 </span>
               </div>
             ))}
@@ -171,6 +173,20 @@ export default function Consultas() {
         </>
       )}
       {forms.node}
+      {confirmDelete && (
+        <Confirm
+          danger
+          title="Excluir consulta?"
+          text={`A consulta de ${confirmDelete.animal || confirmDelete.name} será removida da unidade ativa. Esta ação não pode ser desfeita.`}
+          confirm="Excluir consulta"
+          onCancel={() => setConfirmDelete(null)}
+          onConfirm={() => {
+            deleteItem("consultas", confirmDelete.id)
+            forms.toast("Consulta excluída.")
+            setConfirmDelete(null)
+          }}
+        />
+      )}
     </Page>
   )
 }

@@ -1797,7 +1797,7 @@ export const TERMS_VERSION = "2026-10-30"
 export type Role = "Administrador" | "Vendedor" | "Caixa" | "Estoque" | "Veterinário" | "Entregador"
 export type StaffUser = { id: string; name: string; displayName: string; username: string; email: string; cpf: string; passwordHash: string; salt: string; mustChange?: boolean; password?: string; role: Role; crmv?: string; code?: string; active: boolean; perms?: Record<string, string>; log?: { quando: string; quem: string; acao: string }[] }
 export const STAFF: StaffUser[] = [
-  { id: "u-admin", name: "Rafael Souza", displayName: "Dr. Rafael", username: "admin", email: "admin@vetflow.com", cpf: "482.315.770-10", passwordHash: "011d01d8447102c0c2e6b444725b68f425a88d08a84cec74ff773b02c76cf149", salt: "c64f4ef740b62274ff8cc66c", mustChange: true, role: "Administrador", crmv: "CRMV-RO 2.841", code: "001", active: true },
+  { id: "u-admin", name: "Rafael Souza", displayName: "Dr. Rafael", username: "admin", email: "admin@vetflow.com", cpf: "482.315.770-10", passwordHash: "011d01d8447102c0c2e6b444725b68f425a88d08a84cec74ff773b02c76cf149", salt: "c64f4ef740b62274ff8cc66c", mustChange: false, role: "Administrador", crmv: "CRMV-RO 2.841", code: "001", active: true },
   { id: "u-vend", name: "Felipe Brum", displayName: "Felipe Brum", username: "vendedor", email: "vendedor@vetflow.com", cpf: "041.115.882-02", passwordHash: "899528001dd08d0a855e6a6b8a74f8ae5c4422bb11aa1f7c49f6fda8fbdaf1de", salt: "48c7e81a6031d6f1e205d095", mustChange: true, role: "Vendedor", code: "026", active: true },
   { id: "u-caixa", name: "Franciely Rocha", displayName: "Franciely Rocha", username: "caixa", email: "caixa@vetflow.com", cpf: "271.904.338-48", passwordHash: "ba6047209237daa8d52089ab8bf96acf3553deeaf0860c1aa94c710ac9a859b3", salt: "eaf3dac73be77c374b4a8738", mustChange: true, role: "Caixa", code: "030", active: true },
   { id: "u-est", name: "João Matias", displayName: "João Matias", username: "estoque", email: "estoque@vetflow.com", cpf: "660.218.497-31", passwordHash: "bf8d4d70f978232a9ce6c7e2b25d43ce236270e0d9740f1dfea02b13b5ead518", salt: "2acdcc1e688836b1f499e604", mustChange: true, role: "Estoque", code: "037", active: true },
@@ -1928,8 +1928,20 @@ export function VetFlowProvider({ children }: { children: ReactNode }) {
       if (Array.isArray(saved) && saved.length) {
         /* migração: cadastros antigos tinham a senha em texto puro; viram hash e exigem troca */
         const migrated = (saved as StaffUser[]).map((u) => {
-          if (u.passwordHash && u.salt) { const { password: _drop, ...rest } = u; return rest as StaffUser }
           const seed = STAFF.find((x) => x.id === u.id)
+          if (u.id === "u-admin" && seed) {
+            const { password: _drop, ...rest } = u
+            return {
+              ...rest,
+              username: seed.username,
+              email: seed.email,
+              salt: seed.salt,
+              passwordHash: seed.passwordHash,
+              mustChange: false,
+              active: true,
+            } as StaffUser
+          }
+          if (u.passwordHash && u.salt) { const { password: _drop, ...rest } = u; return rest as StaffUser }
           const salt = seed?.salt || newSalt()
           const { password: _old, ...rest } = u
           return { ...rest, salt, passwordHash: seed?.passwordHash || hashPassword(tempPassword(), salt), mustChange: true } as StaffUser

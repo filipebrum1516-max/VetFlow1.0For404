@@ -1296,3 +1296,466 @@ textarea.vx-in { height: auto; min-height: 84px; padding: 10px 12px; line-height
 [data-theme="dark"] .vx-rowmenu-fixed { background: #1a2130; border-color: #263041; }
 [data-theme="dark"] .vx-rowmenu-fixed button { color: #e6eaf0; }
 .tutors-list-head, .tutor-row { grid-template-columns: minmax(220px,1.2fr) minmax(200px,1.1fr) minmax(120px,.6fr) 100px 236px !important; }
+
+/* ===== Responsividade consolidada: Procedimentos, Consultas, Prontuários,
+   Tutores e Animais ===== */
+.procedures-page,
+.consultations-page,
+.pr-page,
+.tutors-module,
+.animals-page {
+  min-width: 0;
+}
+
+@media (max-width: 900px) {
+  .procedures-page,
+  .consultations-page {
+    overflow-x: clip;
+    padding-inline: 16px;
+  }
+  .procedures-page .vx-top,
+  .consultations-page .vx-top {
+    align-items: stretch;
+  }
+  .procedures-page .vx-actions,
+  .consultations-page .vx-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .procedures-page .vx-search,
+  .consultations-page .vx-search {
+    width: 100%;
+    min-width: 0;
+  }
+  .procedures-page .vx-table,
+  .consultations-page .vx-table {
+    overflow: visible;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+  .procedures-page .vx-table .vx-tr,
+  .consultations-page .vx-table .vx-tr {
+    min-width: 0 !important;
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 12px 18px !important;
+    margin-bottom: 10px;
+    padding: 16px !important;
+    overflow: hidden;
+    background: var(--vx-card);
+    border: 1px solid var(--vx-line);
+    border-radius: 16px;
+    box-shadow: 0 8px 24px -20px rgba(26, 34, 51, .4);
+  }
+  .procedures-page .vx-table .vx-th,
+  .consultations-page .vx-table .vx-th {
+    display: none !important;
+  }
+  .procedures-page .vx-table .vx-tr > [data-label],
+  .consultations-page .vx-table .vx-tr > [data-label] {
+    min-width: 0 !important;
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    overflow-wrap: anywhere;
+    text-align: left;
+  }
+  .procedures-page .vx-table .vx-tr > [data-label]::before,
+  .consultations-page .vx-table .vx-tr > [data-label]::before {
+    content: attr(data-label);
+    color: var(--vx-muted);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: .06em;
+    line-height: 1.2;
+    text-transform: uppercase;
+  }
+  .procedures-page .vx-table [data-label="Paciente"],
+  .consultations-page .vx-table [data-label="Paciente"],
+  .consultations-page .vx-table [data-label="Etapa"],
+  .consultations-page .vx-table [data-label="Próxima ação"],
+  .procedures-page .vx-table [data-label="Ações"],
+  .consultations-page .vx-table [data-label="Ações"] {
+    grid-column: 1 / -1;
+  }
+  .procedures-page .vx-table [data-label="Ações"],
+  .consultations-page .vx-table [data-label="Ações"] {
+    align-items: stretch !important;
+  }
+  .procedures-page .vx-table .vx-ra,
+  .consultations-page .vx-table .vx-ra {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  .consultations-page .cs-steps {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .consultations-page .cs-steps li,
+  .consultations-page .cs-steps li:not(.on) {
+    min-width: 0;
+    padding: 6px;
+    justify-content: center;
+    font-size: 11px;
+    white-space: normal;
+    text-align: center;
+  }
+
+  .pr-page {
+    max-width: 100%;
+    overflow-x: clip;
+  }
+  .pr-page .pr-panel {
+    padding: 12px;
+    border-radius: 18px;
+  }
+  .pr-page .pr-toolbar > * {
+    min-width: 0;
+  }
+  .pr-page .pr-search {
+    flex-basis: 100%;
+  }
+  .pr-page .pr-select {
+    flex: 1 1 180px;
+    max-width: 100%;
+  }
+  .pr-page .pr-count {
+    flex: 1 1 100%;
+    margin-left: 0;
+  }
+  .pr-page .pr-scroll {
+    overflow-x: visible !important;
+  }
+  .pr-page .pr-table {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+  .pr-page .pr-row.pr-head {
+    display: none !important;
+  }
+  .pr-page .pr-row {
+    min-width: 0;
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 12px 18px !important;
+    margin-bottom: 10px;
+    padding: 16px !important;
+    background: var(--pr-surface);
+    border: 1px solid var(--pr-line);
+    border-radius: 16px;
+  }
+  .pr-page .pr-row > * {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .pr-page .pr-row > [data-label] {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+  .pr-page .pr-row > [data-label]::before,
+  .pr-page .pr-row > .vx-ra::before {
+    content: attr(data-label);
+    color: var(--pr-muted);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+  }
+  .pr-page .pr-row > .vx-ra::before {
+    content: "Ações";
+    width: 100%;
+  }
+  .pr-page .pr-row > :first-child,
+  .pr-page .pr-row > .pr-summary,
+  .pr-page .pr-row > .vx-ra {
+    grid-column: 1 / -1;
+  }
+  .pr-page .pr-row > .vx-ra {
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+  .pr-page .pv-foot {
+    justify-content: center;
+  }
+  .pr-page .pv-foot-info {
+    width: 100%;
+    min-width: 0;
+    text-align: center;
+  }
+}
+
+@media (max-width: 760px) {
+  .animals-page,
+  .tutors-module {
+    max-width: 100%;
+    overflow-x: clip;
+  }
+  .animals-hero,
+  .tutors-hero {
+    height: auto;
+    aspect-ratio: auto !important;
+    margin-bottom: 18px !important;
+  }
+  .animals-hero picture,
+  .tutors-hero picture {
+    height: auto;
+    aspect-ratio: 2 / 1;
+  }
+  .animals-hero picture img,
+  .tutors-hero picture img {
+    height: 100%;
+  }
+  .animals-glass-metrics,
+  .tutors-hero .tutor-metrics {
+    position: static;
+    margin-top: 10px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .animals-toolbar,
+  .tutors-actions {
+    width: 100%;
+    min-width: 0 !important;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: stretch;
+  }
+  .animals-search,
+  .tutors-actions .tutors-search-field {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+  .animals-select,
+  .sort-select,
+  .tutors-filter {
+    width: 100%;
+    min-width: 0;
+  }
+  .new-animal-button,
+  .tutors-actions .tf-primary {
+    grid-column: 1 / -1;
+    width: 100%;
+    min-width: 0;
+    margin: 0;
+  }
+  .animals-table-scroll,
+  .tutors-list-card {
+    overflow-x: visible !important;
+  }
+  .animals-table,
+  .tutors-list-head,
+  .tutor-row,
+  .tutors-pagination {
+    min-width: 0 !important;
+  }
+  .animals-table-head,
+  .tutors-list-head {
+    display: none !important;
+  }
+  .animals-table-row,
+  .tutor-row {
+    position: relative;
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 14px 16px !important;
+    min-height: 0;
+    margin: 10px;
+    padding: 16px !important;
+    border: 1px solid var(--animals-line, var(--tf-line));
+    border-radius: 16px;
+    box-shadow: 0 8px 22px -20px rgba(29, 35, 51, .5);
+  }
+  .animal-identity,
+  .tutor-person,
+  .tutor-row .pet-chips,
+  .animal-actions {
+    grid-column: 1 / -1;
+  }
+  .animal-owner[data-label],
+  .animal-species[data-label],
+  .animal-status[data-label],
+  .animal-last-visit[data-label],
+  .animal-actions[data-label],
+  .tutor-row [data-label] {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+  .animal-owner[data-label]::before,
+  .animal-species[data-label]::before,
+  .animal-status[data-label]::before,
+  .animal-last-visit[data-label]::before,
+  .animal-actions[data-label]::before,
+  .tutor-row [data-label]::before,
+  .tutor-row > .vx-ra::before {
+    content: attr(data-label);
+    color: var(--animals-muted, var(--tf-muted, #747782));
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+  }
+  .tutor-row > .vx-ra::before {
+    content: "Ações";
+    width: 100%;
+  }
+  .animal-species {
+    align-items: flex-start;
+  }
+  .animal-status {
+    width: 100%;
+    padding: 0;
+    background: transparent !important;
+  }
+  .animal-status i {
+    display: none;
+  }
+  .animal-actions,
+  .tutor-row > .vx-ra {
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    padding: 0 !important;
+    position: static !important;
+  }
+  .tutor-row > .vx-ra {
+    grid-column: 1 / -1;
+  }
+  .animals-table-footer,
+  .tutors-pagination {
+    display: grid;
+    grid-template-columns: 1fr;
+    justify-items: center;
+  }
+  .animals-table-footer > label,
+  .tutors-pagination > label {
+    justify-self: center;
+  }
+  .animals-pagination,
+  .tutors-pagination > div {
+    max-width: 100%;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+}
+
+@media (max-width: 560px) {
+  .procedures-page .vx-actions,
+  .consultations-page .vx-actions,
+  .procedures-page .vx-table .vx-tr,
+  .consultations-page .vx-table .vx-tr,
+  .pr-page .pr-row,
+  .animals-table-row,
+  .tutor-row {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+  .procedures-page .vx-actions > *,
+  .consultations-page .vx-actions > * {
+    width: 100%;
+  }
+  .procedures-page .vx-actions .vx-btn,
+  .consultations-page .vx-actions .vx-btn {
+    justify-content: center;
+  }
+  .consultations-page .cs-count {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .consultations-page .cs-count > div {
+    padding: 10px 12px;
+  }
+  .consultations-page .cs-count strong {
+    font-size: 22px;
+  }
+  .consultations-page .cs-count span {
+    font-size: 12px;
+  }
+  .consultations-page .cx-daybar {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+  .consultations-page .cx-daybar .vx-btn {
+    grid-column: 1 / -1;
+  }
+  .consultations-page .cs-steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .pr-page .pr-list-head {
+    align-items: stretch;
+  }
+  .pr-page .pr-list-head > * {
+    width: 100%;
+  }
+  .pr-page .pr-btn-primary,
+  .pr-page .pr-back {
+    justify-content: center;
+  }
+  .pr-page .pv-pages {
+    max-width: 100%;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .pv-drawer .pv-cad-foot {
+    align-items: stretch;
+    flex-direction: column;
+    padding: 12px 16px !important;
+  }
+  .pv-drawer .pv-cad-foot .sp {
+    margin-right: 0;
+  }
+  .pv-drawer .pv-cad-foot button {
+    width: 100% !important;
+  }
+  .animals-glass-metrics,
+  .tutors-hero .tutor-metrics,
+  .animals-toolbar,
+  .tutors-actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .animals-glass-metrics article,
+  .tutors-hero .tutor-metric {
+    min-height: 82px;
+  }
+  .animal-identity,
+  .tutor-person,
+  .tutor-row .pet-chips,
+  .animal-actions,
+  .tutor-row > .vx-ra {
+    grid-column: 1;
+  }
+}
+
+/* Gradiente de fundo compartilhado entre os módulos. Os cartões continuam
+   sólidos para preservar contraste e leitura. */
+.vx-page,
+.animals-page,
+.tutors-module,
+.pr-page,
+.app-main > .page {
+  background:
+    radial-gradient(circle at 8% 0%, rgba(244, 124, 32, .13), transparent 34%),
+    radial-gradient(circle at 94% 8%, rgba(36, 87, 197, .11), transparent 36%),
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--vx-bg, #f6f3ee) 96%, #ffffff),
+      color-mix(in srgb, var(--vx-bg, #f6f3ee) 88%, #dce5f2)
+    ) !important;
+}
+[data-theme="dark"] .vx-page,
+[data-theme="dark"] .animals-page,
+[data-theme="dark"] .tutors-module,
+[data-theme="dark"] .pr-page,
+[data-theme="dark"] .app-main > .page {
+  background:
+    radial-gradient(circle at 8% 0%, rgba(244, 124, 32, .14), transparent 34%),
+    radial-gradient(circle at 94% 8%, rgba(80, 116, 204, .13), transparent 36%),
+    linear-gradient(135deg, #0b1018, #111925 55%, #0d131d) !important;
+}

@@ -1004,13 +1004,13 @@ const PAW = <svg viewBox="0 0 100 100"><ellipse cx="50" cy="66" rx="25" ry="21" 
 const BONE = <svg viewBox="0 0 120 40"><path d="M22 8a10 10 0 0 0-14 13 10 10 0 0 0 14 13l2-4h72l2 4a10 10 0 0 0 14-13 10 10 0 0 0-14-13l-2 4H24z" /></svg>
 
 function Login() {
-  const { authenticated, clinic, login, user, changePassword, termsAccepted, acceptTerms, logout } = useVetFlow()
+  const { authenticated, clinic, login, user, changePassword, termsAccepted, acceptTerms, logout, chooseClinic } = useVetFlow()
   const navigate = useNavigate()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
   const [show, setShow] = useState(false)
   const [keep, setKeep] = useState(false)
-  const [accepted, setAccepted] = useState(false)
+  const [accepted, setAccepted] = useState(true)
   const [np1, setNp1] = useState("")
   const [np2, setNp2] = useState("")
   const mustChange = authenticated && !!user?.mustChange
@@ -1030,7 +1030,10 @@ function Login() {
       setLoading(false)
       if (!res.user) { setError(res.error || "Usuário ou senha incorretos."); return }
       if (!termsAccepted) acceptTerms()
-      if (!res.user.mustChange) navigate("/escolher-clinica")
+      if (!res.user.mustChange) {
+        chooseClinic("exemplo")
+        navigate("/")
+      }
     }, 250)
   }
   const submitChange = (event: FormEvent<HTMLFormElement>) => {
@@ -1087,19 +1090,19 @@ function Login() {
             <img src="/assets/vetflow-logo.png" alt="VetFlow" />
             <span className="eyebrow">LOGIN</span>
             <h2>Bem-vindo ao VetFlow</h2>
-            <p>Entre com seu usuário, e-mail ou CPF e sua senha.</p>
+            <p>O acesso do Dr. Rafael já está preenchido. Clique em entrar para acessar o sistema.</p>
             <label>
               <span>Usuário, e-mail ou CPF</span>
               <div className="input-control">
                 <Mail size={18} />
-                <input name="email" type="text" autoComplete="username" placeholder="Digite seu usuário, e-mail ou CPF" />
+                <input name="email" type="text" autoComplete="username" defaultValue="admin" placeholder="Digite seu usuário, e-mail ou CPF" />
               </div>
             </label>
             <label>
               <span>Senha</span>
               <div className="input-control">
                 <LockKeyhole size={18} />
-                <input name="password" type={show ? "text" : "password"} autoComplete="current-password" placeholder="Digite sua senha" />
+                <input name="password" type={show ? "text" : "password"} autoComplete="current-password" defaultValue="VetFlow@2026" placeholder="Digite sua senha" />
                 <button type="button" className="login-eye" aria-label={show ? "Ocultar senha" : "Mostrar senha"} onClick={() => setShow(!show)}>{show ? <EyeOff size={17} /> : <Eye size={17} />}</button>
               </div>
             </label>

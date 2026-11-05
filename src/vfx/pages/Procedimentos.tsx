@@ -65,6 +65,7 @@ export default function Procedimentos() {
 
   return (
     <Page
+      className="procedures-page"
       bg="#f4f6f9"
       crumb="Procedimentos"
       title="Procedimentos"
@@ -116,13 +117,13 @@ export default function Procedimentos() {
             </div>
             {paged.visible.map((item) => (
               <div key={item.id} className="vx-tr" style={{ gridTemplateColumns: COLS_HIST, cursor: "pointer" }} onClick={() => navigate(`/procedimentos/${item.id}`)}>
-                <span className="vx-mono">{fmtDate(itemDate(item))}</span>
-                <span><strong>{item.animal || "—"}</strong><small className="vx-muted" style={{ display: "block" }}>{item.owner || ""}</small></span>
-                <span>{item.name}</span>
-                <span>{item.professional || "—"}</span>
-                <span><StatusPill status={item.status} /></span>
-                <b className="r">{item.amountValue ? brl(item.amountValue) : "—"}</b>
-                <span className="r">
+                <span className="vx-mono" data-label="Data">{fmtDate(itemDate(item))}</span>
+                <span data-label="Paciente"><strong>{item.animal || "—"}</strong><small className="vx-muted" style={{ display: "block" }}>{item.owner || ""}</small></span>
+                <span data-label="Procedimento">{item.name}</span>
+                <span data-label="Profissional">{item.professional || "—"}</span>
+                <span data-label="Situação"><StatusPill status={item.status} /></span>
+                <b className="r" data-label="Valor">{item.amountValue ? brl(item.amountValue) : "—"}</b>
+                <span className="r" data-label="Ações">
                   <RowActions
                     name={`${item.name} de ${item.animal || "paciente"}`}
                     onView={() => navigate(`/procedimentos/${item.id}`)}

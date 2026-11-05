@@ -196,6 +196,7 @@ export default function AnimalsModule() {
   }, [data.animais, data.tutores, lastVisits])
   const [menuId, setMenuId] = useState("")
   const [confirmDelete, setConfirmDelete] = useState<AnimalRow | null>(null)
+  const [editingAnimal, setEditingAnimal] = useState<Item | null>(null)
   const [perPage, setPerPage] = useState(6)
   const [query, setQuery] = useState(
     () => new URLSearchParams(window.location.search).get("animal") || "",
@@ -302,10 +303,13 @@ export default function AnimalsModule() {
     setToast(message)
     window.setTimeout(() => setToast(""), 3400)
   }
+  const closeAnimalDrawer = () => {
+    setDrawerOpen(false)
+    setEditingAnimal(null)
+  }
   const handleSaved = (animal: AnimalRow, ownerId: string, more: Partial<Item> = {}) => {
-    addItem("animais", {
+    const patch: Partial<Item> = {
       ...more,
-      id: animal.id,
       name: animal.name,
       subtitle: `${animal.species === "Felino" ? "Gato" : animal.species === "Canino" ? "Cão" : animal.species} • ${animal.breed}`,
       status: animal.status,
@@ -313,10 +317,21 @@ export default function AnimalsModule() {
       ownerId,
       species: animal.species === "Felino" ? "Gato" : animal.species === "Canino" ? "Cão" : animal.species,
       breed: animal.breed,
-      extra: { ...(more.extra || {}), code: animal.code, microchip: animal.microchip },
-    })
-    setDrawerOpen(false)
-    flash(`Animal cadastrado e vinculado a ${animal.owner}.`)
+      extra: {
+        ...(editingAnimal?.extra || {}),
+        ...(more.extra || {}),
+        code: animal.code,
+        microchip: animal.microchip,
+      },
+    }
+    if (editingAnimal) {
+      updateItem("animais", editingAnimal.id, patch)
+      flash(`${animal.name} atualizado com sucesso.`)
+    } else {
+      addItem("animais", { ...patch, id: animal.id })
+      flash(`Animal cadastrado e vinculado a ${animal.owner}.`)
+    }
+    closeAnimalDrawer()
   }
 
   return (
@@ -393,7 +408,7 @@ export default function AnimalsModule() {
             </select>
             <ChevronDown />
           </label>
-          <button className="new-animal-button" onClick={() => setDrawerOpen(true)}>
+          <button className="new-animal-button" onClick={() => { setEditingAnimal(null); setDrawerOpen(true) }}>
             <Plus /> Novo registro
           </button>
         </div>
@@ -424,11 +439,11 @@ export default function AnimalsModule() {
                       )}
                     </span>
                   </div>
-                  <div className="animal-owner">
+                  <div className="animal-owner" data-label="Tutor">
                     <strong>{animal.owner}</strong>
                     <small>{animal.phone}</small>
                   </div>
-                  <div className="animal-species">
+                  <div className="animal-species" data-label="Espécie / raça">
                     <i>
                       {animal.species === "Felino" ? <Cat /> : animal.species === "Bovino" || animal.species === "Equino" ? <PawPrint /> : <Dog />}
                     </i>
@@ -440,19 +455,26 @@ export default function AnimalsModule() {
                   </div>
                   <span
                     className={`animal-status status-${normalize(animal.status).replaceAll(" ", "-")}`}
+                    data-label="Status"
                   >
                     <i />
                     {animal.status}
                   </span>
-                  <div className="animal-last-visit">
+                  <div className="animal-last-visit" data-label="Última consulta">
                     <strong>{animal.lastVisit}</strong>
                     <small>{animal.doctor}</small>
                   </div>
-                  <div className="animal-actions">
+                  <div className="animal-actions" data-label="Ações">
                     <RowActions
                       name={animal.name}
                       onView={() => navigate(`/animais/${animal.id}`)}
-                      onEdit={() => navigate(`/animais/${animal.id}?editar=1`)}
+                      onEdit={() => {
+                        const item = data.animais.find((candidate) => candidate.id === animal.id)
+                        if (item) {
+                          setEditingAnimal(item)
+                          setDrawerOpen(true)
+                        }
+                      }}
                       onDelete={() => setConfirmDelete(animal)}
                     >
                     <RowButton title="Agendar" onClick={() => navigate(`/agendas?locate=1&pet=${encodeURIComponent(animal.name)}&client=${encodeURIComponent(animal.owner)}`)}>
@@ -523,11 +545,13 @@ export default function AnimalsModule() {
 
       {drawerOpen && (
         <AnimalDrawer
+          key={editingAnimal?.id || "new-animal"}
           tutors={tutors}
-          close={() => setDrawerOpen(false)}
+          close={closeAnimalDrawer}
           save={handleSaved}
           nextCode={rows.length + 1}
           presetTutor={new URLSearchParams(window.location.search).get("tutor") || ""}
+          item={editingAnimal || undefined}
         />
       )}
       {confirmDelete && (
@@ -596,18 +620,31 @@ function AnimalDrawer({
   save,
   nextCode,
   presetTutor = "",
+  item,
 }: {
   tutors: TutorOption[]
   close: () => void
   save: (animal: AnimalRow, ownerId: string, more?: Partial<Item>) => void
   nextCode: number
   presetTutor?: string
+  item?: Item
 }) {
   const [tutorQuery, setTutorQuery] = useState("")
-  const [selectedTutor, setSelectedTutor] = useState<TutorOption | null>(() => tutors.find((t) => t.id === presetTutor) || null)
+  const [selectedTutor, setSelectedTutor] = useState<TutorOption | null>(
+    () =>
+      tutors.find((t) => t.id === (item?.ownerId || presetTutor)) ||
+      tutors.find((t) => t.name === item?.owner) ||
+      null,
+  )
   const [errors, setErrors] = useState<Record<string, string>>({})
-  const [sex, setSex] = useState("")
-  const [species, setSpecies] = useState("")
+  const [sex, setSex] = useState(item?.sex || "")
+  const [species, setSpecies] = useState(() =>
+    /gat|felin/i.test(item?.species || "")
+      ? "Felino"
+      : /c[aã]o|canin/i.test(item?.species || "")
+        ? "Canino"
+        : item?.species || "",
+  )
   const digitCount = tutorQuery.replace(/\D/g, "").length
   const letterCount = tutorQuery.replace(/[^A-Za-zÀ-ÿ]/g, "").length
   const qualifies = digitCount >= 3 || letterCount >= 2
@@ -638,31 +675,44 @@ function AnimalDrawer({
     if (Object.keys(next).length || !selectedTutor) return
     save(
       {
-        id: `created-${Date.now()}`,
+        id: item?.id || `created-${Date.now()}`,
         name: values.name.trim(),
-        code: `#ANM-${String(nextCode).padStart(4, "0")}`,
+        code: item?.extra?.code || `#ANM-${String(nextCode).padStart(4, "0")}`,
         species: values.species,
         breed: values.breed,
         owner: selectedTutor.name,
         phone: selectedTutor.phone,
-        status: "Ativo",
+        status: (item?.status === "Em tratamento" || item?.status === "Inativo"
+          ? item.status
+          : "Ativo") as AnimalRow["status"],
         microchip: values.microchip || "",
-        lastVisit: "Ainda não consultou",
-        doctor: "—",
+        lastVisit: item ? "" : "Ainda não consultou",
+        doctor: item ? "" : "—",
       },
       selectedTutor.id,
-      { sex: values.sex || "", birthDate: values.birthDate || "", weight, date: localISO(), extra: { castrado: values.sterilization || "", pelagem: values.coat || "", pedigree: values.pedigree || "", pedigreeNumero: values.pedigreeNumber || "" } },
+      {
+        sex: values.sex || "",
+        birthDate: values.birthDate || "",
+        weight,
+        date: item?.date || localISO(),
+        extra: {
+          castrado: values.sterilization || "",
+          pelagem: values.coat || "",
+          pedigree: values.pedigree || "",
+          pedigreeNumero: values.pedigreeNumber || "",
+        },
+      },
     )
   }
   const firstError = Object.values(errors)[0]
 
   return (
     <CadastroDrawer
-      title="Novo animal"
-      sub="Cadastre o paciente e vincule ao tutor. Campos com * são obrigatórios."
+      title={item ? `Editar ${item.name}` : "Novo animal"}
+      sub={item ? "Atualize os dados do paciente e o vínculo com o tutor." : "Cadastre o paciente e vincule ao tutor. Campos com * são obrigatórios."}
       onClose={close}
       onSubmit={submit}
-      submitLabel="Cadastrar animal"
+      submitLabel={item ? "Salvar alterações" : "Cadastrar animal"}
       error={firstError ? "Revise os campos destacados em vermelho." : undefined}
     >
       <>
@@ -701,7 +751,7 @@ function AnimalDrawer({
 
         <CadSec n={2} title="Dados do animal">
           <Campo label="Nome do animal" req span={3} error={errors.name}>
-            <input className={cadInput(errors.name)} name="name" placeholder="Ex.: Thor" />
+            <input className={cadInput(errors.name)} name="name" defaultValue={item?.name || ""} placeholder="Ex.: Thor" />
           </Campo>
           <Campo label="Espécie" req span={3} error={errors.species}>
             <select className={cadInput(errors.species)} name="species" value={species} onChange={(e) => { setSpecies(e.target.value); setErrors((c) => ({ ...c, species: "", breed: "" })) }}>
@@ -712,8 +762,11 @@ function AnimalDrawer({
             </select>
           </Campo>
           <Campo label="Raça" req span={3} error={errors.breed}>
-            <select className={cadInput(errors.breed)} name="breed" disabled={!species}>
+            <select className={cadInput(errors.breed)} name="breed" defaultValue={item?.breed || ""} disabled={!species}>
               <option value="">{species ? "Escolha" : "Escolha a espécie primeiro"}</option>
+              {item?.breed && !(speciesBreeds[species] || []).includes(item.breed) && (
+                <option value={item.breed}>{item.breed}</option>
+              )}
               {(speciesBreeds[species] || []).map((value) => (
                 <option key={value}>{value}</option>
               ))}
@@ -727,35 +780,35 @@ function AnimalDrawer({
             </select>
           </Campo>
           <Campo label="Castrado?" span={3} hint={sex ? undefined : "Escolha o sexo para liberar."}>
-            <select className="vx-in" name="sterilization" disabled={!sex}>
+            <select className="vx-in" name="sterilization" defaultValue={item?.extra?.castrado || ""} disabled={!sex}>
               <option value="">Não informado</option>
               <option>Castrado</option>
               <option>Não castrado</option>
             </select>
           </Campo>
           <Campo label="Data de nascimento" span={3} error={errors.birthDate} hint="Se não souber, deixe em branco.">
-            <input className={cadInput(errors.birthDate)} name="birthDate" type="date" max={localISO()} />
+            <input className={cadInput(errors.birthDate)} name="birthDate" type="date" max={localISO()} defaultValue={item?.birthDate || ""} />
           </Campo>
           <Campo label="Peso (kg)" span={3} error={errors.weight} hint="Exemplo: 12,5">
-            <input className={cadInput(errors.weight)} name="weight" inputMode="decimal" placeholder="0,0" />
+            <input className={cadInput(errors.weight)} name="weight" inputMode="decimal" defaultValue={(item?.weight || "").replace(/[^\d,.]/g, "")} placeholder="0,0" />
           </Campo>
         </CadSec>
 
         <CadSec n={3} title="Identificação" desc="Opcional">
           <Campo label="Pelagem" span={3}>
-            <input className="vx-in" name="coat" placeholder="Cor e marcas" />
+            <input className="vx-in" name="coat" defaultValue={item?.extra?.pelagem || ""} placeholder="Cor e marcas" />
           </Campo>
           <Campo label="Número do microchip" span={3}>
-            <input className="vx-in" name="microchip" placeholder="Só se o animal tiver" />
+            <input className="vx-in" name="microchip" defaultValue={item?.extra?.microchip || item?.microchip || ""} placeholder="Só se o animal tiver" />
           </Campo>
           <Campo label="Pedigree" span={3}>
-            <select className="vx-in" name="pedigree">
+            <select className="vx-in" name="pedigree" defaultValue={item?.extra?.pedigree || "Não possui"}>
               <option>Não possui</option>
               <option>Possui</option>
             </select>
           </Campo>
           <Campo label="Número do pedigree" span={3}>
-            <input className="vx-in" name="pedigreeNumber" placeholder="Registro" />
+            <input className="vx-in" name="pedigreeNumber" defaultValue={item?.extra?.pedigreeNumero || ""} placeholder="Registro" />
           </Campo>
         </CadSec>
       </>

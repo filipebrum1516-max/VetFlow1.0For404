@@ -746,7 +746,7 @@ export default function TutorsModule() {
                     </small>
                   </span>
                 </span>
-                <span className="pet-chips">
+                <span className="pet-chips" data-label="Animais">
                   {tutor.pets.length ? (
                     tutor.pets.map((animal) => (
                       <button
@@ -767,11 +767,11 @@ export default function TutorsModule() {
                     </span>
                   )}
                 </span>
-                <span className="last-visit">
+                <span className="last-visit" data-label="Última visita">
                   <small>Última visita</small>
                   <strong>{tutor.lastVisit}</strong>
                 </span>
-                <span className={`tutor-status ${tutor.status.toLowerCase()}`}>
+                <span className={`tutor-status ${tutor.status.toLowerCase()}`} data-label="Status">
                   {tutor.status}
                 </span>
                 <RowActions

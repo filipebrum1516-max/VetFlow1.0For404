@@ -727,24 +727,24 @@ export default function ProntuariosModule() {
                             </small>
                           </span>
                         </span>
-                        <span>
+                        <span data-label="Tutor">
                           <strong>{item.owner || "Não informado"}</strong>
                           <small>{tutor?.phone || ""}</small>
                         </span>
-                        <span>
+                        <span data-label="Veterinário responsável">
                           <strong>{item.professional || "Não informado"}</strong>
                           <small>{item.category || extra?.recordType || "Consulta clínica"}</small>
                         </span>
-                        <span className="pr-summary">
+                        <span className="pr-summary" data-label="Suspeita ou diagnóstico">
                           {item.diagnosis ||
                             extra?.suspicion ||
                             (extra ? "Não informado" : diseaseOf(item.id))}
                         </span>
-                        <span>
+                        <span data-label="Data">
                           <strong>{formatDate(item.date)}</strong>
                           <small>{item.time || ""}</small>
                         </span>
-                        <span onClick={(event) => event.stopPropagation()}>
+                        <span data-label="Situação" onClick={(event) => event.stopPropagation()}>
                           <StatusMenu
                             status={item.status}
                             onChange={(value) => changeStatus(item.id, value)}
