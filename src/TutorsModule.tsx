@@ -1,4 +1,4 @@
-import RowActions from "./vfx/RowActions"
+import RowActions, { RowButton, RowMenu } from "./vfx/RowActions"
 import {
   ArrowDownToLine,
   ArrowLeft,
@@ -781,55 +781,21 @@ export default function TutorsModule() {
                   onDelete={() => setConfirmTutor({ kind: "excluir", tutor })}
                   deleteDisabled={historyOf(tutor.id) === 0 && !tutor.pets.length ? undefined : "Tem animais ou histórico: use Inativar no menu"}
                 >
-                <span className="row-menu-wrap">
-                  <button
-                    className="row-menu-trigger"
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      setOpenMenu(openMenu === tutor.id ? null : tutor.id)
-                    }}
-                  >
-                    <MoreVertical size={18} />
-                  </button>
-                  {openMenu === tutor.id && (
-                    <span className="row-menu">
-                      {[
-                        "Ver tutor",
-                        "Editar",
-                        "Adicionar animal",
-                        tutor.status === "Ativo"
-                          ? "Inativar"
-                          : "Ativar novamente",
-                        "Imprimir ficha",
-                        "Exportar dados (LGPD)",
-                        "Anonimizar (LGPD)",
-                        ...(historyOf(tutor.id) === 0 && !tutor.pets.length ? ["Excluir"] : []),
-                      ].map((label) => (
-                          <button
-                            key={label}
-                            onClick={(event) => {
-                              event.stopPropagation()
-                              if (label === "Ver tutor") openTutor(tutor)
-                              if (label === "Editar") openTutor(tutor, true)
-                              if (label === "Inativar")
-                                setConfirmTutor({ kind: "inativar", tutor })
-                              if (label === "Imprimir ficha") printTutor(tutor)
-                              if (label === "Exportar dados (LGPD)") exportTutor(tutor)
-                              if (label === "Anonimizar (LGPD)") setConfirmTutor({ kind: "anonimizar", tutor })
-                              if (label === "Excluir") setConfirmTutor({ kind: "excluir", tutor })
-                              if (label === "Ativar novamente")
-                                changeTutorStatus(tutor, "Ativo")
-                              if (label === "Adicionar animal") navigate(`/animais?novo=1&tutor=${tutor.id}`)
-                              setOpenMenu(null)
-                            }}
-                          >
-                            {label}
-                          </button>
-                        ),
-                      )}
-                    </span>
-                  )}
-                </span>
+                  <RowButton title="Agendar" onClick={() => navigate(`/agendas?locate=1&client=${encodeURIComponent(tutor.name)}`)}>
+                    <CalendarDays />
+                  </RowButton>
+                  <RowMenu
+                    items={[
+                      ["Abrir ficha completa", () => openTutor(tutor)],
+                      ["Adicionar animal", () => navigate(`/animais?novo=1&tutor=${tutor.id}`)],
+                      ...(tutor.pets[0] ? [["Nova consulta", () => navigate(`/consultas?novo=1&animal=${tutor.pets[0].id}`)] as [string, () => void]] : []),
+                      ["Enviar mensagem", () => navigate(`/comunicacao?tutor=${tutor.id}`)],
+                      ["Imprimir ficha", () => printTutor(tutor)],
+                      ["Exportar dados (LGPD)", () => exportTutor(tutor)],
+                      tutor.status === "Ativo" ? ["Inativar", () => setConfirmTutor({ kind: "inativar", tutor })] : ["Ativar novamente", () => changeTutorStatus(tutor, "Ativo")],
+                      ["Anonimizar (LGPD)", () => setConfirmTutor({ kind: "anonimizar", tutor }), true],
+                    ]}
+                  />
                 </RowActions>
               </div>
             ))}

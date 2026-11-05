@@ -1,4 +1,4 @@
-import RowActions, { RowButton } from "./vfx/RowActions"
+import RowActions, { RowButton, RowMenu } from "./vfx/RowActions"
 import { clinicMetrics } from "./metrics"
 import { CadastroDrawer, CadSec, Campo, cadInput } from "./vfx/CadastroDrawer"
 import { localISO } from "./date"
@@ -458,24 +458,19 @@ export default function AnimalsModule() {
                     <RowButton title="Agendar" onClick={() => navigate(`/agendas?locate=1&pet=${encodeURIComponent(animal.name)}&client=${encodeURIComponent(animal.owner)}`)}>
                       <CalendarDays />
                     </RowButton>
-                    <span style={{ position: "relative", display: "inline-flex" }}>
-                      <button title="Mais opções" aria-label="Mais opções" aria-expanded={menuId === animal.id} onClick={(event) => { event.stopPropagation(); setMenuId(menuId === animal.id ? "" : animal.id) }}>
-                        <CircleEllipsis />
-                      </button>
-                      {menuId === animal.id && (
-                        <span className="vx-rowmenu" role="menu" onClick={(event) => event.stopPropagation()}>
-                          <button role="menuitem" onClick={() => navigate(`/animais/${animal.id}`)}>Abrir ficha completa</button>
-                          <button role="menuitem" onClick={() => navigate(`/consultas?novo=1&animal=${animal.id}`)}>Nova consulta</button>
-                          <button role="menuitem" onClick={() => navigate(`/vacinas?novo=1&animal=${animal.id}`)}>Aplicar vacina</button>
-                          <button role="menuitem" onClick={() => navigate(`/exames?novo=1&animal=${animal.id}`)}>Solicitar exame</button>
-                          <button role="menuitem" onClick={() => navigate(`/prescricoes?novo=1&animal=${animal.id}`)}>Nova receita</button>
-                          <button role="menuitem" onClick={() => navigate(`/internacoes?novo=1&animal=${animal.id}`)}>Internar</button>
-                          <button role="menuitem" onClick={() => navigate(`/tutores?tutor=${encodeURIComponent(animal.owner)}`)}>Ver tutor</button>
-                          <button role="menuitem" onClick={() => { updateItem("animais", animal.id, { status: animal.status === "Inativo" ? "Ativo" : "Inativo" }); setMenuId(""); flash(animal.status === "Inativo" ? `${animal.name} reativado.` : `${animal.name} inativado.`) }}>{animal.status === "Inativo" ? "Reativar" : "Inativar"}</button>
-                          <button role="menuitem" className="danger" onClick={() => { setConfirmDelete(animal); setMenuId("") }}>Excluir</button>
-                        </span>
-                      )}
-                    </span>
+                    <RowMenu
+                      items={[
+                        ["Abrir ficha completa", () => navigate(`/animais/${animal.id}`)],
+                        ["Nova consulta", () => navigate(`/consultas?novo=1&animal=${animal.id}`)],
+                        ["Aplicar vacina", () => navigate(`/vacinas?novo=1&animal=${animal.id}`)],
+                        ["Solicitar exame", () => navigate(`/exames?novo=1&animal=${animal.id}`)],
+                        ["Nova receita", () => navigate(`/prescricoes?novo=1&animal=${animal.id}`)],
+                        ["Internar", () => navigate(`/internacoes?novo=1&animal=${animal.id}`)],
+                        ["Ver tutor", () => navigate(`/tutores?tutor=${encodeURIComponent(animal.owner)}`)],
+                        [animal.status === "Inativo" ? "Reativar" : "Inativar", () => { updateItem("animais", animal.id, { status: animal.status === "Inativo" ? "Ativo" : "Inativo" }); flash(animal.status === "Inativo" ? `${animal.name} reativado.` : `${animal.name} inativado.`) }],
+                        ["Excluir", () => setConfirmDelete(animal), true],
+                      ]}
+                    />
                     </RowActions>
                   </div>
                 </div>
