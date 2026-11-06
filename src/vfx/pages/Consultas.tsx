@@ -1,21 +1,29 @@
-import { useMemo, useState } from "react"
+import { useMemo, useState, type DragEvent } from "react"
 import { useNavigate } from "react-router"
-import { Check, ChevronLeft, ChevronRight, Clock3, Plus, Stethoscope, UserRound, Volume2 } from "lucide-react"
+import { ArrowRight, Check, ChevronLeft, ChevronRight, CircleCheck, Clock3, Plus, Siren, Stethoscope, TriangleAlert, Undo2, UserRound, Volume2 } from "lucide-react"
 import { useVetFlow, type Item } from "../../store"
 import { usePageForms } from "../hooks"
 import RowActions from "../RowActions"
 import { addDays, Confirm, fmtDate, fmtLong, itemDate, matches, Modal, Page, Pager, SearchBox, StatusPill, todayISO, usePaged } from "../ui"
+import "../consultas.css"
 
-/* Consultas: o dia em ordem de horário. Cada linha mostra a etapa e um único botão para a próxima. */
-const ETAPAS = [
-  { key: "Chegou", label: "Chegou", statuses: ["Chegou", "Agendado", "Confirmado"], next: "Triagem" },
-  { key: "Triagem", label: "Triagem", statuses: ["Triagem"], next: "Chamar" },
-  { key: "Em atendimento", label: "Consultório", statuses: ["Em atendimento", "Em andamento"], next: "Finalizar" },
-  { key: "Concluído", label: "Finalizado", statuses: ["Concluído"], next: "" },
+/*
+ * Consultas do dia em 5 colunas de vidro. A consulta nasce em "Chegou" já com a senha
+ * e anda uma coluna por vez: Chegou → Triagem → Consultório → Pagamento → Finalizado.
+ */
+type Etapa = { key: string; label: string; hint: string; statuses: string[]; tone: string; acao: string }
+const ETAPAS: Etapa[] = [
+  { key: "Chegou", label: "Chegou", hint: "Recepção, aguardando triagem", statuses: ["Chegou", "Agendado", "Confirmado", "Aguardando"], tone: "orange", acao: "Chamar para triagem" },
+  { key: "Triagem", label: "Triagem", hint: "Peso, temperatura e queixa", statuses: ["Triagem"], tone: "yellow", acao: "Chamar ao consultório" },
+  { key: "Em atendimento", label: "Consultório", hint: "Em atendimento com o veterinário", statuses: ["Em atendimento", "Em andamento"], tone: "teal", acao: "Enviar ao caixa" },
+  { key: "Aguardando pagamento", label: "Pagamento", hint: "No caixa, acertando a conta", statuses: ["Aguardando pagamento"], tone: "violet", acao: "Finalizar consulta" },
+  { key: "Concluído", label: "Finalizado", hint: "Consulta encerrada", statuses: ["Concluído"], tone: "blue", acao: "" },
 ]
+const ULTIMA = ETAPAS.length - 1
 const etapaIdx = (item: Item) => ETAPAS.findIndex((e) => e.statuses.includes(item.status))
-const COLS_DIA = "76px minmax(0,1.3fr) minmax(0,1fr) minmax(0,1fr) minmax(300px,1.6fr) 176px 128px"
-const COLS_HIST = "110px 70px minmax(0,1.3fr) minmax(0,1.1fr) minmax(0,1fr) 140px 128px"
+const ausente = (item: Item) => /falt|cancel/i.test(item.status)
+const prioridade = (item: Item) => (item.urgency || item.extra?.prioridade === "Urgente" ? "Urgente" : item.extra?.prioridade === "Preferencial" ? "Preferencial" : "Normal")
+const COLS_HIST = "110px 70px minmax(0,1.3fr) minmax(0,1.1fr) minmax(0,1fr) 170px 128px"
 
 export default function Consultas() {
   const { data, deleteItem, updateItem } = useVetFlow()
@@ -26,55 +34,141 @@ export default function Consultas() {
   const [day, setDay] = useState(() => todayISO())
   const [confirmDelete, setConfirmDelete] = useState<Item | null>(null)
   const [callItem, setCallItem] = useState<Item | null>(null)
+  const [dragOver, setDragOver] = useState(-1)
+
+  /* Senha: ordem de cadastro no dia (A = normal, P = preferencial, U = urgente). Não muda com a busca. */
+  const senhas = useMemo(() => {
+    const map = new Map<string, string>()
+    data.consultas
+      .filter((item) => itemDate(item) === day)
+      .sort((a, b) => `${a.createdAt}${a.id}`.localeCompare(`${b.createdAt}${b.id}`))
+      .forEach((item, n) => {
+        const definida = typeof item.extra?.senha === "string" ? item.extra.senha : ""
+        const p = prioridade(item)
+        map.set(item.id, definida || `${p === "Urgente" ? "U" : p === "Preferencial" ? "P" : "A"}${String(n + 1).padStart(3, "0")}`)
+      })
+    return map
+  }, [data.consultas, day])
+  const senha = (item: Item) => senhas.get(item.id) || "—"
 
   const doDia = useMemo(
     () => data.consultas.filter((item) => itemDate(item) === day && matches(item, query)).sort((a, b) => (a.time || "").localeCompare(b.time || "")),
     [data.consultas, day, query],
   )
-  const ativos = doDia.filter((item) => !/falt|cancel/i.test(item.status))
-  const ausentes = doDia.filter((item) => /falt|cancel/i.test(item.status))
+  const ativos = doDia.filter((item) => !ausente(item))
+  const ausentes = doDia.filter(ausente)
+  const colunas = ETAPAS.map((_, i) => {
+    const itens = ativos.filter((item) => Math.max(0, etapaIdx(item)) === i)
+    /* na fila, urgente e preferencial passam na frente; finalizados ficam em ordem de horário */
+    if (i < ULTIMA) {
+      const peso = (item: Item) => (prioridade(item) === "Urgente" ? 0 : prioridade(item) === "Preferencial" ? 1 : 2)
+      itens.sort((a, b) => peso(a) - peso(b) || (a.time || "").localeCompare(b.time || ""))
+    }
+    return itens
+  })
+
   const historico = useMemo(
     () => data.consultas.filter((item) => matches(item, query)).sort((a, b) => `${itemDate(b)}${b.time}`.localeCompare(`${itemDate(a)}${a.time}`)),
     [data.consultas, query],
   )
   const paged = usePaged(historico, 15, [query, aba])
-  const contar = (i: number) => ativos.filter((item) => etapaIdx(item) === i).length
 
-  const avancar = (item: Item) => {
-    const i = Math.max(0, etapaIdx(item))
-    const prox = ETAPAS[Math.min(3, i + 1)]
-    updateItem("consultas", item.id, { status: prox.key })
-    forms.toast(`${item.animal || item.name}: ${prox.label}`)
+  const mover = (item: Item, destino: number) => {
+    const etapa = ETAPAS[Math.max(0, Math.min(ULTIMA, destino))]
+    updateItem("consultas", item.id, { status: etapa.key })
+    forms.toast(`${senha(item)} · ${item.animal || item.name} → ${etapa.label}`)
   }
-  const botao = (item: Item) => {
-    const i = etapaIdx(item)
-    if (i === 3) return null
-    const label = i <= 0 ? "Iniciar triagem" : i === 1 ? "Chamar ao consultório" : "Finalizar"
-    if (i === 1) {
-      return (
+  /* clicar no cartão (ou no botão) chama a consulta para a próxima etapa, com confirmação */
+  const chamar = (item: Item) => {
+    if (Math.max(0, etapaIdx(item)) >= ULTIMA) return navigate(`/consultas/${item.id}`)
+    setCallItem(item)
+  }
+  const voltar = (item: Item) => mover(item, Math.max(0, etapaIdx(item)) - 1)
+
+  const onDrop = (event: DragEvent, destino: number) => {
+    event.preventDefault()
+    setDragOver(-1)
+    const item = data.consultas.find((c) => c.id === event.dataTransfer.getData("text/plain"))
+    if (item && Math.max(0, etapaIdx(item)) !== destino) mover(item, destino)
+  }
+
+  const Cartao = ({ item, i }: { item: Item; i: number }) => {
+    const p = prioridade(item)
+    const etapa = ETAPAS[i]
+    return (
+      <article
+        className={`cq-card cq-${etapa.tone} cq-g-${p === "Urgente" ? "u" : p === "Preferencial" ? "p" : "n"}`}
+        draggable
+        onDragStart={(event) => {
+          event.dataTransfer.setData("text/plain", item.id)
+          event.dataTransfer.effectAllowed = "move"
+        }}
+        aria-label={`Senha ${senha(item)}, ${item.animal || item.name}`}
+      >
         <button
-          className="vx-btn vx-btn-p vx-btn-sm cx-call-trigger"
-          aria-label={`Chamar ${item.animal || item.name} ao consultório`}
-          onClick={() => setCallItem(item)}
+          type="button"
+          className="cq-card-main"
+          title={i < ULTIMA ? `Clique para ${etapa.acao.toLowerCase()}` : "Ver consulta"}
+          onClick={() => chamar(item)}
         >
-          <Volume2 />
-          <span>{label}</span>
+          <span className="cq-card-top">
+            <span className="cq-senha">
+              <small>Senha</small>
+              <b>{senha(item)}</b>
+            </span>
+            <span className={`cq-prio cq-prio-${p === "Urgente" ? "u" : p === "Preferencial" ? "p" : "n"}`}>
+              {p === "Urgente" ? <Siren /> : p === "Preferencial" ? <TriangleAlert /> : <CircleCheck />}
+              {p}
+            </span>
+          </span>
+          <strong className="cq-pet">{item.animal || "Paciente não informado"}</strong>
+          <span className="cq-owner">{item.owner || "Tutor não informado"}</span>
+          <span className="cq-meta">
+            <span>{item.name}</span>
+            <span className="cq-time">
+              <Clock3 />
+              {item.time || "—"}
+            </span>
+          </span>
+          <span className="cq-vet">
+            <UserRound />
+            {item.professional || "Sem veterinário"}
+            {typeof item.extra?.sala === "string" && i === 2 ? ` · ${item.extra.sala}` : ""}
+          </span>
         </button>
-      )
-    }
-    return <button className="vx-btn vx-btn-p vx-btn-sm" aria-label={`${label}: ${item.animal || item.name}`} onClick={() => avancar(item)}>{label}</button>
+        <div className="cq-card-foot">
+          {i > 0 && (
+            <button type="button" className="cq-back" title="Voltar uma etapa" aria-label={`Voltar ${item.animal || item.name} para ${ETAPAS[i - 1].label}`} onClick={() => voltar(item)}>
+              <Undo2 />
+            </button>
+          )}
+          {i < ULTIMA ? (
+            <button type="button" className="cq-next" onClick={() => chamar(item)}>
+              {i < 2 ? <Volume2 /> : i === ULTIMA - 1 ? <Check /> : <ArrowRight />}
+              <span>{etapa.acao}</span>
+            </button>
+          ) : (
+            <span className="cq-done">
+              <Check /> Concluída
+            </span>
+          )}
+          <RowActions name={`consulta de ${item.animal || item.name}`} onView={() => navigate(`/consultas/${item.id}`)} onEdit={() => forms.open("consultas", item)} onDelete={() => setConfirmDelete(item)} />
+        </div>
+      </article>
+    )
   }
 
   return (
     <Page
-      className="consultations-page"
-      bg="#f4f6f9"
+      className="consultations-page cq-page"
+      bg="#eef1f6"
+      blobs={[["#ffd2b0", -140, 220, 520, 420], ["#c9dcff", "72%", 120, 520, 440], ["#c8f0e2", "38%", 520, 420, 360]]}
       crumb="Consultas"
       title="Consultas"
       actions={
         <>
           <SearchBox value={query} onChange={setQuery} placeholder="Buscar" />
-          <button className="vx-btn vx-btn-p" onClick={() => forms.open("consultas", undefined, { date: day })}>
+          <button className="vx-btn vx-btn-p" onClick={() => forms.open("consultas", undefined, { date: day, status: "Chegou" })}>
             <Plus /> Nova consulta
           </button>
         </>
@@ -98,63 +192,60 @@ export default function Consultas() {
             {day !== todayISO() && <button className="vx-btn vx-btn-g vx-btn-sm" onClick={() => setDay(todayISO())}>Hoje</button>}
           </div>
 
-          <div className="cs-count">
+          <div className="cq-legend" aria-label="Prioridade das consultas do dia">
+            {(["Urgente", "Preferencial", "Normal"] as const).map((nivel) => (
+              <span key={nivel} className={`cq-prio cq-prio-${nivel === "Urgente" ? "u" : nivel === "Preferencial" ? "p" : "n"}`}>
+                {nivel === "Urgente" ? <Siren /> : nivel === "Preferencial" ? <TriangleAlert /> : <CircleCheck />}
+                {nivel} <b>{ativos.filter((item) => prioridade(item) === nivel && Math.max(0, etapaIdx(item)) < ULTIMA).length}</b>
+              </span>
+            ))}
+            <small>Clique na consulta para chamá-la para a próxima etapa · arraste entre colunas se preferir</small>
+          </div>
+
+          <div className="cq-board">
             {ETAPAS.map((etapa, i) => (
-              <div key={etapa.key}><strong>{contar(i)}</strong><span>{etapa.label}</span></div>
+              <section
+                key={etapa.key}
+                className={`cq-col cq-${etapa.tone} ${dragOver === i ? "is-over" : ""}`}
+                aria-label={`${etapa.label}: ${colunas[i].length}`}
+                onDragOver={(event) => {
+                  event.preventDefault()
+                  if (dragOver !== i) setDragOver(i)
+                }}
+                onDragLeave={(event) => {
+                  if (!event.currentTarget.contains(event.relatedTarget as Node)) setDragOver(-1)
+                }}
+                onDrop={(event) => onDrop(event, i)}
+              >
+                <header className="cq-col-head">
+                  <span className="cq-step">{i + 1}</span>
+                  <span className="cq-col-title">
+                    <strong>{etapa.label}</strong>
+                    <small>{etapa.hint}</small>
+                  </span>
+                  <span className="cq-count">{colunas[i].length}</span>
+                </header>
+                <div className="cq-col-body">
+                  {colunas[i].map((item) => (
+                    <Cartao key={item.id} item={item} i={i} />
+                  ))}
+                  {!colunas[i].length && <div className="cq-empty">{i === 0 ? "Nenhuma senha aguardando" : "Ninguém nesta etapa"}</div>}
+                </div>
+              </section>
             ))}
           </div>
 
-          <div className="vx-table">
-            <div className="vx-tr vx-th" style={{ gridTemplateColumns: COLS_DIA }}>
-              <span>Hora</span><span>Paciente</span><span>Tipo</span><span>Veterinário</span><span>Etapa</span><span /><span className="r">Ações</span>
-            </div>
-            {ativos.map((item) => {
-              const i = etapaIdx(item)
-              return (
-                <div key={item.id} className="vx-tr" style={{ gridTemplateColumns: COLS_DIA }}>
-                  <span className="vx-mono" data-label="Hora" style={{ fontSize: 16 }}>{item.time || "—"}</span>
-                  <span data-label="Paciente"><strong>{item.animal || "—"}</strong><small className="vx-muted" style={{ display: "block" }}>{item.owner || ""}</small></span>
-                  <span data-label="Tipo">{item.name}</span>
-                  <span data-label="Veterinário">{item.professional || "—"}</span>
-                  <ol className="cs-steps" data-label="Etapa">
-                    {ETAPAS.map((etapa, n) => (
-                      <li key={etapa.key} className={i === 3 && n === 3 ? "done on" : n < i ? "done" : n === i ? "on" : ""}>
-                        <i>{n < i || (i === 3 && n === 3) ? <Check size={12} /> : n + 1}</i>{etapa.label}
-                      </li>
-                    ))}
-                  </ol>
-                  <span data-label="Próxima ação">{botao(item)}</span>
-                  <span className="r" data-label="Ações">
-                    <RowActions
-                      name={`consulta de ${item.animal || item.name}`}
-                      onView={() => navigate(`/consultas/${item.id}`)}
-                      onEdit={() => forms.open("consultas", item)}
-                      onDelete={() => setConfirmDelete(item)}
-                    />
-                  </span>
-                </div>
-              )
-            })}
-            {!ativos.length && <div className="vx-empty">Nenhuma consulta neste dia.</div>}
-          </div>
-
           {ausentes.length > 0 && (
-            <>
-              <h2 className="cx-h2">Faltas e cancelamentos</h2>
-              <div className="vx-table">
+            <section className="cq-absent">
+              <span className="vx-lbl">Faltas e cancelamentos · {ausentes.length}</span>
+              <div>
                 {ausentes.map((item) => (
-                  <div key={item.id} className="vx-tr" style={{ gridTemplateColumns: "76px minmax(0,1.3fr) minmax(0,1fr) 140px 128px" }}>
-                    <span className="vx-mono" data-label="Hora">{item.time || "—"}</span>
-                    <span data-label="Paciente"><strong>{item.animal || "—"}</strong><small className="vx-muted" style={{ display: "block" }}>{item.owner || ""}</small></span>
-                    <span data-label="Tipo">{item.name}</span>
-                    <span data-label="Situação"><StatusPill status={item.status} /></span>
-                    <span className="r" data-label="Ações">
-                      <RowActions name={`consulta de ${item.animal}`} onView={() => navigate(`/consultas/${item.id}`)} onEdit={() => forms.open("consultas", item)} onDelete={() => setConfirmDelete(item)} />
-                    </span>
-                  </div>
+                  <button key={item.id} type="button" onClick={() => navigate(`/consultas/${item.id}`)}>
+                    <b>{senha(item)}</b> {item.animal || item.name} · {item.time || "—"} <StatusPill status={item.status} />
+                  </button>
                 ))}
               </div>
-            </>
+            </section>
           )}
         </>
       ) : (
@@ -186,10 +277,14 @@ export default function Consultas() {
         </>
       )}
       {forms.node}
-      {callItem && (
+      {callItem && (() => {
+        const atual = Math.max(0, etapaIdx(callItem))
+        const proxima = ETAPAS[Math.min(ULTIMA, atual + 1)]
+        const p = prioridade(callItem)
+        return (
         <Modal
-          title="Chamar ao consultório"
-          text="Confira os dados antes de anunciar o paciente e iniciar o atendimento."
+          title={ETAPAS[atual].acao}
+          text={`A consulta sai de ${ETAPAS[atual].label} e vai para ${proxima.label}. Confira os dados antes de confirmar.`}
           onClose={() => setCallItem(null)}
           actions={
             <>
@@ -198,13 +293,12 @@ export default function Consultas() {
                 className="vx-btn vx-btn-p cx-call-confirm"
                 type="button"
                 onClick={() => {
-                  updateItem("consultas", callItem.id, { status: "Em atendimento" })
-                  forms.toast(`${callItem.animal || callItem.name} chamado ao consultório.`)
+                  mover(callItem, atual + 1)
                   setCallItem(null)
                 }}
               >
-                <Volume2 />
-                Chamar agora
+                {atual < 2 ? <Volume2 /> : <Check />}
+                {atual < 2 ? "Chamar agora" : atual === ULTIMA - 1 ? "Finalizar" : "Enviar agora"}
               </button>
             </>
           }
@@ -213,7 +307,7 @@ export default function Consultas() {
             <div className="cx-call-patient">
               <span className="cx-call-icon"><Stethoscope /></span>
               <span>
-                <small>Paciente</small>
+                <small>Senha {senha(callItem)} · <span className={`cq-prio cq-prio-${p === "Urgente" ? "u" : p === "Preferencial" ? "p" : "n"}`}>{p}</span></small>
                 <strong>{callItem.animal || "Paciente não informado"}</strong>
                 <em>{callItem.name}</em>
               </span>
@@ -225,7 +319,8 @@ export default function Consultas() {
             {callItem.owner && <p className="cx-call-owner">Responsável: <strong>{callItem.owner}</strong></p>}
           </div>
         </Modal>
-      )}
+        )
+      })()}
       {confirmDelete && (
         <Confirm
           danger
