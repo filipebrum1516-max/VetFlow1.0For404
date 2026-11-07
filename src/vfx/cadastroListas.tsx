@@ -6,7 +6,7 @@ import { normalize, useVetFlow, type Item, type UnitData } from "../store"
 import { usePageForms } from "./hooks"
 import RowActions, { RowButton } from "./RowActions"
 import { addDays, brl, colorFor, fmtDate, hash, itemDate, matches, parseMoney, todayISO } from "./ui"
-import { CadastroLista, Duo, Ident, Status, categoriaUtil, initialsOf, subUtil } from "./CadastroLista"
+import { CadastroLista, Duo, Ident, Painel, Status, categoriaUtil, initialsOf, subUtil } from "./CadastroLista"
 
 /* ================= Medicamentos ================= */
 export function grupoMed(item: Item) {
@@ -345,11 +345,12 @@ export function ServicosLista({ modo }: { modo: ReactNode }) {
 }
 
 /* ================= Convenios ================= */
-export function ConveniosLista({ modo }: { modo: ReactNode }) {
+export function ConveniosLista({ modo }: { modo?: ReactNode }) {
   const { data, updateItem, addItem } = useVetFlow()
   const navigate = useNavigate()
   const forms = usePageForms("convenios")
   const [query, setQuery] = useState("")
+  const [abertoId, setAbertoId] = useState("")
   const [status, setStatus] = useState("Todos")
   const [tipo, setTipo] = useState("Todos")
   const statsOf = (item: Item) => {
@@ -396,7 +397,7 @@ export function ConveniosLista({ modo }: { modo: ReactNode }) {
       novo={{ label: "Novo convênio", onClick: () => forms.open() }}
       rows={rows}
       rowKey={(item) => item.id}
-      onRow={(item) => navigate(`/convenios/${item.id}`)}
+      onRow={(item) => setAbertoId(item.id)}
       noun="convênios"
       vazio="Nenhum convênio encontrado"
       colunas={[
@@ -409,12 +410,73 @@ export function ConveniosLista({ modo }: { modo: ReactNode }) {
       ]}
       acoesW="200px"
       acoes={(item) => (
-        <RowActions name={item.name} onView={() => navigate(`/convenios/${item.id}`)} onEdit={() => forms.open("convenios", item)} onDelete={() => navigate(`/convenios/${item.id}?excluir=1`)}>
+        <RowActions name={item.name} onView={() => setAbertoId(item.id)} onEdit={() => forms.open("convenios", item)} onDelete={() => navigate(`/convenios/${item.id}?excluir=1`)}>
           <RowButton title="Faturar lote" onClick={() => faturar(item)}><CircleDollarSign /></RowButton>
           <RowButton title={item.status === "Suspenso" ? "Reativar" : "Suspender"} onClick={() => alternar(item)}>{item.status === "Suspenso" ? <CirclePlay /> : <CirclePause />}</RowButton>
         </RowActions>
       )}
     >
+      {(() => {
+        const item = data.convenios.find((c) => c.id === abertoId)
+        if (!item) return null
+        const s = statsOf(item)
+        const cor = item.extra?.cor || colorFor(item.name)
+        type Cob = { servico: string; cobertura: string; repasse: string; limite: string }
+        const cobertura: Cob[] = item.extra?.cobertura?.filter((r: Cob) => r.servico) || data.servicos.slice(0, 6).map((sv, i) => ({ servico: sv.name, cobertura: ["Coparticipação", "Coberto", "Coberto", "Carência", "Não coberto", "Coberto"][i % 6], repasse: brl(Math.round((sv.amountValue || 100) * 0.7)), limite: ["ilimitado", "6 / ano", "4 / ano", "2 / ano", "—", "ilimitado"][i % 6] }))
+        const guias = data.consultas.filter((c) => c.extra?.convenio === item.name).slice(0, 5)
+        const guiasLista = guias.length ? guias : data.consultas.filter((_, idx) => (idx + hash(item.id)) % 97 === 0).slice(0, 4)
+        const planos: { plano: string; carencia: string; copart: string }[] = item.extra?.planos?.filter((p: { plano: string }) => p.plano) || [{ plano: "Essencial", carencia: "60 dias", copart: "30%" }, { plano: "Completo", carencia: "30 dias", copart: "20%" }]
+        return (
+          <Painel
+            onClose={() => setAbertoId("")}
+            title={
+              <div className="cv-card" style={{ background: `linear-gradient(135deg, ${cor}, ${cor}bb)` }}>
+                <span className="cv-chip" />
+                <small>{tipoOf(item)}</small>
+                <strong>{item.name}</strong>
+                <div className="cv-card-foot"><span>{s.vidas} vidas</span><span>prazo {s.prazo}</span><Status status={item.status} /></div>
+              </div>
+            }
+            foot={
+              <>
+                <button className="vx-btn vx-btn-g" onClick={() => forms.open("convenios", item)}>Editar</button>
+                <button className="vx-btn vx-btn-g" onClick={() => alternar(item)}>{item.status === "Suspenso" ? "Reativar" : "Suspender"}</button>
+                <button className="vx-btn vx-btn-p" onClick={() => faturar(item)}><CircleDollarSign /> Faturar lote · {brl(s.repasse)}</button>
+              </>
+            }
+          >
+            <div className="cv-stats">
+              <div><small>A receber</small><b>{brl(s.repasse)}</b><span>pago em {s.prazo}</span></div>
+              <div><small>Guias no mês</small><b>{s.guias}</b><span>autorizadas e em análise</span></div>
+              <div className={s.glosas ? "late" : ""}><small>Glosas</small><b>{brl(s.glosas)}</b><span>{s.glosas ? "para recorrer" : "nenhuma"}</span></div>
+            </div>
+            <section className="cv-sec">
+              <h4>Planos</h4>
+              <div className="cv-planos">{planos.map((p) => <div key={p.plano}><strong>{p.plano}</strong><small>carência {p.carencia || "—"} · coparticipação {p.copart || "—"}</small></div>)}</div>
+            </section>
+            <section className="cv-sec">
+              <h4>Cobertura por serviço</h4>
+              <div className="cv-table">
+                <div className="cv-tr cv-th"><span>Serviço</span><span>Cobertura</span><span>Repasse</span><span>Limite</span></div>
+                {cobertura.map((r) => (
+                  <div key={r.servico} className="cv-tr"><span>{r.servico}</span><span className={`cv-cob ${normalize(r.cobertura).replace(/\s+/g, "-")}`}>{r.cobertura}</span><span>{r.repasse}</span><span>{r.limite}</span></div>
+                ))}
+              </div>
+            </section>
+            <section className="cv-sec">
+              <h4>Guias recentes</h4>
+              {guiasLista.map((g, idx) => (
+                <button key={g.id} className="cv-guia" onClick={() => navigate(`/consultas/${g.id}`)}>
+                  <span className="cv-gnum">G-{String(100 + ((hash(g.id) + idx) % 900))}</span>
+                  <span><strong>{g.animal || "Paciente"}</strong><small>{g.service || g.name} · {fmtDate(g.date)}</small></span>
+                  <Status status={["Autorizada", "Em análise", "Autorizada", "Glosada"][(hash(g.id) + idx) % 4]} />
+                </button>
+              ))}
+              {!guiasLista.length && <p className="cv-empty">Nenhuma guia registrada.</p>}
+            </section>
+          </Painel>
+        )
+      })()}
       {forms.node}
     </CadastroLista>
   )

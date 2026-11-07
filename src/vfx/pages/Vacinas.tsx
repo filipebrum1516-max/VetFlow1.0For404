@@ -1,212 +1,273 @@
-import { useEffect, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
 import { useNavigate } from "react-router"
-import { MessageCircle, Plus, Printer, Search } from "lucide-react"
-import { normalize, useVetFlow } from "../../store"
+import { ArrowLeft, BookOpen, CalendarClock, CircleCheck, MessageCircle, Plus, Printer, Search, Syringe, TriangleAlert } from "lucide-react"
+import { normalize, useVetFlow, type Item } from "../../store"
 import { usePageForms } from "../hooks"
-import { colorFor, daysBetween, fmtDate, initials, itemDate, Page, Seg, todayISO, useQueryParam } from "../ui"
+import { addDays, colorFor, daysBetween, fmtDate, initials, itemDate, Page, Pager, StatusPill, todayISO, usePaged, useQueryParam } from "../ui"
+
+/*
+ * Vacinas abre numa PASTA com abas (Atrasadas · A vencer · Em dia · Todos), uma linha por animal.
+ * Clicar no animal abre a CARTEIRA dele: doses aplicadas (carimbo), atrasadas e próximas.
+ */
+type Aba = "Atrasadas" | "A vencer" | "Em dia" | "Todos"
+type Resumo = { animal: Item; doses: Item[]; situacao: Exclude<Aba, "Todos">; ultima?: Item; proxima?: { item: Item; when: string }; atrasadas: number; reforcoAtrasado: Set<string> }
+const JANELA = 30 // dias para considerar "a vencer"
+
+function resumir(animal: Item, doses: Item[], hoje: string): Resumo {
+  const limite = addDays(hoje, JANELA)
+  const pendente = (d: Item) => d.status !== "Aplicada"
+  const dataPendente = (d: Item) => d.dueDate || itemDate(d)
+  /* última dose aplicada de cada vacina: é ela que define quando vence o reforço */
+  const ultimaPorVacina = new Map<string, Item>()
+  doses.filter((d) => !pendente(d)).forEach((d) => {
+    const atual = ultimaPorVacina.get(d.name)
+    if (!atual || itemDate(d) > itemDate(atual)) ultimaPorVacina.set(d.name, d)
+  })
+  const temPendente = (nome: string) => doses.some((d) => pendente(d) && d.name === nome)
+  const atrasadas = [
+    ...doses.filter((d) => pendente(d) && (d.status === "Atrasada" || dataPendente(d) < hoje)),
+    ...[...ultimaPorVacina.values()].filter((d) => d.dueDate && d.dueDate < hoje && !temPendente(d.name)),
+  ].map((d) => ({ item: d, when: pendente(d) ? dataPendente(d) : d.dueDate! })).sort((a, b) => a.when.localeCompare(b.when))
+  const futuras = [
+    ...doses.filter((d) => pendente(d) && d.status !== "Atrasada" && dataPendente(d) >= hoje).map((d) => ({ item: d, when: dataPendente(d) })),
+    ...[...ultimaPorVacina.values()].filter((d) => d.dueDate && d.dueDate >= hoje && !temPendente(d.name)).map((d) => ({ item: d, when: d.dueDate! })),
+  ].sort((a, b) => a.when.localeCompare(b.when))
+  const aplicadas = doses.filter((d) => !pendente(d)).sort((a, b) => itemDate(b).localeCompare(itemDate(a)))
+  const situacao = atrasadas.length ? "Atrasadas" : futuras.some((f) => f.when <= limite) ? "A vencer" : "Em dia"
+  return { animal, doses, situacao, ultima: aplicadas[0], proxima: atrasadas[0] || futuras[0], atrasadas: atrasadas.length, reforcoAtrasado: new Set(atrasadas.filter((a) => !pendente(a.item)).map((a) => a.item.id)) }
+}
+const quando = (iso: string) => {
+  const d = daysBetween(todayISO(), iso)
+  return d === 0 ? "hoje" : d > 0 ? `em ${d} dia${d === 1 ? "" : "s"}` : `${-d} dia${d === -1 ? "" : "s"} de atraso`
+}
 
 export default function Vacinas() {
   const { data, addItem } = useVetFlow()
   const navigate = useNavigate()
+  const forms = usePageForms("vacinas", (saved) => saved.animalId && setAnimalId(saved.animalId))
   const initialFilter = useQueryParam("filtro")
   const paramAnimal = useQueryParam("animal")
-  // Versões antigas salvas no navegador podem não ter todas as coleções.
-  // A tela deve hidratar com listas vazias e se reconciliar quando o store terminar de carregar.
-  const animals = Array.isArray(data.animais) ? data.animais : []
-  const vaccines = Array.isArray(data.vacinas) ? data.vacinas : []
-  const tutors = Array.isArray(data.tutores) ? data.tutores : []
-  const [radar, setRadar] = useState<"Atrasada" | "A vencer">(initialFilter === "A vencer" ? "A vencer" : "Atrasada")
+  const [aba, setAba] = useState<Aba>(initialFilter === "A vencer" ? "A vencer" : initialFilter === "Atrasada" ? "Atrasadas" : "Atrasadas")
   const [query, setQuery] = useState("")
   const [animalId, setAnimalId] = useState(() => {
-    const byParam = animals.find((item) => item.id === paramAnimal || normalize(item.name) === normalize(paramAnimal || ""))
-    if (byParam) return byParam.id
-    const recent = [...vaccines].sort((a, b) => itemDate(b).localeCompare(itemDate(a)))[0]
-    const recentAnimal = animals.find((item) => item.id === recent?.animalId || normalize(item.name) === normalize(recent?.animal || ""))
-    return recentAnimal?.id || animals[0]?.id || ""
+    if (!paramAnimal) return ""
+    return data.animais.find((item) => item.id === paramAnimal || normalize(item.name) === normalize(paramAnimal))?.id || ""
   })
-  const forms = usePageForms("vacinas", (saved) => {
-    const savedAnimal = animals.find((item) => item.id === saved.animalId || normalize(item.name) === normalize(saved.animal || ""))
-    if (savedAnimal) setAnimalId(savedAnimal.id)
-  })
+  const hoje = todayISO()
 
-  useEffect(() => {
-    if (!animals.length) {
-      if (animalId) setAnimalId("")
-      return
-    }
-    if (animalId && animals.some((item) => item.id === animalId)) return
-    const byParam = animals.find((item) => item.id === paramAnimal || normalize(item.name) === normalize(paramAnimal || ""))
-    const recent = [...vaccines].sort((a, b) => itemDate(b).localeCompare(itemDate(a)))[0]
-    const recentAnimal = animals.find((item) => item.id === recent?.animalId || normalize(item.name) === normalize(recent?.animal || ""))
-    setAnimalId(byParam?.id || recentAnimal?.id || animals[0].id)
-  }, [animalId, animals, paramAnimal, vaccines])
+  const resumos = useMemo(() => {
+    const porAnimal = new Map<string, Item[]>()
+    data.vacinas.forEach((v) => v.animalId && porAnimal.set(v.animalId, [...(porAnimal.get(v.animalId) || []), v]))
+    const animais = new Map(data.animais.map((a) => [a.id, a]))
+    const out: Resumo[] = []
+    porAnimal.forEach((doses, id) => {
+      const animal = animais.get(id)
+      if (animal) out.push(resumir(animal, doses, hoje))
+    })
+    return out
+  }, [data.vacinas, data.animais, hoje])
+  const contagem = {
+    Atrasadas: resumos.filter((r) => r.situacao === "Atrasadas").length,
+    "A vencer": resumos.filter((r) => r.situacao === "A vencer").length,
+    "Em dia": resumos.filter((r) => r.situacao === "Em dia").length,
+    Todos: resumos.length,
+  }
+  const lista = resumos
+    .filter((r) => (aba === "Todos" || r.situacao === aba) && (!query.trim() || normalize(`${r.animal.name} ${r.animal.owner} ${r.doses.map((d) => d.name).join(" ")}`).includes(normalize(query))))
+    .sort((a, b) => (a.proxima?.when || "9999").localeCompare(b.proxima?.when || "9999"))
+  const paged = usePaged(lista, 10, [aba, query])
 
-  const animal = animals.find((item) => item.id === animalId)
-  const tutor = tutors.find((item) => item.id === animal?.ownerId)
-    || tutors.find((item) => normalize(item.name) === normalize(animal?.owner || ""))
-  const doses = useMemo(
-    () => vaccines
-      .filter((item) => item.animalId === animalId || (!!animal && normalize(item.animal || "") === normalize(animal.name)))
-      .sort((a, b) => itemDate(a).localeCompare(itemDate(b))),
-    [animal, animalId, vaccines],
-  )
-  const upcoming = doses
-    .filter((item) => item.status !== "Aplicada" || (item.dueDate && item.dueDate >= todayISO()))
-    .map((item) => ({ item, when: item.status === "Aplicada" ? item.dueDate! : itemDate(item) }))
-    .sort((a, b) => a.when.localeCompare(b.when))[0]
-  const searchResults = query.trim()
-    ? animals.filter((item) => normalize(`${item.name} ${item.owner}`).includes(normalize(query))).slice(0, 6)
-    : []
-  const late = vaccines.filter((item) => item.status === "Atrasada")
-  const soon = vaccines.filter((item) => item.status === "A vencer")
-  const radarList = (radar === "Atrasada" ? late : soon).slice(0, 7)
-
-  const remind = () => {
-    const owners = new Map<string, string>()
-    late.forEach((item) => item.ownerId && !owners.has(item.ownerId) && owners.set(item.ownerId, item.animalId || ""))
+  const lembrar = () => {
     let sent = 0
-    owners.forEach((petId) => {
+    resumos.filter((r) => r.situacao === "Atrasadas").forEach((r) => {
       if (sent >= 40) return
-      addItem("comunicacao", { name: "Lembrete de vacina", animalId: petId, status: "Enviada", category: "WhatsApp", extra: { mensagem: "Olá! A vacina do seu pet está atrasada. Responda para agendar." } })
+      addItem("comunicacao", { name: "Lembrete de vacina", animalId: r.animal.id, status: "Enviada", category: "WhatsApp", extra: { mensagem: `Olá! A vacina de ${r.animal.name} está atrasada. Responda para agendar.` } })
       sent++
     })
     forms.toast(`${sent} lembretes registrados em Comunicação (envio simulado: nenhuma mensagem real sai desta versão).`)
   }
 
+  const animal = data.animais.find((item) => item.id === animalId)
+  if (animal) return <Carteira animal={animal} onBack={() => setAnimalId("")} forms={forms} />
+
+  const ABAS: [Aba, string, typeof TriangleAlert][] = [["Atrasadas", "late", TriangleAlert], ["A vencer", "soon", CalendarClock], ["Em dia", "ok", CircleCheck], ["Todos", "all", BookOpen]]
   return (
     <Page
       bg="#eef6f0"
       blobs={[["#9fe3c6", 160, 200, 560, 520], ["#ffd39a", "80%", -60, 380, 380], ["#ffb8b0", "65%", 600, 300, 300]]}
       crumb="Vacinas"
       title="Vacinas"
-      sub="Vacinas aplicadas e próximas doses de cada paciente."
       actions={
         <>
-          <div style={{ position: "relative" }}>
-            <label className="vx-search">
-              <Search />
-              <input aria-label="Abrir carteirinha de" placeholder="Abrir carteirinha de…" value={query} onChange={(event) => setQuery(event.target.value)} />
-            </label>
-            {searchResults.length > 0 && (
-              <div className="vx-pick-list" style={{ position: "absolute", left: 0, right: 0, zIndex: 5 }}>
-                {searchResults.map((item) => (
-                  <button key={item.id} onClick={() => { setAnimalId(item.id); setQuery("") }}>
-                    <span className="vx-av" style={{ width: 28, height: 28, fontSize: 10, background: colorFor(item.name) }}>{initials(item.name)}</span>
-                    <span><strong>{item.name}</strong><small>{item.subtitle} · {item.owner}</small></span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-          <button className="vx-btn vx-btn-g" onClick={() => window.print()}>
-            <Printer /> Imprimir
-          </button>
-          <button className="vx-btn vx-btn-p" onClick={() => forms.open("vacinas", undefined, animalId ? { animalId } : undefined)}>
+          <label className="vx-search">
+            <Search />
+            <input aria-label="Buscar animal, tutor ou vacina" placeholder="Buscar animal, tutor ou vacina" value={query} onChange={(event) => setQuery(event.target.value)} />
+          </label>
+          <button className="vx-btn vx-btn-p" onClick={() => forms.open("vacinas")}>
             <Plus /> Registrar aplicação
           </button>
         </>
       }
     >
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 300px", gap: 24, alignItems: "start" }} className="vx-vac-grid">
-        <div className="vx-booklet">
-          <div className="spine" />
-          <div className="pg">
-            <div className="vx-lbl" style={{ color: "var(--vx-teal)" }}>Carteira nº {animal ? String(animals.indexOf(animal) + 1).padStart(4, "0") : "—"} · {animal ? "ativa" : "—"}</div>
-            {animal ? (
-              <>
-                <div className="vx-row" style={{ gap: 16 }}>
-                  <span className="vx-av" style={{ width: 84, height: 84, fontSize: 28, borderRadius: 26, background: colorFor(animal.id) }}>{initials(animal.name)}</span>
-                  <div>
-                    <div style={{ fontSize: 30, fontWeight: 800, letterSpacing: "-.03em" }}>{animal.name}</div>
-                    <div style={{ fontSize: 14, color: "var(--vx-muted)" }}>{animal.subtitle} · {animal.sex || "sexo não informado"}</div>
-                    <button className="vx-chip" style={{ marginTop: 6 }} onClick={() => tutor && navigate(`/tutores/${tutor.id}`)}>Tutor: {animal.owner}</button>
-                  </div>
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10, fontSize: 13 }}>
-                  <div style={{ padding: "10px 12px", borderRadius: 14, background: "rgba(15,118,110,.07)" }}><div className="vx-lbl" style={{ fontSize: 10 }}>Doses registradas</div><b>{doses.length}</b></div>
-                  <div style={{ padding: "10px 12px", borderRadius: 14, background: "rgba(15,118,110,.07)" }}><div className="vx-lbl" style={{ fontSize: 10 }}>Situação</div><b>{doses.some((item) => item.status === "Atrasada") ? "Com atraso" : "Em dia"}</b></div>
-                </div>
-                <div style={{ marginTop: "auto", padding: 18, borderRadius: 20, background: "#0f766e", color: "#fff" }}>
-                  <div className="vx-lbl" style={{ color: "rgba(255,255,255,.8)" }}>Próxima dose</div>
-                  <div style={{ fontSize: 22, fontWeight: 800, marginTop: 4 }}>{upcoming ? upcoming.item.name : "Nenhuma programada"}</div>
-                  <div className="vx-row" style={{ justifyContent: "space-between", marginTop: 10, gap: 8 }}>
-                    <span style={{ fontSize: 14 }}>{upcoming ? fmtDate(upcoming.when) : "—"}</span>
-                    {upcoming && (
-                      <span className="vx-chip" style={{ background: "rgba(255,255,255,.18)", color: "#fff", border: 0 }}>
-                        {daysBetween(todayISO(), upcoming.when) >= 0 ? `em ${daysBetween(todayISO(), upcoming.when)} dias` : `${-daysBetween(todayISO(), upcoming.when)} dias atrás`}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </>
-            ) : (
-              <div className="vx-empty">Escolha um paciente na busca.</div>
-            )}
-          </div>
-          <div className="pg">
-            <div className="vx-row" style={{ justifyContent: "space-between" }}>
-              <strong style={{ fontSize: 17 }}>Doses</strong>
-              <span style={{ fontSize: 12, color: "var(--vx-muted)" }}>toque para abrir</span>
-            </div>
-            <div className="vx-doses">
-              {doses.map((item, index) => (
-                <button key={item.id} className={`vx-dose ${item.status !== "Aplicada" ? "pend" : ""}`} onClick={() => navigate(`/vacinas/${item.id}`)}>
-                  <strong style={{ fontSize: 12, textAlign: "center" }}>{item.name.replace("Vacina ", "")}</strong>
-                  {item.status === "Aplicada" ? (
-                    <span className="vx-stamp" style={{ color: colorFor(item.name), transform: `rotate(${[-8, 6, -4, 9, -10][index % 5]}deg)` }}>
-                      <small>APLICADA</small>
-                      <b>{fmtDate(itemDate(item), { day: "2-digit", month: "2-digit", year: "2-digit" })}</b>
-                    </span>
-                  ) : item.status === "Atrasada" ? (
-                    <span className="vx-late">ATRASADA</span>
-                  ) : (
-                    <span style={{ width: 74, height: 74, borderRadius: "50%", border: "2px dashed rgba(26,34,51,.25)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: "var(--vx-muted)" }}>
-                      {fmtDate(item.dueDate || itemDate(item), { day: "2-digit", month: "2-digit" })}
-                    </span>
-                  )}
-                  <span style={{ fontSize: 11, color: "var(--vx-muted)", textAlign: "center" }}>{item.professional || "—"}</span>
-                </button>
-              ))}
-              <button className="vx-dose pend" disabled={!animalId} onClick={() => forms.open("vacinas", undefined, { animalId })} style={{ justifyContent: "center", color: "var(--vx-accent)" }}>
-                <Plus /> <strong>Nova dose</strong>
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <div className="vx-glass" style={{ padding: 18 }}>
-            <div className="vx-lbl">Radar de reforços</div>
-            <div className="vx-row" style={{ gap: 18, marginTop: 10 }}>
-              <button onClick={() => setRadar("Atrasada")} style={{ border: 0, background: "transparent", textAlign: "left", cursor: "pointer", font: "inherit", color: "inherit" }}>
-                <div className="vx-num" style={{ fontSize: 32, color: "var(--vx-red)" }}>{late.length}</div>
-                <div style={{ fontSize: 12, color: "var(--vx-muted)" }}>atrasadas</div>
-              </button>
-              <button onClick={() => setRadar("A vencer")} style={{ border: 0, background: "transparent", textAlign: "left", cursor: "pointer", font: "inherit", color: "inherit" }}>
-                <div className="vx-num" style={{ fontSize: 32, color: "var(--vx-amber)" }}>{soon.length}</div>
-                <div style={{ fontSize: 12, color: "var(--vx-muted)" }}>a vencer</div>
-              </button>
-            </div>
-            <div style={{ marginTop: 10 }}>
-              <Seg options={["Atrasada", "A vencer"]} value={radar} onChange={setRadar} />
-            </div>
-          </div>
-          {radarList.map((item) => (
-            <button key={item.id} className="vx-glass vx-clickable" style={{ padding: "12px 14px", borderRadius: 18, display: "flex", alignItems: "center", gap: 12, font: "inherit", color: "inherit", textAlign: "left" }} onClick={() => item.animalId && setAnimalId(item.animalId)}>
-              <span style={{ width: 10, height: 40, borderRadius: 4, background: radar === "Atrasada" ? "#b4322a" : "#c98a1b" }} />
-              <span style={{ flex: 1, minWidth: 0 }}>
-                <strong style={{ display: "block", fontSize: 14 }}>{item.animal}</strong>
-                <small style={{ fontSize: 12, color: "var(--vx-muted)" }}>{item.name}</small>
-              </span>
-              <span style={{ fontSize: 12, fontWeight: 800 }}>{fmtDate(item.dueDate || itemDate(item), { day: "2-digit", month: "2-digit" })}</span>
+      <div className="vf-folder">
+        <div className="vf-tabs" role="tablist" aria-label="Situação vacinal">
+          {ABAS.map(([nome, cls, Icon]) => (
+            <button key={nome} role="tab" aria-selected={aba === nome} className={`vf-tab ${cls} ${aba === nome ? "on" : ""}`} onClick={() => setAba(nome)}>
+              <Icon /> {nome} <b>{contagem[nome]}</b>
             </button>
           ))}
-          <button className="vx-btn vx-btn-g" onClick={remind} disabled={!late.length}>
-            <MessageCircle /> Lembrar tutores por WhatsApp
-          </button>
+        </div>
+        <div className={`vf-body ${ABAS.find(([n]) => n === aba)?.[1]}`}>
+          <div className="vf-paper">
+            <div className="vf-paper-head">
+              <div>
+                <span className="vf-label">Pasta de vacinação · {aba}</span>
+                <h2>{aba === "Atrasadas" ? "Animais com vacina atrasada" : aba === "A vencer" ? `Reforços nos próximos ${JANELA} dias` : aba === "Em dia" ? "Carteiras em dia" : "Todos os animais vacinados"}</h2>
+              </div>
+              {aba === "Atrasadas" && contagem.Atrasadas > 0 && (
+                <button className="vx-btn vx-btn-g" onClick={lembrar}><MessageCircle /> Lembrar tutores por WhatsApp</button>
+              )}
+            </div>
+            <div className="vf-list">
+              <div className="vf-row vf-th">
+                <span>Animal</span><span>Última aplicada</span><span>Próxima dose</span><span>Situação</span><span />
+              </div>
+              {paged.visible.map((r) => (
+                <button key={r.animal.id} className="vf-row" onClick={() => setAnimalId(r.animal.id)}>
+                  <span className="vf-pet">
+                    <i style={{ background: colorFor(r.animal.id) }}>{initials(r.animal.name)}</i>
+                    <span><strong>{r.animal.name}</strong><small>{r.animal.subtitle?.split(" • ").slice(0, 2).join(" · ")} · {r.animal.owner || "sem tutor"}</small></span>
+                  </span>
+                  <span className="vf-cell" data-label="Última aplicada">
+                    {r.ultima ? <><strong>{r.ultima.name.replace(/^Vacina\s+/i, "")}</strong><small>{fmtDate(itemDate(r.ultima))}</small></> : <small>nenhuma aplicada</small>}
+                  </span>
+                  <span className="vf-cell" data-label="Próxima dose">
+                    {r.proxima ? <><strong>{r.proxima.item.name.replace(/^Vacina\s+/i, "")}</strong><small className={r.proxima.when < hoje ? "late" : ""}>{fmtDate(r.proxima.when)} · {quando(r.proxima.when)}</small></> : <small>nada programado</small>}
+                  </span>
+                  <span className="vf-cell" data-label="Situação">
+                    <span className={`vf-pill ${r.situacao === "Atrasadas" ? "late" : r.situacao === "A vencer" ? "soon" : "ok"}`}>
+                      {r.situacao === "Atrasadas" ? `${r.atrasadas} atrasada${r.atrasadas > 1 ? "s" : ""}` : r.situacao === "A vencer" ? "A vencer" : "Em dia"}
+                    </span>
+                  </span>
+                  <span className="vf-open"><BookOpen /> Abrir carteira</span>
+                </button>
+              ))}
+              {!lista.length && <div className="vx-empty">Nenhum animal nesta aba{query ? " com essa busca" : ""}.</div>}
+            </div>
+            {paged.pages > 1 && (
+              <div className="vx-row" style={{ justifyContent: "center", marginTop: 14 }}>
+                <Pager page={paged.page} pages={paged.pages} onPage={paged.setPage} />
+              </div>
+            )}
+          </div>
         </div>
       </div>
-      <style>{`@media (max-width: 1100px){ .vx-vac-grid{ grid-template-columns: 1fr !important; } }`}</style>
+      {forms.node}
+    </Page>
+  )
+}
+
+/* ---------------- carteira do animal ---------------- */
+function Carteira({ animal, onBack, forms }: { animal: Item; onBack: () => void; forms: ReturnType<typeof usePageForms> }) {
+  const { data } = useVetFlow()
+  const navigate = useNavigate()
+  const hoje = todayISO()
+  const tutor = data.tutores.find((item) => item.id === animal.ownerId)
+  const doses = useMemo(() => data.vacinas.filter((item) => item.animalId === animal.id).sort((a, b) => itemDate(a).localeCompare(itemDate(b))), [animal.id, data.vacinas])
+  const r = resumir(animal, doses, hoje)
+  const aplicadas = doses.filter((d) => d.status === "Aplicada").length
+
+  return (
+    <Page
+      bg="#eef6f0"
+      blobs={[["#9fe3c6", 160, 200, 560, 520], ["#ffd39a", "80%", -60, 380, 380]]}
+      crumb="Vacinas / Carteira"
+      title={`Carteira de ${animal.name}`}
+      actions={
+        <>
+          <button className="vx-btn vx-btn-g" onClick={onBack}><ArrowLeft /> Voltar para a pasta</button>
+          <button className="vx-btn vx-btn-g" onClick={() => window.print()}><Printer /> Imprimir</button>
+          <button className="vx-btn vx-btn-p" onClick={() => forms.open("vacinas", undefined, { animalId: animal.id })}><Plus /> Registrar aplicação</button>
+        </>
+      }
+    >
+      <div className="vx-booklet">
+        <div className="spine" />
+        <div className="pg">
+          <div className="vx-lbl" style={{ color: "var(--vx-teal)" }}>Carteira nº {String(data.animais.indexOf(animal) + 1).padStart(4, "0")} · ativa</div>
+          <div className="vx-row" style={{ gap: 16 }}>
+            <span className="vx-av" style={{ width: 84, height: 84, fontSize: 28, borderRadius: 26, background: colorFor(animal.id) }}>{initials(animal.name)}</span>
+            <div>
+              <div style={{ fontSize: 30, fontWeight: 800, letterSpacing: "-.03em" }}>{animal.name}</div>
+              <div style={{ fontSize: 14, color: "var(--vx-muted)" }}>{animal.subtitle} · {animal.sex || "sexo não informado"}</div>
+              <button className="vx-chip" style={{ marginTop: 6 }} onClick={() => tutor && navigate(`/tutores/${tutor.id}`)}>Tutor: {animal.owner}</button>
+            </div>
+          </div>
+          <div className="vf-sum">
+            <div><small>Aplicadas</small><b>{aplicadas}</b></div>
+            <div className={r.atrasadas ? "late" : ""}><small>Atrasadas</small><b>{r.atrasadas}</b></div>
+            <div><small>Situação</small><b>{r.situacao === "Atrasadas" ? "Com atraso" : r.situacao}</b></div>
+          </div>
+          <div className={`vf-next ${r.proxima && r.proxima.when < hoje ? "late" : ""}`}>
+            <div className="vx-lbl" style={{ color: "rgba(255,255,255,.8)" }}>{r.proxima && r.proxima.when < hoje ? "Dose atrasada" : "Próxima dose"}</div>
+            <div style={{ fontSize: 22, fontWeight: 800, marginTop: 4 }}>{r.proxima ? r.proxima.item.name : "Nenhuma programada"}</div>
+            <div className="vx-row" style={{ justifyContent: "space-between", marginTop: 10, gap: 8 }}>
+              <span style={{ fontSize: 14 }}>{r.proxima ? fmtDate(r.proxima.when) : "—"}</span>
+              {r.proxima && <span className="vx-chip" style={{ background: "rgba(255,255,255,.18)", color: "#fff", border: 0 }}>{quando(r.proxima.when)}</span>}
+            </div>
+          </div>
+        </div>
+        <div className="pg">
+          <div className="vx-row" style={{ justifyContent: "space-between" }}>
+            <strong style={{ fontSize: 17 }}>Doses</strong>
+            <span style={{ fontSize: 12, color: "var(--vx-muted)" }}>toque para abrir</span>
+          </div>
+          <div className="vx-doses">
+            {doses.map((item, index) => (
+              <button key={item.id} className={`vx-dose ${item.status !== "Aplicada" ? "pend" : ""}`} onClick={() => navigate(`/vacinas/${item.id}`)}>
+                <strong style={{ fontSize: 12, textAlign: "center" }}>{item.name.replace("Vacina ", "")}</strong>
+                {item.status === "Aplicada" ? (
+                  <span className="vx-stamp" style={{ color: colorFor(item.name), transform: `rotate(${[-8, 6, -4, 9, -10][index % 5]}deg)` }}>
+                    <small>APLICADA</small>
+                    <b>{fmtDate(itemDate(item), { day: "2-digit", month: "2-digit", year: "2-digit" })}</b>
+                  </span>
+                ) : item.status === "Atrasada" || (item.dueDate || itemDate(item)) < hoje ? (
+                  <span className="vx-late">ATRASADA</span>
+                ) : (
+                  <span className="vf-due">{fmtDate(item.dueDate || itemDate(item), { day: "2-digit", month: "2-digit" })}</span>
+                )}
+                <span style={{ fontSize: 11, color: "var(--vx-muted)", textAlign: "center" }}>{item.professional || "—"}</span>
+              </button>
+            ))}
+            <button className="vx-dose pend" onClick={() => forms.open("vacinas", undefined, { animalId: animal.id })} style={{ justifyContent: "center", color: "var(--vx-accent)" }}>
+              <Plus /> <strong>Nova dose</strong>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <section className="vf-history">
+        <h3><Syringe /> Histórico de vacinas de {animal.name}</h3>
+        <div className="vf-row vf-th vf-hrow">
+          <span>Vacina</span><span>Aplicada em</span><span>Veterinário</span><span>Próxima dose</span><span>Situação</span>
+        </div>
+        {[...doses].reverse().map((d) => {
+          const atrasada = d.status === "Atrasada" || (d.status !== "Aplicada" && (d.dueDate || itemDate(d)) < hoje)
+          const reforco = r.reforcoAtrasado.has(d.id)
+          return (
+            <button key={d.id} className="vf-row vf-hrow" onClick={() => navigate(`/vacinas/${d.id}`)}>
+              <span className="vf-cell"><strong>{d.name}</strong><small>{d.extra?.lote ? `Lote ${d.extra.lote}` : d.extra?.fabricante || ""}</small></span>
+              <span className="vf-cell" data-label="Aplicada em"><strong>{d.status === "Aplicada" ? fmtDate(itemDate(d)) : "—"}</strong></span>
+              <span className="vf-cell" data-label="Veterinário"><small>{d.professional || "—"}</small></span>
+              <span className="vf-cell" data-label="Próxima dose">
+                {d.status === "Aplicada" ? (d.dueDate ? <><strong>{fmtDate(d.dueDate)}</strong><small className={d.dueDate < hoje ? "late" : ""}>{quando(d.dueDate)}</small></> : <small>sem reforço</small>) : <><strong>{fmtDate(d.dueDate || itemDate(d))}</strong><small className={atrasada ? "late" : ""}>{quando(d.dueDate || itemDate(d))}</small></>}
+              </span>
+              <span className="vf-cell" data-label="Situação">{atrasada ? <span className="vf-pill late">Atrasada</span> : reforco ? <span className="vf-pill late">Reforço atrasado</span> : d.status === "Aplicada" && d.dueDate && d.dueDate < hoje ? <span className="vf-pill ok">Aplicada · renovada</span> : <StatusPill status={d.status} />}</span>
+            </button>
+          )
+        })}
+        {!doses.length && <div className="vx-empty">Nenhuma vacina registrada para {animal.name}.</div>}
+      </section>
       {forms.node}
     </Page>
   )

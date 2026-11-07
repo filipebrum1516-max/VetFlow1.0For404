@@ -433,8 +433,9 @@ export default function Cirurgias() {
 
   return (
     <Page
-      className="sg-page"
-      bg="#f4f6f9"
+      className="sg-page sg-or"
+      bg="#060a09"
+      bgDark="#060a09"
       crumb="Cirurgias"
       title="Cirurgias"
       actions={
@@ -446,6 +447,10 @@ export default function Cirurgias() {
         </>
       }
     >
+      <div className="sg-monitor" aria-hidden="true">
+        <svg viewBox="0 0 600 40" preserveAspectRatio="none"><path d="M0 22 H120 l8 -2 l6 4 l8 -18 l8 30 l7 -14 h40 l6 -3 l6 3 H330 l8 -2 l6 4 l8 -18 l8 30 l7 -14 h40 l6 -3 l6 3 H600" /></svg>
+        <span>Centro cirúrgico · {data.cirurgias.filter((c) => itemDate(c) === todayISO() && faseOf(c) >= 0 && faseOf(c) <= 3).length} em sala agora</span>
+      </div>
       <div className="pc-tabs" role="tablist">
         <button role="tab" aria-selected={aba === "hoje"} className={aba === "hoje" ? "on" : ""} onClick={() => setAba("hoje")}>
           {day === todayISO() ? "Cirurgias de hoje" : "Cirurgias do dia"} <b>{doDia.length}</b>

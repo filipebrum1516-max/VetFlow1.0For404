@@ -1890,7 +1890,7 @@ export const MINHA_UNIT: Unit = {
 const StoreContext = createContext<StoreValue | null>(null)
 const STORAGE_KEY = "vetflow-state-v4"
 /** Troque este valor a cada versão publicada no Figma Make (formato livre). */
-export const APP_VERSION = "2026-11-07-cadastros"
+export const APP_VERSION = "2026-11-07-processos"
 const defaultProfile: UserProfile = {
   name: "Rafael Souza",
   displayName: "Dr. Rafael",

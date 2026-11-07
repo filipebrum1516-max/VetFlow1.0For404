@@ -128,7 +128,7 @@ const consultas: FormDef = {
         sel("sala", "Consultório / sala", ["Consultório 1", "Consultório 2", "Consultório 3", "Sala de procedimentos"]),
         sel("origem", "Origem", ["Agendado", "Encaixe", "Demanda espontânea", "Encaminhamento externo"], 3, { def: "Agendado" }),
         pills("prioridade", "Prioridade da senha", ["Normal", "Preferencial", "Urgente"], 6, { def: "Normal" }),
-        pills("status", "Etapa na fila", ["Chegou", "Triagem", "Em atendimento", "Aguardando pagamento", "Concluído", "Faltou", "Cancelado"], 6, { def: "Chegou", req: true }),
+        pills("status", "Etapa na fila", ["Chegou", "Triagem", "Em atendimento", "Concluído", "Faltou", "Cancelado"], 6, { def: "Chegou", req: true }),
         f("resumo", "Resumo para a linha do tempo", "text", 6, { ph: "Ex.: retorno otite — reavaliar orelha esquerda" }),
       ],
     },
@@ -843,7 +843,7 @@ export const forms: Partial<Record<ModuleSlug | "procedimentos-exec" | "estoque-
 }
 
 export const statusOptions: Partial<Record<ModuleSlug, string[]>> = {
-  consultas: ["Chegou", "Triagem", "Em atendimento", "Aguardando pagamento", "Concluído", "Faltou", "Cancelado"],
+  consultas: ["Chegou", "Triagem", "Em atendimento", "Concluído", "Faltou", "Cancelado"],
   profissionais: ["Ativo", "Plantão eventual", "Afastado", "Inativo"],
   vacinas: ["Aplicada", "A vencer", "Atrasada"],
   prescricoes: ["Ativa", "Vencendo", "Renovação pendente", "Concluída"],

@@ -487,7 +487,8 @@ function ConfirmDelete({
 export default function ProntuariosModule() {
   const { data, addItem, updateItem, user } = useVetFlow()
   // N-06: abre direto na lista (sem a pasta de entrada).
-  const [view, setView] = useState<"folder" | "list">("list")
+  /* abre sempre pela pasta-resumo; vai direto à lista só quando chega com um paciente/registro na URL */
+  const [view, setView] = useState<"folder" | "list">(() => (/[?&](animal|registro|id|novo)=/.test(window.location.search) ? "list" : "folder"))
   const [opening, setOpening] = useState(false)
   const [query, setQuery] = useState("")
   const [status, setStatus] = useState("Todos os status")

@@ -7,15 +7,14 @@ import RowActions from "../RowActions"
 import { addDays, Confirm, fmtDate, fmtLong, itemDate, matches, Modal, Page, Pager, SearchBox, StatusPill, todayISO, usePaged } from "../ui"
 
 /*
- * Consultas do dia em 5 colunas de vidro. A consulta nasce em "Chegou" já com a senha
- * e anda uma coluna por vez: Chegou → Triagem → Consultório → Pagamento → Finalizado.
+ * Consultas do dia em 4 colunas de vidro. A consulta nasce em "Chegou" já com a senha
+ * e anda uma coluna por vez: Chegou → Triagem → Consultório → Finalizado.
  */
 type Etapa = { key: string; label: string; hint: string; statuses: string[]; tone: string; acao: string }
 const ETAPAS: Etapa[] = [
   { key: "Chegou", label: "Chegou", hint: "Recepção, aguardando triagem", statuses: ["Chegou", "Agendado", "Confirmado", "Aguardando"], tone: "orange", acao: "Chamar para triagem" },
   { key: "Triagem", label: "Triagem", hint: "Peso, temperatura e queixa", statuses: ["Triagem"], tone: "yellow", acao: "Chamar ao consultório" },
-  { key: "Em atendimento", label: "Consultório", hint: "Em atendimento com o veterinário", statuses: ["Em atendimento", "Em andamento"], tone: "teal", acao: "Enviar ao caixa" },
-  { key: "Aguardando pagamento", label: "Pagamento", hint: "No caixa, acertando a conta", statuses: ["Aguardando pagamento"], tone: "violet", acao: "Finalizar consulta" },
+  { key: "Em atendimento", label: "Consultório", hint: "Em atendimento com o veterinário", statuses: ["Em atendimento", "Em andamento", "Aguardando pagamento"], tone: "teal", acao: "Finalizar consulta" },
   { key: "Concluído", label: "Finalizado", hint: "Consulta encerrada", statuses: ["Concluído"], tone: "blue", acao: "" },
 ]
 const ULTIMA = ETAPAS.length - 1

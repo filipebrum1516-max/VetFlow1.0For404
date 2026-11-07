@@ -127,7 +127,7 @@ export function tone(status = "") {
     return "orange"
   if (/(andamento|atendimento|em uso|ativa$|plantao|internado|em tratamento|anestesia|recuperacao)/.test(value))
     return "blue"
-  if (/(conclu|^paga$|convertid|aplicad|assinad|resolvid|recebid|pago|publicad|alta|aprovad|ativo|ativa|confirmad|disponivel|enviad|lida|respondid|atualizado|gerado)/.test(value))
+  if (/(conclu|^paga$|convertid|aplicad|assinad|resolvid|recebid|pago|publicad|alta|aprovad|ativo|ativa|confirmad|disponivel|enviad|lida|respondid|atualizado|gerado|autoriz|deferid|arquivad)/.test(value))
     return "green"
   return "gray"
 }

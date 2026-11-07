@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react"
-import { ChevronDown, ChevronLeft, ChevronRight, Plus, Search } from "lucide-react"
+import { createPortal } from "react-dom"
+import { ChevronDown, ChevronLeft, ChevronRight, Plus, Search, X } from "lucide-react"
 import { normalize } from "../store"
 import { tone } from "./ui"
 
@@ -257,3 +258,25 @@ const GENERIC = /^(rotina|prioridade)$/i
 export const categoriaUtil = (value?: string) => (value && !GENERIC.test(value) ? value : undefined)
 
 export const initialsOf = (name = "") => normalize(name).replace(/^(dra?\.)\s*/, "").split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]).join("").toUpperCase() || "VF"
+
+/** Painel lateral de vidro (detalhes de um cadastro sem sair da lista). */
+export function Painel({ title, sub, onClose, children, foot }: { title: ReactNode; sub?: ReactNode; onClose: () => void; children: ReactNode; foot?: ReactNode }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose()
+    document.addEventListener("keydown", onKey)
+    return () => document.removeEventListener("keydown", onKey)
+  }, [onClose])
+  return createPortal(
+    <div className="vx-drawer-layer cl-layer" onMouseDown={onClose}>
+      <aside className="cl-sheet" role="dialog" aria-modal="true" onMouseDown={(e) => e.stopPropagation()}>
+        <header className="cl-sheet-head">
+          <div>{title}{sub && <p>{sub}</p>}</div>
+          <button type="button" className="cl-x" aria-label="Fechar" onClick={onClose}><X /></button>
+        </header>
+        <div className="cl-sheet-body">{children}</div>
+        {foot && <footer className="cl-sheet-foot">{foot}</footer>}
+      </aside>
+    </div>,
+    document.body,
+  )
+}

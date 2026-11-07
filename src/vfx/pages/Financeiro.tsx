@@ -1,163 +1,217 @@
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { useNavigate } from "react-router"
-import { ChevronLeft, ChevronRight, Plus, Receipt } from "lucide-react"
-import { useVetFlow, type Item } from "../../store"
+import { ArrowDownLeft, ArrowUpRight, CalendarClock, Check, CircleAlert, Plus, Receipt, Search, Wallet, X } from "lucide-react"
+import { normalize, useVetFlow, type Item } from "../../store"
 import { usePageForms } from "../hooks"
-import { addDays, brl, fmtDate, fmtLong, itemDate, Page, Seg, todayISO } from "../ui"
+import RowActions, { RowButton } from "../RowActions"
+import { addDays, brl, fmtDate, itemDate, Page, Pager, Seg, todayISO, usePaged } from "../ui"
 
+/*
+ * Financeiro: saldo e resultado no topo, gráfico de entradas x saídas, contas que vencem
+ * nos próximos dias e a lista de lançamentos com filtro, busca e baixa (marcar como pago/recebido).
+ */
 const isIn = (item: Item) => item.category === "Receita"
 const sum = (items: Item[]) => items.reduce((total, item) => total + (item.amountValue || 0), 0)
-type Lens = "dia" | "receber" | "pagar" | "vencidos"
+const quitado = (item: Item) => /receb|^pago/i.test(item.status)
+const pendente = (item: Item) => !quitado(item) && !/cancel|estorn/i.test(item.status)
+type Aba = "todos" | "entradas" | "saidas" | "receber" | "pagar" | "vencidos"
 
 export default function Financeiro() {
-  const { data } = useVetFlow()
+  const { data, updateItem } = useVetFlow()
   const navigate = useNavigate()
-  const forms = usePageForms("financeiro", (saved) => { setDay(itemDate(saved)); setLens("dia") })
-  const ref = todayISO()
+  const forms = usePageForms("financeiro")
+  const hoje = todayISO()
   const [period, setPeriod] = useState<"7" | "30" | "90">("30")
-  const [day, setDay] = useState(ref)
-  const [lens, setLens] = useState<Lens>("dia")
+  const [aba, setAba] = useState<Aba>("todos")
+  const [query, setQuery] = useState("")
+  const [faixa, setFaixa] = useState<{ de: string; ate: string } | null>(null)
   const days = Number(period)
-  const inPeriod = data.financeiro.filter((item) => itemDate(item) > addDays(ref, -days) && itemDate(item) <= ref)
-  const entrou = sum(inPeriod.filter((item) => isIn(item) && /receb/i.test(item.status)))
-  const saiu = sum(inPeriod.filter((item) => !isIn(item) && /pago/i.test(item.status)))
-  const bank = sum(data.financeiro.filter((item) => isIn(item) && /receb/i.test(item.status))) - sum(data.financeiro.filter((item) => !isIn(item) && /pago/i.test(item.status)))
-  const receivable = data.financeiro.filter((item) => isIn(item) && /a receber/i.test(item.status))
-  const payable = data.financeiro.filter((item) => !isIn(item) && /a pagar|pendente|vencid/i.test(item.status))
-  const overdue = data.financeiro.filter((item) => /vencid/i.test(item.status))
-  // Mesmo número da tela Caixa: o que foi recebido hoje nos caixas da recepção (B-11).
-  const caixasHoje = new Set(data.caixa.filter((item) => itemDate(item) === ref).map((item) => item.id))
-  const cash = data.vendas
-    .filter((sale) => caixasHoje.has(sale.extra?.caixaId) && !/cancel|estorn/i.test(sale.status))
-    .reduce((total, sale) => total + ((sale.extra?.pagamentos || []) as { valor: number }[]).reduce((a, p) => a + (p.valor || 0), 0), 0)
-  const revenueItems = data.financeiro.filter(isIn)
-  const ticket = revenueItems.length ? sum(revenueItems) / revenueItems.length : 0
-  const delinquency = revenueItems.length ? (overdue.filter(isIn).length / revenueItems.length) * 100 : 0
+  const inicio = addDays(hoje, -days + 1)
+  const vencido = (item: Item) => /vencid/i.test(item.status) || (pendente(item) && itemDate(item) < hoje)
 
-  const buckets = 20
-  const bucketSize = Math.max(1, Math.ceil(days / buckets))
-  const river = Array.from({ length: buckets }, (_, index) => {
-    const end = addDays(ref, -(buckets - 1 - index) * bucketSize)
-    const start = addDays(end, -bucketSize + 1)
-    const slice = data.financeiro.filter((item) => itemDate(item) >= start && itemDate(item) <= end)
-    return { end, in: sum(slice.filter(isIn)), out: sum(slice.filter((item) => !isIn(item))) }
+  const doPeriodo = data.financeiro.filter((item) => itemDate(item) >= inicio && itemDate(item) <= hoje)
+  const entradas = sum(doPeriodo.filter((i) => isIn(i) && quitado(i)))
+  const saidas = sum(doPeriodo.filter((i) => !isIn(i) && quitado(i)))
+  const resultado = entradas - saidas
+  const saldo = sum(data.financeiro.filter((i) => isIn(i) && quitado(i))) - sum(data.financeiro.filter((i) => !isIn(i) && quitado(i)))
+  const aReceber = data.financeiro.filter((i) => isIn(i) && pendente(i))
+  const aPagar = data.financeiro.filter((i) => !isIn(i) && pendente(i))
+  const vencidos = data.financeiro.filter(vencido)
+  const receitas = data.financeiro.filter(isIn)
+  const inadimplencia = receitas.length ? (receitas.filter(vencido).length / receitas.length) * 100 : 0
+  const margem = entradas ? (resultado / entradas) * 100 : 0
+
+  /* gráfico: até 15 barras no período */
+  const n = days <= 7 ? 7 : 15
+  const passo = Math.max(1, Math.ceil(days / n))
+  const barras = Array.from({ length: n }, (_, i) => {
+    const ate = addDays(hoje, -(n - 1 - i) * passo)
+    const de = addDays(ate, -passo + 1)
+    const fatia = data.financeiro.filter((item) => itemDate(item) >= de && itemDate(item) <= ate)
+    return { de, ate, in: sum(fatia.filter(isIn)), out: sum(fatia.filter((x) => !isIn(x))) }
   })
-  const peak = Math.max(1, ...river.map((bucket) => Math.max(bucket.in, bucket.out)))
+  const pico = Math.max(1, ...barras.map((b) => Math.max(b.in, b.out)))
 
-  const tx = lens === "dia" ? data.financeiro.filter((item) => itemDate(item) === day) : lens === "receber" ? receivable : lens === "pagar" ? payable : overdue
-  const txSorted = [...tx].sort((a, b) => itemDate(b).localeCompare(itemDate(a))).slice(0, 40)
-  const dayBalance = sum(tx.filter(isIn)) - sum(tx.filter((item) => !isIn(item)))
-  const cards: [string, string, number, string, Lens][] = [
-    ["Banco · conta PJ", "saldo acumulado", bank, "linear-gradient(135deg,#2457c5,#18418f)", "dia"],
-    ["Cartões / a receber", `${receivable.length} lançamentos`, sum(receivable), "linear-gradient(135deg,#e94f17,#b9500a)", "receber"],
-    ["Caixa da recepção", "recebido hoje", cash, "linear-gradient(135deg,#2b7a4b,#1e5a37)", "dia"],
+  /* contas em aberto: vencidas primeiro, depois as que vencem logo */
+  const proximas = data.financeiro
+    .filter(pendente)
+    .sort((a, b) => Number(vencido(b)) - Number(vencido(a)) || itemDate(a).localeCompare(itemDate(b)))
+    .slice(0, 7)
+
+  const lista = useMemo(() => {
+    const base = data.financeiro.filter((item) => {
+      if (aba === "entradas" && !isIn(item)) return false
+      if (aba === "saidas" && isIn(item)) return false
+      if (aba === "receber" && !(isIn(item) && pendente(item))) return false
+      if (aba === "pagar" && !(!isIn(item) && pendente(item))) return false
+      if (aba === "vencidos" && !vencido(item)) return false
+      if (faixa && (itemDate(item) < faixa.de || itemDate(item) > faixa.ate)) return false
+      if (query.trim() && !normalize(`${item.name} ${item.subtitle} ${item.animal || ""} ${item.owner || ""} ${item.status}`).includes(normalize(query))) return false
+      return true
+    })
+    return base.sort((a, b) => itemDate(b).localeCompare(itemDate(a)))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.financeiro, aba, faixa, query, hoje])
+  const paged = usePaged(lista, 12, [aba, faixa, query])
+
+  const quitar = (item: Item) => {
+    updateItem("financeiro", item.id, { status: isIn(item) ? "Recebido" : "Pago", extra: { ...(item.extra || {}), dataPagamento: hoje, situacao: "Pago / recebido" } })
+    forms.toast(`${item.name.replace(" • Receita", "")}: ${isIn(item) ? "recebido" : "pago"} hoje (${brl(item.amountValue || 0)}).`)
+  }
+  const situacao = (item: Item) =>
+    quitado(item) ? ["ok", isIn(item) ? "Recebido" : "Pago"] : vencido(item) ? ["late", "Vencido"] : ["pend", isIn(item) ? "A receber" : "A pagar"]
+
+  const ABAS: [Aba, string, number][] = [
+    ["todos", "Todos", data.financeiro.length],
+    ["entradas", "Entradas", receitas.length],
+    ["saidas", "Saídas", data.financeiro.length - receitas.length],
+    ["receber", "A receber", aReceber.length],
+    ["pagar", "A pagar", aPagar.length],
+    ["vencidos", "Vencidos", vencidos.length],
   ]
 
   return (
     <Page
-      bg="#eef6f0"
-      blobs={[["#a8e2b8", -100, 180, 560, 480], ["#ffd39a", "45%", 380, 420, 380], ["#b3c3ff", "85%", -60, 320, 320]]}
+      className="fn-page"
+      bg="#eef3f1"
+      blobs={[["#a8e2c8", -100, 160, 560, 480], ["#c9d6ff", "80%", -80, 420, 380]]}
       crumb="Financeiro"
       title="Financeiro"
-      sub="Saldo, contas a receber e a pagar, entradas e saídas e os lançamentos do período."
       actions={
         <>
-          <Seg options={[["7", "Semana"], ["30", "Mês"], ["90", "Trimestre"]]} value={period} onChange={setPeriod} />
-          <button className="vx-btn vx-btn-g" onClick={() => navigate("/relatorios/financeiro")}>
-            <Receipt /> Relatório
-          </button>
-          <button className="vx-btn vx-btn-p" onClick={() => forms.open("financeiro", undefined, { date: todayISO() })}>
-            <Plus /> Novo lançamento
-          </button>
+          <Seg options={[["7", "7 dias"], ["30", "30 dias"], ["90", "90 dias"]]} value={period} onChange={(v) => { setPeriod(v); setFaixa(null) }} />
+          <button className="vx-btn vx-btn-g" onClick={() => navigate("/relatorios/financeiro")}><Receipt /> Relatório</button>
+          <button className="vx-btn vx-btn-p" onClick={() => forms.open("financeiro", undefined, { date: hoje })}><Plus /> Novo lançamento</button>
         </>
       }
     >
-      <div style={{ display: "grid", gridTemplateColumns: "320px minmax(0,1fr) 300px", gap: 22, alignItems: "start" }} className="vx-fin-grid">
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <div className="vx-wallet">
-            {cards.map(([label, detail, value, bg, target], index) => (
-              <button key={label} className="vx-wcard" style={{ top: index * 46, background: bg, transform: `rotate(${[-4, 3, -1][index]}deg)`, zIndex: index }} onClick={() => { setLens(target); if (target === "dia") setDay(ref) }}>
-                <span className="vx-row" style={{ justifyContent: "space-between", fontSize: 12, fontWeight: 700 }}><span>{label}</span><span>{detail}</span></span>
-                <span className="vx-num" style={{ display: "block", fontSize: 22, marginTop: 8 }}>{brl(value)}</span>
-              </button>
-            ))}
-            <div className="vx-glass" style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 180, borderRadius: "30px 30px 26px 26px", padding: 22, display: "flex", flexDirection: "column", justifyContent: "flex-end", zIndex: 5, background: "var(--vx-glass-strong)" }}>
-              <div style={{ position: "absolute", left: "50%", top: 14, width: 50, height: 6, borderRadius: 3, marginLeft: -25, background: "var(--vx-soft)" }} />
-              <div className="vx-lbl">Saldo consolidado</div>
-              <div className="vx-num" style={{ fontSize: 36 }}>{brl(bank + sum(receivable) + cash)}</div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: entrou - saiu >= 0 ? "var(--vx-green)" : "var(--vx-red)" }}>{entrou - saiu >= 0 ? "+" : ""}{brl(entrou - saiu)} no período</div>
-            </div>
-          </div>
-          <div className="vx-glass" style={{ padding: 18, display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 12 }}>
-            <button onClick={() => setLens("receber")} style={{ border: 0, background: "transparent", textAlign: "left", padding: 0, cursor: "pointer", font: "inherit", color: "inherit" }}><div className="vx-lbl" style={{ fontSize: 10 }}>A receber</div><div className="vx-num" style={{ fontSize: 19, color: "var(--vx-green)" }}>{brl(sum(receivable))}</div></button>
-            <button onClick={() => setLens("pagar")} style={{ border: 0, background: "transparent", textAlign: "left", padding: 0, cursor: "pointer", font: "inherit", color: "inherit" }}><div className="vx-lbl" style={{ fontSize: 10 }}>A pagar</div><div className="vx-num" style={{ fontSize: 19, color: "var(--vx-red)" }}>{brl(sum(payable))}</div></button>
-            <button onClick={() => setLens("vencidos")} style={{ border: 0, background: "transparent", textAlign: "left", padding: 0, cursor: "pointer", font: "inherit", color: "inherit" }}><div className="vx-lbl" style={{ fontSize: 10 }}>Inadimplência</div><div className="vx-num" style={{ fontSize: 19 }}>{delinquency.toFixed(1).replace(".", ",")}%</div></button>
-            <div><div className="vx-lbl" style={{ fontSize: 10 }}>Ticket médio</div><div className="vx-num" style={{ fontSize: 19 }}>{brl(ticket)}</div></div>
+      <section className="fn-top">
+        <div className="fn-hero">
+          <span className="fn-hero-lbl"><Wallet /> Saldo em conta</span>
+          <strong className="fn-hero-val">{brl(saldo)}</strong>
+          <span className="fn-hero-sub">recebido menos pago, todas as contas</span>
+          <div className="fn-hero-grid">
+            <div><small><ArrowDownLeft /> Entradas</small><b>{brl(entradas)}</b></div>
+            <div><small><ArrowUpRight /> Saídas</small><b>{brl(saidas)}</b></div>
+            <div><small>Resultado {days} dias</small><b className={resultado >= 0 ? "pos" : "neg"}>{resultado >= 0 ? "+" : ""}{brl(resultado)}</b></div>
           </div>
         </div>
+        <button className="fn-kpi in" onClick={() => setAba("receber")}>
+          <small>A receber</small><strong>{brl(sum(aReceber))}</strong><span>{aReceber.length} lançamentos em aberto</span>
+        </button>
+        <button className="fn-kpi out" onClick={() => setAba("pagar")}>
+          <small>A pagar</small><strong>{brl(sum(aPagar))}</strong><span>{aPagar.length} contas em aberto</span>
+        </button>
+        <button className="fn-kpi late" onClick={() => setAba("vencidos")}>
+          <small>Vencidos</small><strong>{brl(sum(vencidos))}</strong><span>inadimplência {inadimplencia.toFixed(1).replace(".", ",")}% · margem {margem.toFixed(0)}%</span>
+        </button>
+      </section>
 
-        <div className="vx-glass" style={{ padding: 22, display: "flex", flexDirection: "column", gap: 12, minHeight: 520 }}>
-          <div className="vx-row" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-            <strong style={{ fontSize: 17 }}>Entradas e saídas</strong>
-            <div className="vx-row" style={{ gap: 12, fontSize: 12, color: "var(--vx-muted)" }}>
-              <span className="vx-row" style={{ gap: 6 }}><span className="vx-dot" style={{ background: "#2b7a4b" }} />Entradas</span>
-              <span className="vx-row" style={{ gap: 6 }}><span className="vx-dot" style={{ background: "#b4322a" }} />Saídas</span>
-            </div>
+      <section className="fn-mid">
+        <div className="fn-card fn-chart">
+          <header>
+            <div><strong>Entradas e saídas</strong><small>toque numa barra para ver os lançamentos daquele período</small></div>
+            <span className="fn-legend"><i className="in" /> Entradas <i className="out" /> Saídas</span>
+          </header>
+          <div className="fn-bars" style={{ gridTemplateColumns: `repeat(${n}, minmax(0,1fr))` }}>
+            {barras.map((b) => {
+              const on = faixa?.de === b.de && faixa?.ate === b.ate
+              return (
+                <button key={b.ate} className={`fn-bar ${on ? "on" : ""}`} title={`${fmtDate(b.de)} a ${fmtDate(b.ate)}\nEntradas ${brl(b.in)}\nSaídas ${brl(b.out)}`} onClick={() => setFaixa(on ? null : { de: b.de, ate: b.ate })}>
+                  <span className="up"><i style={{ height: `${(b.in / pico) * 100}%` }} /></span>
+                  <span className="down"><i style={{ height: `${(b.out / pico) * 100}%` }} /></span>
+                  <em>{fmtDate(b.ate, { day: "2-digit", month: "2-digit" })}</em>
+                </button>
+              )
+            })}
           </div>
-          <div style={{ flex: 1, display: "grid", gridTemplateColumns: `repeat(${buckets}, minmax(0,1fr))`, gap: 5, position: "relative", minHeight: 260 }}>
-            <div style={{ position: "absolute", left: 0, right: 0, top: "58%", height: 1.5, background: "var(--vx-line)" }} />
-            {river.map((bucket) => (
-              <button key={bucket.end} title={`${fmtDate(bucket.end)} · entradas ${brl(bucket.in)} · saídas ${brl(bucket.out)}`} onClick={() => { setDay(bucket.end); setLens("dia") }} style={{ display: "flex", flexDirection: "column", height: "100%", border: 0, background: "transparent", padding: 0, cursor: "pointer" }}>
-                <span style={{ height: "58%", display: "flex", alignItems: "flex-end", width: "100%" }}><span style={{ width: "100%", height: `${(bucket.in / peak) * 100}%`, borderRadius: "6px 6px 2px 2px", background: bucket.end === day ? "#e94f17" : "#2b7a4b" }} /></span>
-                <span style={{ height: "42%", display: "flex", alignItems: "flex-start", width: "100%", paddingTop: 2 }}><span style={{ width: "100%", height: `${(bucket.out / peak) * 100}%`, borderRadius: "2px 2px 6px 6px", background: "rgba(180,50,42,.75)" }} /></span>
+        </div>
+        <div className="fn-card fn-due">
+          <header><div><strong><CalendarClock /> Contas em aberto</strong><small>vencidas primeiro · dê baixa quando pagar ou receber</small></div></header>
+          {proximas.map((item) => (
+            <div key={item.id} className="fn-due-row">
+              <span className={`fn-dot ${isIn(item) ? "in" : "out"}`} />
+              <button className="fn-due-main" onClick={() => navigate(`/financeiro/${item.id}`)}>
+                <strong>{item.name.replace(" • Receita", "")}</strong>
+                <small className={vencido(item) ? "late" : ""}>{vencido(item) ? "venceu" : "vence"} {fmtDate(itemDate(item))} · {isIn(item) ? "a receber" : "a pagar"}</small>
+              </button>
+              <b className={isIn(item) ? "pos" : "neg"}>{brl(item.amountValue || 0)}</b>
+              <button className="fn-quitar" title={isIn(item) ? "Marcar como recebido" : "Marcar como pago"} onClick={() => quitar(item)}><Check /></button>
+            </div>
+          ))}
+          {!proximas.length && <p className="fn-empty">Nenhuma conta em aberto.</p>}
+        </div>
+      </section>
+
+      <section className="fn-card fn-list">
+        <div className="fn-toolbar">
+          <div className="fn-tabs" role="tablist">
+            {ABAS.map(([k, label, count]) => (
+              <button key={k} role="tab" aria-selected={aba === k} className={`${aba === k ? "on" : ""} ${k === "vencidos" ? "late" : ""}`} onClick={() => setAba(k)}>
+                {label} <b>{count}</b>
               </button>
             ))}
           </div>
-          <div className="vx-row" style={{ justifyContent: "space-between", fontSize: 11, fontWeight: 700, color: "var(--vx-muted)" }}>
-            <span>{fmtDate(river[0].end, { day: "2-digit", month: "short" })}</span>
-            <span style={{ color: "var(--vx-accent)" }}>{fmtDate(ref, { day: "2-digit", month: "short" })}</span>
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0,1fr))", gap: 10, paddingTop: 12, borderTop: "1px solid var(--vx-line)" }}>
-            <div><div className="vx-lbl" style={{ fontSize: 10 }}>Entradas</div><div className="vx-num" style={{ fontSize: 22, color: "var(--vx-green)" }}>{brl(entrou)}</div></div>
-            <div><div className="vx-lbl" style={{ fontSize: 10 }}>Saídas</div><div className="vx-num" style={{ fontSize: 22, color: "var(--vx-red)" }}>{brl(saiu)}</div></div>
-            <div><div className="vx-lbl" style={{ fontSize: 10 }}>Saldo do período</div><div className="vx-num" style={{ fontSize: 22 }}>{brl(entrou - saiu)}</div></div>
-          </div>
+          <label className="vx-search fn-search">
+            <Search />
+            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar lançamento, paciente ou tutor" aria-label="Buscar lançamento" />
+          </label>
         </div>
-
-        <div style={{ display: "flex", flexDirection: "column", filter: "drop-shadow(0 26px 30px rgba(30,60,40,.25))" }}>
-          <div className="vx-receipt">
-            <div style={{ textAlign: "center", fontSize: 12, fontWeight: 800, letterSpacing: ".14em" }}>
-              {lens === "dia" ? "EXTRATO DO DIA" : lens === "receber" ? "A RECEBER" : lens === "pagar" ? "A PAGAR" : "VENCIDOS"}
-            </div>
-            {lens === "dia" ? (
-              <div className="vx-row" style={{ justifyContent: "center", gap: 8, fontSize: 11, color: "#5b6474" }}>
-                <button aria-label="Dia anterior" onClick={() => setDay(addDays(day, -1))} style={{ display: "grid" }}><ChevronLeft size={14} /></button>
-                {fmtLong(day)}
-                <button aria-label="Próximo dia" onClick={() => setDay(addDays(day, 1))} style={{ display: "grid" }}><ChevronRight size={14} /></button>
+        {faixa && (
+          <div className="fn-filter-chip">
+            Período do gráfico: {fmtDate(faixa.de)} a {fmtDate(faixa.ate)}
+            <button aria-label="Limpar período" onClick={() => setFaixa(null)}><X /></button>
+          </div>
+        )}
+        <div className="fn-table">
+          <div className="fn-tr fn-th"><span>Data</span><span>Descrição</span><span>Categoria</span><span>Situação</span><span className="r">Valor</span><span className="r">Ações</span></div>
+          {paged.visible.map((item) => {
+            const [cls, label] = situacao(item)
+            return (
+              <div key={item.id} className="fn-tr" onClick={() => navigate(`/financeiro/${item.id}`)}>
+                <span className="fn-date" data-label="Data">{fmtDate(itemDate(item))}</span>
+                <span className="fn-desc">
+                  <i className={isIn(item) ? "in" : "out"}>{isIn(item) ? <ArrowDownLeft /> : <ArrowUpRight />}</i>
+                  <span><strong>{item.name.replace(" • Receita", "")}</strong><small>{item.animal ? `${item.animal} · ${item.owner || ""}` : item.subtitle?.split(" • ")[0]}</small></span>
+                </span>
+                <span data-label="Categoria"><small className="fn-cat">{item.extra?.categoriaConta || (isIn(item) ? (item.service || item.animalId ? "Atendimentos" : "Outras receitas") : /fornecedor|materiais|laborat/i.test(item.name) ? "Compras / insumos" : /folha/i.test(item.name) ? "Pessoal" : "Despesas fixas")}</small></span>
+                <span data-label="Situação"><span className={`fn-pill ${cls}`}>{cls === "late" && <CircleAlert />}{label}</span></span>
+                <b className={`r fn-val ${isIn(item) ? "pos" : "neg"}`} data-label="Valor">{isIn(item) ? "+ " : "− "}{brl(item.amountValue || 0)}</b>
+                <span className="r" data-label="Ações" onClick={(e) => e.stopPropagation()}>
+                  <RowActions name={item.name} onView={() => navigate(`/financeiro/${item.id}`)} onEdit={() => forms.open("financeiro", item)} onDelete={() => navigate(`/financeiro/${item.id}?excluir=1`)}>
+                    {!quitado(item) && <RowButton title={isIn(item) ? "Marcar como recebido" : "Marcar como pago"} onClick={() => quitar(item)}><Check /></RowButton>}
+                  </RowActions>
+                </span>
               </div>
-            ) : (
-              <button style={{ textAlign: "center", fontSize: 11, color: "#c2410c", fontWeight: 700 }} onClick={() => setLens("dia")}>voltar ao extrato do dia</button>
-            )}
-            <div style={{ borderTop: "1.5px dashed rgba(26,34,51,.3)", margin: "4px 0" }} />
-            {txSorted.map((item) => (
-              <button key={item.id} onClick={() => navigate(`/financeiro/${item.id}`)}>
-                <div className="vx-row" style={{ justifyContent: "space-between", fontSize: 12, fontWeight: 700, gap: 8 }}>
-                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name.replace(" • Receita", "")}</span>
-                  <span style={{ color: isIn(item) ? "#2b7a4b" : "#b4322a", whiteSpace: "nowrap" }}>{isIn(item) ? "+" : "-"}{(item.amountValue || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
-                </div>
-                <div style={{ fontSize: 10, color: "#5b6474" }}>{fmtDate(itemDate(item), { day: "2-digit", month: "2-digit" })} · {item.status} {item.animal ? `· ${item.animal}` : ""}</div>
-              </button>
-            ))}
-            {!txSorted.length && <div style={{ fontSize: 12, color: "#5b6474", textAlign: "center", padding: 12 }}>Sem movimentos.</div>}
-            <div className="vx-row" style={{ borderTop: "1.5px dashed rgba(26,34,51,.3)", marginTop: 8, paddingTop: 8 }}>
-              <span style={{ flex: 1, fontSize: 12, fontWeight: 800 }}>{lens === "dia" ? "SALDO DO DIA" : "TOTAL"}</span>
-              <span style={{ fontSize: 16, fontWeight: 800, color: dayBalance >= 0 ? "#2b7a4b" : "#b4322a" }}>{lens === "dia" ? (dayBalance >= 0 ? "+" : "") + dayBalance.toLocaleString("pt-BR", { minimumFractionDigits: 2 }) : sum(tx).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
-            </div>
-          </div>
-          <div className="vx-zig" />
+            )
+          })}
+          {!lista.length && <div className="vx-empty">Nenhum lançamento com esses filtros.</div>}
         </div>
-      </div>
-      <style>{`@media (max-width: 1200px){ .vx-fin-grid{ grid-template-columns: 1fr !important; } }`}</style>
+        <footer className="fn-foot">
+          <span>{lista.length} lançamentos · entradas {brl(sum(lista.filter(isIn)))} · saídas {brl(sum(lista.filter((i) => !isIn(i))))}</span>
+          {paged.pages > 1 && <Pager page={paged.page} pages={paged.pages} onPage={paged.setPage} />}
+        </footer>
+      </section>
       {forms.node}
     </Page>
   )
