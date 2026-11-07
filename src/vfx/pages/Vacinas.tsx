@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router"
 import { ArrowLeft, BookOpen, CalendarClock, CircleCheck, MessageCircle, Plus, Printer, Search, Syringe, TriangleAlert } from "lucide-react"
 import { normalize, useVetFlow, type Item } from "../../store"
@@ -44,28 +44,54 @@ const quando = (iso: string) => {
 export default function Vacinas() {
   const { data, addItem } = useVetFlow()
   const navigate = useNavigate()
-  const forms = usePageForms("vacinas", (saved) => saved.animalId && setAnimalId(saved.animalId))
   const initialFilter = useQueryParam("filtro")
   const paramAnimal = useQueryParam("animal")
+  // Estados persistidos por versões anteriores podem chegar sem uma coleção
+  // ou com vínculos apenas pelo nome. A pasta precisa renderizar durante a hidratação.
+  const animals = Array.isArray(data.animais) ? data.animais : []
+  const vaccines = Array.isArray(data.vacinas) ? data.vacinas : []
   const [aba, setAba] = useState<Aba>(initialFilter === "A vencer" ? "A vencer" : initialFilter === "Atrasada" ? "Atrasadas" : "Atrasadas")
   const [query, setQuery] = useState("")
   const [animalId, setAnimalId] = useState(() => {
     if (!paramAnimal) return ""
-    return data.animais.find((item) => item.id === paramAnimal || normalize(item.name) === normalize(paramAnimal))?.id || ""
+    return animals.find((item) => item.id === paramAnimal || normalize(item.name) === normalize(paramAnimal))?.id || ""
+  })
+  const forms = usePageForms("vacinas", (saved) => {
+    const linked = animals.find((item) => item.id === saved.animalId || normalize(item.name) === normalize(saved.animal || ""))
+    if (linked) setAnimalId(linked.id)
   })
   const hoje = todayISO()
 
+  useEffect(() => {
+    if (!animals.length) {
+      if (animalId) setAnimalId("")
+      return
+    }
+    if (animalId && !animals.some((item) => item.id === animalId)) {
+      setAnimalId("")
+      return
+    }
+    if (!animalId && paramAnimal) {
+      const linked = animals.find((item) => item.id === paramAnimal || normalize(item.name) === normalize(paramAnimal))
+      if (linked) setAnimalId(linked.id)
+    }
+  }, [animalId, animals, paramAnimal])
+
   const resumos = useMemo(() => {
     const porAnimal = new Map<string, Item[]>()
-    data.vacinas.forEach((v) => v.animalId && porAnimal.set(v.animalId, [...(porAnimal.get(v.animalId) || []), v]))
-    const animais = new Map(data.animais.map((a) => [a.id, a]))
+    const animais = new Map(animals.map((animal) => [animal.id, animal]))
+    const animaisPorNome = new Map(animals.map((animal) => [normalize(animal.name), animal.id]))
+    vaccines.forEach((vaccine) => {
+      const linkedId = vaccine.animalId || animaisPorNome.get(normalize(vaccine.animal || ""))
+      if (linkedId) porAnimal.set(linkedId, [...(porAnimal.get(linkedId) || []), vaccine])
+    })
     const out: Resumo[] = []
     porAnimal.forEach((doses, id) => {
       const animal = animais.get(id)
       if (animal) out.push(resumir(animal, doses, hoje))
     })
     return out
-  }, [data.vacinas, data.animais, hoje])
+  }, [animals, vaccines, hoje])
   const contagem = {
     Atrasadas: resumos.filter((r) => r.situacao === "Atrasadas").length,
     "A vencer": resumos.filter((r) => r.situacao === "A vencer").length,
@@ -87,7 +113,7 @@ export default function Vacinas() {
     forms.toast(`${sent} lembretes registrados em Comunicação (envio simulado: nenhuma mensagem real sai desta versão).`)
   }
 
-  const animal = data.animais.find((item) => item.id === animalId)
+  const animal = animals.find((item) => item.id === animalId)
   if (animal) return <Carteira animal={animal} onBack={() => setAnimalId("")} forms={forms} />
 
   const ABAS: [Aba, string, typeof TriangleAlert][] = [["Atrasadas", "late", TriangleAlert], ["A vencer", "soon", CalendarClock], ["Em dia", "ok", CircleCheck], ["Todos", "all", BookOpen]]
@@ -172,8 +198,17 @@ function Carteira({ animal, onBack, forms }: { animal: Item; onBack: () => void;
   const { data } = useVetFlow()
   const navigate = useNavigate()
   const hoje = todayISO()
-  const tutor = data.tutores.find((item) => item.id === animal.ownerId)
-  const doses = useMemo(() => data.vacinas.filter((item) => item.animalId === animal.id).sort((a, b) => itemDate(a).localeCompare(itemDate(b))), [animal.id, data.vacinas])
+  const animals = Array.isArray(data.animais) ? data.animais : []
+  const vaccines = Array.isArray(data.vacinas) ? data.vacinas : []
+  const tutors = Array.isArray(data.tutores) ? data.tutores : []
+  const tutor = tutors.find((item) => item.id === animal.ownerId)
+    || tutors.find((item) => normalize(item.name) === normalize(animal.owner || ""))
+  const doses = useMemo(
+    () => vaccines
+      .filter((item) => item.animalId === animal.id || normalize(item.animal || "") === normalize(animal.name))
+      .sort((a, b) => itemDate(a).localeCompare(itemDate(b))),
+    [animal.id, animal.name, vaccines],
+  )
   const r = resumir(animal, doses, hoje)
   const aplicadas = doses.filter((d) => d.status === "Aplicada").length
 
@@ -194,7 +229,7 @@ function Carteira({ animal, onBack, forms }: { animal: Item; onBack: () => void;
       <div className="vx-booklet">
         <div className="spine" />
         <div className="pg">
-          <div className="vx-lbl" style={{ color: "var(--vx-teal)" }}>Carteira nº {String(data.animais.indexOf(animal) + 1).padStart(4, "0")} · ativa</div>
+          <div className="vx-lbl" style={{ color: "var(--vx-teal)" }}>Carteira nº {String(Math.max(0, animals.indexOf(animal)) + 1).padStart(4, "0")} · ativa</div>
           <div className="vx-row" style={{ gap: 16 }}>
             <span className="vx-av" style={{ width: 84, height: 84, fontSize: 28, borderRadius: 26, background: colorFor(animal.id) }}>{initials(animal.name)}</span>
             <div>
