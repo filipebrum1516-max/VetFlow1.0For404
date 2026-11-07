@@ -3,11 +3,13 @@ import { useNavigate } from "react-router"
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react"
 import { useVetFlow, type Item } from "../../store"
 import { usePageForms } from "../hooks"
+import { ProfissionaisLista } from "../cadastroListas"
+import { ModoBar, ModoSwitch, useModo } from "../CadastroLista"
 import { addDays, colorFor, fmtLong, initials, itemDate, matches, Page, SearchBox, Seg, todayISO } from "../ui"
 
 const onDuty = (status: string) => /ativo|plant/i.test(status) && !/inativo/i.test(status)
 
-export default function Profissionais() {
+function ProfissionaisVisual() {
   const { data, staff } = useVetFlow()
   const navigate = useNavigate()
   const forms = usePageForms("profissionais")
@@ -146,4 +148,19 @@ export default function Profissionais() {
       {forms.node}
     </Page>
   )
+}
+
+/* Padrão de cadastro (lista igual a Animais/Tutores); a visão ilustrada continua disponível. */
+const MODOS: [string, string][] = [["lista", "Lista"], ["crachas", "Crachás"]]
+export default function Profissionais() {
+  const [modo, setModo] = useModo("profissionais")
+  const switcher = <ModoSwitch value={modo} onChange={setModo} options={MODOS} />
+  if (modo !== "lista")
+    return (
+      <>
+        <ModoBar value={modo} onChange={setModo} options={MODOS} />
+        <ProfissionaisVisual />
+      </>
+    )
+  return <ProfissionaisLista modo={switcher} />
 }

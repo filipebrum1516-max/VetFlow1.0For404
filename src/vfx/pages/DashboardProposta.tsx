@@ -4,7 +4,6 @@ import { AlertTriangle, BedDouble, CalendarDays, ChevronRight, CircleDollarSign,
 import { useVetFlow } from "../../store"
 import { bedAssignments } from "../forms"
 import { addDays, brl, itemDate, todayISO } from "../ui"
-import "./dashboard-proposta.css"
 
 const short = (value: number) => (value >= 1000 ? `${(value / 1000).toFixed(value >= 10000 ? 0 : 1).replace(".", ",")} mil` : String(Math.round(value)))
 

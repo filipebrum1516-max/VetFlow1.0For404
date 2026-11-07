@@ -1,6 +1,5 @@
 import { useState } from "react"
 import { useNavigate } from "react-router"
-import "../privacidade.css"
 
 const ATUALIZADO = "30 de outubro de 2026"
 

@@ -3,6 +3,8 @@ import { useNavigate } from "react-router"
 import { Edit3, FileText, PackagePlus, Plus } from "lucide-react"
 import { normalize, useVetFlow, type Item } from "../../store"
 import { usePageForms } from "../hooks"
+import { MedicamentosLista } from "../cadastroListas"
+import { ModoBar, ModoSwitch, useModo } from "../CadastroLista"
 import { brl, fmtDate, matches, Page, SearchBox, StatusPill } from "../ui"
 
 const shelfColor: Record<string, [string, string]> = {
@@ -26,7 +28,7 @@ function groupOf(item: Item) {
 }
 const baseName = (name: string) => name.replace(/\s*#\d+$/, "")
 
-export default function Medicamentos() {
+function MedicamentosVisual() {
   const { data } = useVetFlow()
   const navigate = useNavigate()
   const forms = usePageForms("medicamentos", (saved) => setSelectedId(saved.id))
@@ -176,4 +178,19 @@ export default function Medicamentos() {
       {forms.node}
     </Page>
   )
+}
+
+/* Padrão de cadastro (lista igual a Animais/Tutores); a visão ilustrada continua disponível. */
+const MODOS: [string, string][] = [["lista", "Lista"], ["vitrine", "Prateleira"]]
+export default function Medicamentos() {
+  const [modo, setModo] = useModo("medicamentos")
+  const switcher = <ModoSwitch value={modo} onChange={setModo} options={MODOS} />
+  if (modo !== "lista")
+    return (
+      <>
+        <ModoBar value={modo} onChange={setModo} options={MODOS} />
+        <MedicamentosVisual />
+      </>
+    )
+  return <MedicamentosLista modo={switcher} />
 }

@@ -27,6 +27,7 @@ import { type Ctx, type Field, type FormDef, type Values, rolePerms } from "./Fo
 import { addDays, brl, parseMoney, todayISO } from "./ui"
 import { validCnpj, validCpf } from "./ClienteForm"
 import { localTime } from "../date"
+import { alergiasDoAnimal, CONDICOES, condicoesDoAnimal, isAnestesico } from "./clinico"
 
 /* ---------------- atalhos ---------------- */
 function withoutId(item: Item): Partial<Item> {
@@ -418,15 +419,21 @@ const cirurgias: FormDef = {
   submit: "Agendar cirurgia",
   sections: [
     { title: "Paciente", fields: [animal(), req(pills("asa", "Classificação ASA", ["I · saudável", "II · doença leve", "III · grave", "IV · risco de vida", "V · moribundo", "E · emergência"])), f("contato", "Contato durante a cirurgia"), pills("rcp", "Autoriza RCP", ["Sim", "Não (DNR)"], 3, { def: "Sim" })] },
+    { title: "Risco", desc: "aparece como selo no cartão da cirurgia", fields: [
+      f("riscoInfo", "Doenças no cadastro do animal", "calc", 6, { calc: (values, ctx) => { const a = ctx.data.animais.find((x) => x.id === values.animalId); const c = condicoesDoAnimal(a); const al = alergiasDoAnimal(a); return a ? (c.length || al ? `Cadastro de ${a.name}: ${[...c, al ? `alergia: ${al}` : ""].filter(Boolean).join(" · ")}` : `Nenhuma doença registrada no cadastro de ${a.name}.`) : "Escolha o paciente para ver as doenças do cadastro." } }),
+      req(pills("risco", "Cirurgia de risco?", ["Não", "Sim"], 6, { def: "Não" })),
+      { ...multi("condicoes", "Doenças / condições que aumentam o risco", [...CONDICOES], 6), show: (values: Values) => values.risco === "Sim" },
+      { ...f("motivoRisco", "Por que é de risco", "textarea", 6, { ph: "Ex.: sopro mitral grau III, evitar acepromazina; creatinina 2,4" }), req: true, show: (values: Values) => values.risco === "Sim" },
+    ] },
     { title: "Cirurgia", fields: [req(sel("name", "Procedimento", ["Castração", "Ovariohisterectomia", "Orquiectomia", "Limpeza dentária", "Retirada de nódulo", "Mastectomia", "Osteossíntese", "Enterotomia", "Cistotomia"], 4)), f("regiao", "Lado / região", "text", 2), pills("carater", "Caráter", ["Eletiva", "Urgência", "Emergência"], 6, { def: "Eletiva" }), f("indicacao", "Indicação / diagnóstico pré-operatório", "textarea", 6), f("associados", "Procedimentos associados"), tog("histopato", "Enviar peça para histopatológico", false, undefined, 3)] },
     { title: "Equipe e sala", fields: [pro("Cirurgião(ã)"), sel("anestesista", "Anestesista", proNames), sel("auxiliar", "Auxiliar cirúrgico", proNames), f("volante", "Volante / instrumentação"), req(sel("sala", "Sala", ["Sala 1", "Sala 2"], 2, { def: "Sala 1" })), req(f("date", "Data", "date", 2, { def: today })), req(f("time", "Início", "time", 1, { def: "14:00" })), sel("duracao", "Duração", ["1 h", "1 h 30", "2 h", "3 h", "4 h"], 1, { def: "1 h 30" })] },
     { title: "Pré-operatório", fields: [multi("preExames", "Exames pré-operatórios ok", ["Hemograma", "Bioquímica", "Raio-X de tórax", "Ecocardiograma", "Coagulograma"]), pills("termo", "Termo de anestesia", ["Não enviado", "Enviado", "Assinado"], 3, { def: "Não enviado" }), pills("orcamento", "Orçamento", ["Pendente", "Aprovado"], 3, { def: "Pendente" }), f("jejumSolido", "Jejum sólido", "text", 2, { def: "8 h" }), f("jejumHidrico", "Jejum hídrico", "text", 2, { def: "2 h" }), f("chegada", "Chegada do paciente", "time", 2), tog("instrucoes", "Mandar instruções de jejum ao tutor na véspera", true)] },
-    { title: "Anestesia", fields: [f("mpa", "Medicação pré-anestésica"), f("inducao", "Indução"), sel("manutencao", "Manutenção", ["Inalatória · isoflurano", "Inalatória · sevoflurano", "TIVA"]), f("bloqueios", "Bloqueios locorregionais"), f("sonda", "Sonda endotraqueal", "text", 2), f("fluido", "Fluidoterapia", "text", 2), f("antibiotico", "Antibiótico profilático", "text", 2), multi("monitorizacao", "Monitorização", ["ECG", "SpO₂", "Capnografia", "PA não invasiva", "PA invasiva", "Temperatura"], 6, { def: ["ECG", "SpO₂", "Temperatura"] })] },
+    { title: "Anestesia", desc: "o protocolo é exigido antes de liberar a anestesia", fields: [sel("protocoloId", "Protocolo anestésico previsto", (ctx) => [...ctx.data.protocolos.filter((p) => isAnestesico(p)), ...ctx.data.protocolos.filter((p) => !isAnestesico(p))].map((p) => [p.id, p.name] as [string, string]), 6, { ph: "Definir no pré-operatório" }), f("mpa", "Medicação pré-anestésica"), f("inducao", "Indução"), sel("manutencao", "Manutenção", ["Inalatória · isoflurano", "Inalatória · sevoflurano", "TIVA"]), f("bloqueios", "Bloqueios locorregionais"), f("sonda", "Sonda endotraqueal", "text", 2), f("fluido", "Fluidoterapia", "text", 2), f("antibiotico", "Antibiótico profilático", "text", 2), multi("monitorizacao", "Monitorização", ["ECG", "SpO₂", "Capnografia", "PA não invasiva", "PA invasiva", "Temperatura"], 6, { def: ["ECG", "SpO₂", "Temperatura"] })] },
     { title: "Materiais", fields: [sel("caixa", "Caixa cirúrgica", ["Caixa geral nº 1", "Caixa geral nº 2", "Caixa geral nº 3", "Caixa ortopédica"]), f("fios", "Fios"), tog("sangue", "Reservar bolsa de sangue", false, undefined, 3), tog("bisturi", "Bisturi elétrico", true, undefined, 3)] },
-    { title: "Pós", fields: [pills("destino", "Destino após a cirurgia", ["Alta no mesmo dia", "Internação 24 h", "UTI"], 6, { def: "Alta no mesmo dia" }), f("analgesia", "Analgesia pós"), f("pontos", "Retirada de pontos", "date", 3), req(pills("status", "Situação", ["Agendada", "Pré-operatório", "Em andamento", "Concluída", "Cancelada"], 6, { def: "Agendada" })), f("valor", "Valor do orçamento", "money", 3)] },
+    { title: "Pós", fields: [pills("destino", "Destino após a cirurgia", ["Alta no mesmo dia", "Internação 24 h", "UTI"], 6, { def: "Alta no mesmo dia" }), f("analgesia", "Analgesia pós"), f("pontos", "Retirada de pontos", "date", 3), req(pills("status", "Situação", ["Agendada", "Cancelada"], 6, { def: "Agendada", hint: "As etapas (pré-operatório, anestesia, cirurgia e recuperação) são avançadas na tela de Cirurgias, com as exigências de cada uma." })), f("valor", "Valor do orçamento", "money", 3)] },
   ],
   fromItem: (item) => ({ valor: item.amountValue ? brl(item.amountValue) : "", carater: item.urgency ? "Urgência" : "Eletiva" }),
-  toItem: (values) => ({ name: values.name, status: values.status, amountValue: parseMoney(values.valor), category: values.carater, urgency: values.carater !== "Eletiva" }),
+  toItem: (values, _ctx) => ({ name: values.name, status: values.status, amountValue: parseMoney(values.valor), category: values.carater, urgency: values.carater !== "Eletiva" }),
   after: (saved, values, ctx, isNew) => {
     if (isNew && values.termo === "Enviado") ctx.addItem("documentos", { name: "Termo de consentimento", animalId: saved.animalId, professionalId: saved.professionalId, professional: saved.professional, status: "Pendente", category: "Clínicos", extra: { gaveta: "Clínicos", cirurgia: saved.name } })
   },
@@ -843,7 +850,7 @@ export const statusOptions: Partial<Record<ModuleSlug, string[]>> = {
   medicamentos: ["Disponível", "Controlado", "Ativo", "Inativo"],
   exames: ["Solicitado", "Aguardando resultado", "Concluído", "Urgente"],
   procedimentos: ["Agendado", "Em andamento", "Concluído", "Pendente", "Ativo"],
-  cirurgias: ["Agendada", "Pré-operatório", "Em andamento", "Concluída", "Cancelada"],
+  cirurgias: ["Agendada", "Pré-operatório", "Anestesia", "Em andamento", "Recuperação", "Concluída", "Cancelada"],
   internacoes: ["Em andamento", "Em observação", "Alta médica", "Encerrada"],
   protocolos: ["Em revisão", "Aprovado", "Ativo", "Arquivado"],
   servicos: ["Ativo", "Inativo"],

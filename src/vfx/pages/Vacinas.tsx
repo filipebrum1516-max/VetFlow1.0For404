@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router"
 import { MessageCircle, Plus, Printer, Search } from "lucide-react"
 import { normalize, useVetFlow } from "../../store"
@@ -8,32 +8,57 @@ import { colorFor, daysBetween, fmtDate, initials, itemDate, Page, Seg, todayISO
 export default function Vacinas() {
   const { data, addItem } = useVetFlow()
   const navigate = useNavigate()
-  const forms = usePageForms("vacinas", (saved) => saved.animalId && setAnimalId(saved.animalId))
   const initialFilter = useQueryParam("filtro")
+  const paramAnimal = useQueryParam("animal")
+  // Versões antigas salvas no navegador podem não ter todas as coleções.
+  // A tela deve hidratar com listas vazias e se reconciliar quando o store terminar de carregar.
+  const animals = Array.isArray(data.animais) ? data.animais : []
+  const vaccines = Array.isArray(data.vacinas) ? data.vacinas : []
+  const tutors = Array.isArray(data.tutores) ? data.tutores : []
   const [radar, setRadar] = useState<"Atrasada" | "A vencer">(initialFilter === "A vencer" ? "A vencer" : "Atrasada")
   const [query, setQuery] = useState("")
-  const paramAnimal = useQueryParam("animal")
   const [animalId, setAnimalId] = useState(() => {
-    const byParam = data.animais.find((item) => item.id === paramAnimal || normalize(item.name) === normalize(paramAnimal))
+    const byParam = animals.find((item) => item.id === paramAnimal || normalize(item.name) === normalize(paramAnimal || ""))
     if (byParam) return byParam.id
-    const recent = [...data.vacinas].sort((a, b) => itemDate(b).localeCompare(itemDate(a)))[0]
-    return recent?.animalId || data.animais[0]?.id || ""
+    const recent = [...vaccines].sort((a, b) => itemDate(b).localeCompare(itemDate(a)))[0]
+    const recentAnimal = animals.find((item) => item.id === recent?.animalId || normalize(item.name) === normalize(recent?.animal || ""))
+    return recentAnimal?.id || animals[0]?.id || ""
   })
-  const animal = data.animais.find((item) => item.id === animalId)
-  const tutor = data.tutores.find((item) => item.id === animal?.ownerId)
+  const forms = usePageForms("vacinas", (saved) => {
+    const savedAnimal = animals.find((item) => item.id === saved.animalId || normalize(item.name) === normalize(saved.animal || ""))
+    if (savedAnimal) setAnimalId(savedAnimal.id)
+  })
+
+  useEffect(() => {
+    if (!animals.length) {
+      if (animalId) setAnimalId("")
+      return
+    }
+    if (animalId && animals.some((item) => item.id === animalId)) return
+    const byParam = animals.find((item) => item.id === paramAnimal || normalize(item.name) === normalize(paramAnimal || ""))
+    const recent = [...vaccines].sort((a, b) => itemDate(b).localeCompare(itemDate(a)))[0]
+    const recentAnimal = animals.find((item) => item.id === recent?.animalId || normalize(item.name) === normalize(recent?.animal || ""))
+    setAnimalId(byParam?.id || recentAnimal?.id || animals[0].id)
+  }, [animalId, animals, paramAnimal, vaccines])
+
+  const animal = animals.find((item) => item.id === animalId)
+  const tutor = tutors.find((item) => item.id === animal?.ownerId)
+    || tutors.find((item) => normalize(item.name) === normalize(animal?.owner || ""))
   const doses = useMemo(
-    () => data.vacinas.filter((item) => item.animalId === animalId).sort((a, b) => itemDate(a).localeCompare(itemDate(b))),
-    [animalId, data.vacinas],
+    () => vaccines
+      .filter((item) => item.animalId === animalId || (!!animal && normalize(item.animal || "") === normalize(animal.name)))
+      .sort((a, b) => itemDate(a).localeCompare(itemDate(b))),
+    [animal, animalId, vaccines],
   )
   const upcoming = doses
     .filter((item) => item.status !== "Aplicada" || (item.dueDate && item.dueDate >= todayISO()))
     .map((item) => ({ item, when: item.status === "Aplicada" ? item.dueDate! : itemDate(item) }))
     .sort((a, b) => a.when.localeCompare(b.when))[0]
   const searchResults = query.trim()
-    ? data.animais.filter((item) => normalize(`${item.name} ${item.owner}`).includes(normalize(query))).slice(0, 6)
+    ? animals.filter((item) => normalize(`${item.name} ${item.owner}`).includes(normalize(query))).slice(0, 6)
     : []
-  const late = data.vacinas.filter((item) => item.status === "Atrasada")
-  const soon = data.vacinas.filter((item) => item.status === "A vencer")
+  const late = vaccines.filter((item) => item.status === "Atrasada")
+  const soon = vaccines.filter((item) => item.status === "A vencer")
   const radarList = (radar === "Atrasada" ? late : soon).slice(0, 7)
 
   const remind = () => {
@@ -76,7 +101,7 @@ export default function Vacinas() {
           <button className="vx-btn vx-btn-g" onClick={() => window.print()}>
             <Printer /> Imprimir
           </button>
-          <button className="vx-btn vx-btn-p" onClick={() => forms.open("vacinas", undefined, paramAnimal ? { animalId } : undefined)}>
+          <button className="vx-btn vx-btn-p" onClick={() => forms.open("vacinas", undefined, animalId ? { animalId } : undefined)}>
             <Plus /> Registrar aplicação
           </button>
         </>
@@ -86,7 +111,7 @@ export default function Vacinas() {
         <div className="vx-booklet">
           <div className="spine" />
           <div className="pg">
-            <div className="vx-lbl" style={{ color: "var(--vx-teal)" }}>Carteira nº {animal ? String(data.animais.indexOf(animal) + 1).padStart(4, "0") : "—"} · {animal ? "ativa" : "—"}</div>
+            <div className="vx-lbl" style={{ color: "var(--vx-teal)" }}>Carteira nº {animal ? String(animals.indexOf(animal) + 1).padStart(4, "0") : "—"} · {animal ? "ativa" : "—"}</div>
             {animal ? (
               <>
                 <div className="vx-row" style={{ gap: 16 }}>
@@ -142,7 +167,7 @@ export default function Vacinas() {
                   <span style={{ fontSize: 11, color: "var(--vx-muted)", textAlign: "center" }}>{item.professional || "—"}</span>
                 </button>
               ))}
-              <button className="vx-dose pend" onClick={() => forms.open("vacinas", undefined, { animalId })} style={{ justifyContent: "center", color: "var(--vx-accent)" }}>
+              <button className="vx-dose pend" disabled={!animalId} onClick={() => forms.open("vacinas", undefined, { animalId })} style={{ justifyContent: "center", color: "var(--vx-accent)" }}>
                 <Plus /> <strong>Nova dose</strong>
               </button>
             </div>

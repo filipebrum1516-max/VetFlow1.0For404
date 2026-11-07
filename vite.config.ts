@@ -25,6 +25,17 @@ react(),
       figmaReactRefreshBoundaryFallback(),
       figmaMakeKitPlugin({ storiesGlob: '/src/**/*.stories.{ts,tsx,js,jsx}' }),
     ],
+    /*
+     * Figma Make: pré-empacota as dependências e varre TODAS as telas (inclusive as carregadas
+     * sob demanda) já na partida do servidor. Sem isso o Vite descobre dependências no meio do
+     * primeiro carregamento, recarrega a página e a prévia mostra uma versão antiga antes da atual.
+     */
+    optimizeDeps: {
+      entries: ['index.html', 'src/**/*.{ts,tsx}'],
+      include: ['react', 'react/jsx-runtime', 'react/jsx-dev-runtime', 'react-dom', 'react-dom/client', 'react-router', 'lucide-react'],
+      // refaz o pré-empacotamento a cada partida: nunca reaproveita o cache de uma versão anterior
+      force: true,
+    },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, './src'),
@@ -34,6 +45,10 @@ react(),
       host: process.env.FIGMA_DEV_SERVER_HOST || '0.0.0.0',
       port: parseInt(process.env.PORT || '8443'),
       strictPort: true,
+      // transforma as telas principais antes do primeiro acesso: a prévia abre direto na versão atual
+      warmup: {
+        clientFiles: ['./src/main.tsx', './src/App.tsx', './src/store.tsx', './src/vfx/pages/*.tsx', './src/*Module.tsx'],
+      },
       watch: {
         ignored: [
           '**/.figma/**',

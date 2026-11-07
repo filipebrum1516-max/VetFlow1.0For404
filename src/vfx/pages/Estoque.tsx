@@ -3,6 +3,8 @@ import { useNavigate } from "react-router"
 import { ChevronLeft, ChevronRight, PackagePlus, Plus } from "lucide-react"
 import { useVetFlow, type Item } from "../../store"
 import { usePageForms } from "../hooks"
+import { EstoqueLista } from "../cadastroListas"
+import { ModoBar, ModoSwitch, useModo } from "../CadastroLista"
 import { addDays, brl, fmtDate, matches, Page, SearchBox, Seg, todayISO, useQueryParam } from "../ui"
 
 const CORREDORES: [string, string][] = [["A", "Vacinas"], ["B", "Medicamentos"], ["C", "Materiais"], ["D", "Rações"], ["E", "Petiscos"], ["F", "Coleiras e guias"], ["G", "Higiene"], ["H", "Brinquedos"], ["I", "Camas"], ["J", "Acessórios"]]
@@ -14,7 +16,7 @@ const low = (item: Item) => !out(item) && (item.quantity || 0) < (item.minimum |
 const expiring = (item: Item) => !!item.dueDate && item.dueDate <= addDays(todayISO(), 60)
 const unitCost = (item: Item) => (item.quantity ? (item.amountValue || 0) / item.quantity : 12)
 
-export default function Estoque() {
+function EstoqueVisual() {
   const { data, addItem, updateItem } = useVetFlow()
   const navigate = useNavigate()
   const forms = usePageForms("estoque")
@@ -150,4 +152,20 @@ export default function Estoque() {
       {forms.node}
     </Page>
   )
+}
+
+/* Padrão de cadastro (lista igual a Animais/Tutores); a visão ilustrada continua disponível. */
+const MODOS: [string, string][] = [["lista", "Lista"], ["corredores", "Corredores"]]
+export default function Estoque() {
+  const [modo, setModo] = useModo("estoque")
+  const filtro = new URLSearchParams(window.location.search).get("filtro") || ""
+  const switcher = <ModoSwitch value={modo} onChange={setModo} options={MODOS} />
+  if (modo !== "lista")
+    return (
+      <>
+        <ModoBar value={modo} onChange={setModo} options={MODOS} />
+        <EstoqueVisual />
+      </>
+    )
+  return <EstoqueLista modo={switcher} filtroInicial={["Acabando", "Esgotado", "Vencendo"].includes(filtro) ? filtro : "Todos"} />
 }

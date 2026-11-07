@@ -3,6 +3,8 @@ import { useNavigate } from "react-router"
 import { Plus, Printer, Sparkles } from "lucide-react"
 import { useVetFlow, type Item } from "../../store"
 import { usePageForms } from "../hooks"
+import { ServicosLista } from "../cadastroListas"
+import { ModoBar, ModoSwitch, useModo } from "../CadastroLista"
 import { brl, Page, SearchBox, Seg, matches, parseMoney } from "../ui"
 
 const sectionOf = (item: Item) => {
@@ -15,7 +17,7 @@ const sectionOf = (item: Item) => {
 }
 const order = ["Consultas", "Vacinas", "Exames", "Estética", "Cirurgias", "Hospedagem", "Leva e traz", "Outros"]
 
-export default function Servicos() {
+function ServicosVisual() {
   const { data, activeUnit } = useVetFlow()
   const navigate = useNavigate()
   const forms = usePageForms("servicos")
@@ -121,4 +123,19 @@ export default function Servicos() {
       {forms.node}
     </Page>
   )
+}
+
+/* Padrão de cadastro (lista igual a Animais/Tutores); a visão ilustrada continua disponível. */
+const MODOS: [string, string][] = [["lista", "Lista"], ["cardapio", "Cardápio"]]
+export default function Servicos() {
+  const [modo, setModo] = useModo("servicos")
+  const switcher = <ModoSwitch value={modo} onChange={setModo} options={MODOS} />
+  if (modo !== "lista")
+    return (
+      <>
+        <ModoBar value={modo} onChange={setModo} options={MODOS} />
+        <ServicosVisual />
+      </>
+    )
+  return <ServicosLista modo={switcher} />
 }

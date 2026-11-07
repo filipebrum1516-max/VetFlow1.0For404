@@ -6,7 +6,6 @@ import { useVetFlow, type Item } from "../../store"
 import { brl, fmtDate, initials, itemDate, normalizeText, parseMoney, todayISO, Page } from "../ui"
 import { codeOf, DOCUMENTOS, orcamentoHtml, printHtml, editInfo, planoInfo, PLANOS, LIMITE_DESCONTO, LIMITE_FIADO, lineTotal, minutesSince, mmss, nextNumber, nowTime, priceOf, saleTone, shortCode, stamp, type Entrega, type Line } from "../vendasShared"
 import { PrintBar } from "../PrintMenu"
-import "../ops.css"
 import Layer from "../OpLayer"
 import ClienteForm, { fromItem, toItem, type ClienteData } from "../ClienteForm"
 

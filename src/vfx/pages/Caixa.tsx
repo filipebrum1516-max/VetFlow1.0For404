@@ -6,7 +6,6 @@ import { brl, fmtDate, itemDate, parseMoney, todayISO, Page } from "../ui"
 import { docHtml, printDoc, printRaw } from "../printDoc"
 import { A_PRAZO, planoInfo, addMonths, FORMAS, PARCELADAS, LIMITE_FIADO, lineTotal, minutesSince, nowTime, printHtml, stamp, type Entrega, type Line, type Pay } from "../vendasShared"
 import { PrintBar } from "../PrintMenu"
-import "../ops.css"
 import Layer from "../OpLayer"
 
 type Mov = { tipo: string; valor: number; motivo: string; hora: string; forma?: string; venda?: string; por?: string }

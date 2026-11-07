@@ -4,7 +4,6 @@ import { ArrowLeft, Calendar, Camera, CameraOff, Check, ClipboardList, Clock, Co
 import { useVetFlow, type Item } from "../../store"
 import { usePageForms } from "../hooks"
 import { addDays, colorFor, fmtDate, initials, itemDate, normalizeText, Page, StatusPill, todayISO } from "../ui"
-import "../tele.css"
 
 const key = (item: Item) => `${itemDate(item)} ${item.time || "00:00"}`
 type Filtro = "Hoje" | "Próximos" | "Concluídos" | "Todos"

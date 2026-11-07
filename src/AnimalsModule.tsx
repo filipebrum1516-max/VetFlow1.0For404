@@ -34,6 +34,7 @@ import {
 } from "react"
 import { useNavigate } from "react-router"
 import { useVetFlow, type Item, type UnitData } from "./store"
+import { alergiasDoAnimal, CONDICOES, condicoesDoAnimal } from "./vfx/clinico"
 
 type AnimalRow = {
   id: string
@@ -198,7 +199,10 @@ export default function AnimalsModule() {
   }, [data.animais, data.tutores, lastVisits])
   const [menuId, setMenuId] = useState("")
   const [confirmDelete, setConfirmDelete] = useState<AnimalRow | null>(null)
-  const [recordAnimal, setRecordAnimal] = useState<Item | null>(null)
+  const [recordAnimal, setRecordAnimal] = useState<Item | null>(() => {
+    const ficha = new URLSearchParams(window.location.search).get("ficha")
+    return ficha ? data.animais.find((animal) => animal.id === ficha) || null : null
+  })
   const [recordEditing, setRecordEditing] = useState(false)
   const [perPage, setPerPage] = useState(6)
   const [query, setQuery] = useState(
@@ -668,7 +672,12 @@ function AnimalRecordDrawer({
     microchip: item.extra?.microchip || item.microchip || "",
     sterilization: item.extra?.castrado || item.extra?.sterilization || "",
     notes: item.notes || "",
+    outrasCondicoes: String(item.extra?.outrasCondicoes || ""),
+    alergias: String(item.extra?.alergias || ""),
   })
+  const [condicoes, setCondicoes] = useState<string[]>(() => (Array.isArray(item.extra?.condicoes) ? item.extra.condicoes : []))
+  const saude = condicoesDoAnimal(item)
+  const alergia = alergiasDoAnimal(item)
   const history = [...data.consultas, ...data.prontuarios]
     .filter((record) => record.animalId === item.id)
     .sort((a, b) => (b.date || "").localeCompare(a.date || ""))
@@ -702,6 +711,9 @@ function AnimalRecordDrawer({
         microchip: form.microchip,
         sterilization: form.sterilization,
         castrado: form.sterilization,
+        condicoes,
+        outrasCondicoes: form.outrasCondicoes,
+        alergias: form.alergias,
       },
     })
   }
@@ -763,10 +775,33 @@ function AnimalRecordDrawer({
                 <label className="tf-field"><span>Pelagem</span><input value={form.coat} onChange={(event) => field("coat", event.target.value)} /></label>
                 <label className="tf-field"><span>Microchip</span><input value={form.microchip} onChange={(event) => field("microchip", event.target.value)} /></label>
               </div>
+              <fieldset className="animal-health-edit">
+                <legend>Doenças e condições (aparecem como risco nas cirurgias)</legend>
+                <div>
+                  {CONDICOES.map((cond) => (
+                    <label key={cond}><input type="checkbox" checked={condicoes.includes(cond)} onChange={() => setCondicoes((cur) => (cur.includes(cond) ? cur.filter((c) => c !== cond) : [...cur, cond]))} /> {cond}</label>
+                  ))}
+                </div>
+              </fieldset>
+              <label className="tf-field"><span>Outras doenças</span><input value={form.outrasCondicoes} placeholder="Ex.: hipotireoidismo, sopro grau II" onChange={(event) => field("outrasCondicoes", event.target.value)} /></label>
+              <label className="tf-field"><span>Alergias / restrições a medicamentos</span><input value={form.alergias} placeholder="Ex.: reação a dipirona" onChange={(event) => field("alergias", event.target.value)} /></label>
               <label className="tf-textarea"><span>Observações</span><textarea value={form.notes} onChange={(event) => field("notes", event.target.value)} /></label>
             </form>
           )}
 
+          {tab === "Dados" && !editing && (
+            <div className={`animal-health ${saude.length || alergia ? "has" : ""}`}>
+              <small><HeartPulse size={13} /> Doenças e condições</small>
+              {saude.length || alergia ? (
+                <>
+                  {saude.length > 0 && <div>{saude.map((cond) => <b key={cond}>{cond}</b>)}</div>}
+                  {alergia && <p><strong>Alergia / restrição:</strong> {alergia}</p>}
+                </>
+              ) : (
+                <p>Nenhuma doença ou alergia registrada. Use Editar para registrar.</p>
+              )}
+            </div>
+          )}
           {tab === "Dados" && !editing && (
             <div className="animal-data-grid">
               {[
@@ -899,6 +934,10 @@ function AnimalDrawer({
         weight,
         date: item?.date || localISO(),
         extra: {
+          ...(item?.extra || {}),
+          condicoes: new FormData(form).getAll("condicoes").map(String),
+          outrasCondicoes: values.outrasCondicoes || "",
+          alergias: values.alergias || "",
           castrado: values.sterilization || "",
           pelagem: values.coat || "",
           pedigree: values.pedigree || "",
@@ -1012,6 +1051,22 @@ function AnimalDrawer({
           </Campo>
           <Campo label="Número do pedigree" span={3}>
             <input className="vx-in" name="pedigreeNumber" defaultValue={item?.extra?.pedigreeNumero || ""} placeholder="Registro" />
+          </Campo>
+        </CadSec>
+
+        <CadSec n={4} title="Saúde" desc="Doenças e alergias aparecem como risco nas cirurgias">
+          <div className="vx-c6 animal-health-edit">
+            <div>
+              {CONDICOES.map((cond) => (
+                <label key={cond}><input type="checkbox" name="condicoes" value={cond} defaultChecked={(Array.isArray(item?.extra?.condicoes) ? item.extra.condicoes : []).includes(cond)} /> {cond}</label>
+              ))}
+            </div>
+          </div>
+          <Campo label="Outras doenças" span={3}>
+            <input className="vx-in" name="outrasCondicoes" defaultValue={item?.extra?.outrasCondicoes || ""} placeholder="Ex.: sopro grau II" />
+          </Campo>
+          <Campo label="Alergias / restrições a medicamentos" span={3}>
+            <input className="vx-in" name="alergias" defaultValue={item?.extra?.alergias || ""} placeholder="Ex.: reação a dipirona" />
           </Campo>
         </CadSec>
       </>

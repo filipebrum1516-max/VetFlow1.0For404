@@ -1,89 +1,128 @@
-import { useMemo, useState } from "react"
-import { useNavigate } from "react-router"
-import { ArrowRight, GitCompare, PenLine, Plus, Printer } from "lucide-react"
-import { useVetFlow, type Item } from "../../store"
-import { usePageForms } from "../hooks"
-import { fmtDate, itemDate, matches, Modal, Page, Pager, SearchBox, Seg, StatusPill, usePaged, useQueryParam } from "../ui"
+import { Fragment, useCallback, useMemo, useState, type ReactNode } from "react"
+import { AlertTriangle, Check, ChevronLeft, Syringe, Pencil, Plus, Printer, Search, Trash2, X } from "lucide-react"
+import { localISO } from "../../date"
+import { normalize, useVetFlow, type Item } from "../../store"
+import { fmtDate, itemDate, matches, Page, Pager, SearchBox, Seg, usePaged, useQueryFlag, useQueryParam, useToast } from "../ui"
+import {
+  CATALOGO,
+  examNo,
+  fmtNum,
+  isCanceled,
+  isUrgent,
+  LEUCO,
+  materialFor,
+  metodoFor,
+  parseNum,
+  PHASES,
+  phaseOf,
+  rowsFor,
+  STATUS_FOR,
+  type ExamRow,
+} from "./examesRef"
+import { printLaudos, type LaudoCtx } from "./examesPrint"
 
-type Attr = { n: string; u: string; min: number; max: number }
-const templates: [RegExp, Attr[]][] = [
-  [/hemograma|pré-anest|check-up/i, [{ n: "Hemácias", u: "M/µL", min: 5.5, max: 8.5 }, { n: "Hemoglobina", u: "g/dL", min: 12, max: 18 }, { n: "Leucócitos", u: "mil/µL", min: 6, max: 17 }, { n: "Plaquetas", u: "mil/µL", min: 200, max: 500 }, { n: "Proteína total", u: "g/dL", min: 5.4, max: 7.8 }]],
-  [/renal/i, [{ n: "Ureia", u: "mg/dL", min: 21, max: 60 }, { n: "Creatinina", u: "mg/dL", min: 0.5, max: 1.5 }, { n: "SDMA", u: "µg/dL", min: 0, max: 14 }]],
-  [/hep[aá]t|bioqu/i, [{ n: "ALT", u: "U/L", min: 10, max: 88 }, { n: "FA", u: "U/L", min: 20, max: 150 }, { n: "Albumina", u: "g/dL", min: 2.6, max: 3.3 }]],
-  [/urina/i, [{ n: "Densidade", u: "", min: 1.015, max: 1.045 }, { n: "pH", u: "", min: 5, max: 7 }, { n: "Proteína", u: "mg/dL", min: 0, max: 30 }]],
-]
-const attrsFor = (name: string) => templates.find(([pattern]) => pattern.test(name))?.[1]
-const capColor = (name: string) => (/hemo|pré|check/i.test(name) ? "#b4322a" : /renal|hepat|bioq/i.test(name) ? "#9a6212" : /urina|fezes|parasit/i.test(name) ? "#2457c5" : /ultra|raio|eco|imag/i.test(name) ? "#6d4bc2" : "#2b7a4b")
-const liquid = (status: string) => (/conclu/i.test(status) ? 0.92 : /aguard/i.test(status) ? 0.62 : /urgent/i.test(status) ? 0.45 : 0.28)
+type Filter = "Todos" | "Aguardando" | "Laudos" | "Urgentes" | "Impressão"
+const FILTERS: Filter[] = ["Todos", "Aguardando", "Laudos", "Urgentes", "Impressão"]
 
-function results(item: Item): { n: string; u: string; min: number; max: number; v: number }[] | undefined {
-  // Só mostra valores que alguém lançou de verdade (nada inventado).
-  return item.extra?.resultados
+const inFilter = (item: Item, f: Filter) => {
+  const p = phaseOf(item)
+  if (f === "Aguardando") return p <= 2
+  if (f === "Laudos") return p === 3
+  if (f === "Urgentes") return isUrgent(item) && p < 4
+  if (f === "Impressão") return p === 4
+  return true
 }
-/** Código curto e legível do tubo (M-25). */
-const tubeCode = (item: Item) => `EX-${String(item.id.split("-").pop() || "").replace(/\D/g, "").slice(-4).padStart(4, "0")}`
+const PHASE_TONE = ["gray", "orange", "blue", "purple", "green"]
+const patientKey = (item: Item) => item.animalId || `nome:${item.animal || item.id}`
+const nowHM = () => { const d = new Date(); return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}` }
+const toLocalInput = (iso?: string) => {
+  const d = iso ? new Date(iso) : new Date()
+  const p = (n: number) => String(n).padStart(2, "0")
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
+}
 
-export default function Exames() {
-  const { data, updateItem } = useVetFlow()
-  const navigate = useNavigate()
-  const forms = usePageForms("exames", (saved) => setSelectedId(saved.id))
-  const param = useQueryParam("filtro")
-  const [filter, setFilter] = useState(param === "Aguardando" ? "Aguardando" : "Todos")
-  const [query, setQuery] = useState("")
-  const [selectedId, setSelectedId] = useState("")
-  const [entering, setEntering] = useState(false)
-  const [comparing, setComparing] = useState(false)
-  const [draft, setDraft] = useState<Record<string, string>>({})
-  const [entryError, setEntryError] = useState("")
-  const list = useMemo(
-    () =>
-      data.exames
-        .filter((item) => matches(item, query))
-        .filter((item) =>
-          filter === "Todos" ? true : filter === "Aguardando" ? /solicit|aguard/i.test(item.status) : filter === "Laudos" ? /conclu/i.test(item.status) : !!item.urgency || /urgent/i.test(item.status),
-        )
-        .sort((a, b) => itemDate(b).localeCompare(itemDate(a))),
-    [data.exames, filter, query],
+function PhaseBadge({ item }: { item: Item }) {
+  const p = phaseOf(item)
+  return <span className={`exm-badge t-${isCanceled(item) ? "red" : PHASE_TONE[p]}`}>{isCanceled(item) ? "Cancelado" : PHASES[p]}</span>
+}
+
+function Stepper({ item }: { item: Item }) {
+  const p = phaseOf(item)
+  return (
+    <ol className="exm-steps" aria-label={`Fase: ${PHASES[p]}`}>
+      {PHASES.map((label, i) => (
+        <li key={label} className={i < p ? "done" : i === p ? "now" : ""}>
+          <i>{i < p ? <Check size={11} /> : i + 1}</i>
+          <span>{label}</span>
+        </li>
+      ))}
+    </ol>
   )
-  const paged = usePaged(list, 8, [filter, query])
-  const selected = list.find((item) => item.id === selectedId) || paged.visible[0]
-  const rows = selected ? results(selected) : undefined
-  const previous = selected ? data.exames.filter((item) => item.animalId === selected.animalId && item.name === selected.name && item.id !== selected.id && itemDate(item) < itemDate(selected)).sort((a, b) => itemDate(b).localeCompare(itemDate(a)))[0] : undefined
-  const prevRows = previous ? results(previous) : undefined
-  const outOfRange = rows?.filter((row) => row.v < row.min || row.v > row.max) || []
+}
 
-  const advance = (item: Item) => {
-    if (/assinatura/i.test(item.status)) { setSelectedId(item.id); forms.toast("Resultado lançado. Falta assinar o laudo."); return }
-    const next = /solicit|urgent/i.test(item.status) ? "Aguardando resultado" : "Aguardando assinatura"
-    // B-03 / M-24: nunca conclui sem resultado — abre o formulário próprio do tipo de exame.
-    if (next === "Aguardando assinatura") {
-      setSelectedId(item.id)
-      setDraft({})
-      setEntryError("")
-      setEntering(true)
-      return
+/* =====================================================================
+   Página
+   ===================================================================== */
+export default function Exames() {
+  const { data, activeUnit, user } = useVetFlow()
+  const [toast, showToast] = useToast()
+  const param = useQueryParam("filtro")
+  const [filter, setFilter] = useState<Filter>(FILTERS.includes(param as Filter) ? (param as Filter) : "Todos")
+  const [query, setQuery] = useState("")
+  const [openKey, setOpenKey] = useState("")
+  const [request, setRequest] = useState<{ animalId?: string } | null>(null)
+
+  useQueryFlag(useCallback((params: URLSearchParams) => {
+    const animal = params.get("animal") || ""
+    const match = data.animais.find((a) => a.id === animal) || data.animais.find((a) => animal && normalize(a.name) === normalize(animal))
+    setRequest({ animalId: match?.id })
+  }, [data.animais]))
+
+  const animals = useMemo(() => new Map(data.animais.map((a) => [a.id, a])), [data.animais])
+  const searched = useMemo(() => data.exames.filter((e) => !isCanceled(e) && (matches(e, query) || normalize(examNo(e)).includes(normalize(query)))), [data.exames, query])
+  const counts = useMemo(() => Object.fromEntries(FILTERS.map((f) => [f, searched.filter((e) => inFilter(e, f)).length])) as Record<Filter, number>, [searched])
+
+  const groups = useMemo(() => {
+    const map = new Map<string, Item[]>()
+    for (const e of searched) {
+      if (!inFilter(e, filter)) continue
+      const k = patientKey(e)
+      const list = map.get(k)
+      if (list) list.push(e)
+      else map.set(k, [e])
     }
-    updateItem("exames", item.id, { status: next })
-    forms.toast(`${item.name} de ${item.animal} → ${next}`)
+    const out = [...map.entries()].map(([key, exams]) => {
+      exams.sort((a, b) => `${itemDate(b)}${b.time || ""}`.localeCompare(`${itemDate(a)}${a.time || ""}`))
+      return { key, exams, last: `${itemDate(exams[0])}${exams[0].time || ""}`, urgent: exams.some((e) => isUrgent(e) && phaseOf(e) < 4) }
+    })
+    return out.sort((a, b) => Number(b.urgent) - Number(a.urgent) || b.last.localeCompare(a.last))
+  }, [searched, filter])
+
+  const paged = usePaged(groups, 12, [filter, query])
+  const allOf = (key: string) => data.exames.filter((e) => patientKey(e) === key && !isCanceled(e))
+  const openExams = openKey ? allOf(openKey) : []
+
+  const ctx = (animalId?: string): LaudoCtx => {
+    const u = activeUnit
+    const extra = (u.extra || {}) as Record<string, any>
+    const logo = extra.logo || extra.logoUrl || extra.logotipo || `${window.location.origin}/assets/vetflow-logo.png`
+    return {
+      clinic: {
+        name: u.name,
+        phone: u.phone,
+        email: u.email,
+        site: extra.site || extra.website || u.email,
+        address: [[u.street, u.number].filter(Boolean).join(", "), u.city && `${u.city}/${u.state}`].filter(Boolean).join(" · "),
+        logo,
+      },
+      animal: animalId ? animals.get(animalId) : undefined,
+      crmvOf: (name?: string) => data.profissionais.find((p) => p.name === name)?.registration || "",
+    }
   }
-  const saveResults = () => {
-    if (!selected) return
-    const attrs = attrsFor(selected.name)
-    if (attrs) {
-      const missing = attrs.filter((attr) => !String(draft[attr.n] || "").trim() || !Number.isFinite(Number(String(draft[attr.n]).replace(",", "."))))
-      if (missing.length) return setEntryError(`Preencha com números: ${missing.map((m) => m.n).join(", ")}.`)
-    } else if ((draft.laudo || "").trim().length < 10) return setEntryError("Escreva o laudo descritivo (mínimo de 10 letras).")
-    const resultados = attrs?.map((attr) => ({ ...attr, v: Number(String(draft[attr.n]).replace(",", ".")) }))
-    updateItem("exames", selected.id, { status: "Aguardando assinatura", extra: { ...(selected.extra || {}), ...(resultados ? { resultados } : {}), laudo: draft.laudo || selected.extra?.laudo || "", anexo: draft.anexo || "", lancadoEm: new Date().toISOString() } })
-    setEntering(false)
-    setDraft({})
-    forms.toast("Resultado lançado. O laudo aguarda assinatura.")
-  }
-  const sign = () => {
-    if (!selected) return
-    if (!selected.extra?.resultados && !selected.extra?.laudo) { forms.toast("Lance o resultado antes de assinar."); return }
-    updateItem("exames", selected.id, { status: "Concluído", extra: { ...(selected.extra || {}), assinado: true, assinadoEm: new Date().toISOString() } })
-    forms.toast("Laudo marcado como assinado (registro interno, sem certificado digital).")
+  const print = (exams: Item[]) => {
+    const ready = exams.filter((e) => phaseOf(e) === 4)
+    if (!ready.length) return showToast("Só exames liberados podem ser impressos.")
+    printLaudos(ready, ctx(ready[0].animalId))
   }
 
   return (
@@ -92,160 +131,534 @@ export default function Exames() {
       blobs={[["#c9b8ff", 40, 240, 560, 480], ["#a7e3f0", "45%", -80, 380, 380], ["#ffc9d4", "85%", "70%", 340, 340]]}
       crumb="Exames"
       title="Exames"
-      sub="Pedidos de exame por etapa: Solicitado → Aguardando resultado → Aguardando assinatura → Concluído."
+      sub="Um card por paciente. Abra o card e use Editar para avançar as fases: Solicitado → Amostra colhida → Em análise → Resultado lançado → Liberado."
       actions={
         <>
-          <SearchBox value={query} onChange={setQuery} placeholder="Buscar exame ou paciente" />
-          <Seg options={[["Todos", "Todos"], ["Aguardando", "Aguardando"], ["Laudos", "Laudos"], ["Urgentes", "Urgentes"]]} value={filter} onChange={setFilter} />
-          <button className="vx-btn vx-btn-p" onClick={() => forms.open()}>
+          <SearchBox value={query} onChange={setQuery} placeholder="Buscar exame, nº ou paciente" />
+          <Seg<Filter> options={FILTERS.map((f) => [f, `${f} ${counts[f] ? `(${counts[f]})` : ""}`.trim()] as [Filter, string])} value={filter} onChange={setFilter} label="Filtrar exames" />
+          <button className="vx-btn vx-btn-p" type="button" onClick={() => setRequest({})}>
             <Plus /> Solicitar exame
           </button>
         </>
       }
     >
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 380px", gap: 24, alignItems: "start" }} className="vx-ex-grid">
-        <div>
-          <div style={{ position: "relative" }}>
-            <div className="vx-rack">
-              {paged.visible.map((item) => (
-                <button key={item.id} className={`vx-tube ${selected?.id === item.id ? "on" : ""}`} onClick={() => setSelectedId(item.id)} aria-label={`${item.name} de ${item.animal}: ${item.status}`}>
-                  <span className="cap" style={{ background: capColor(item.name) }} />
-                  <span className="glass">
-                    <span style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: `${liquid(item.status) * 100}%`, background: capColor(item.name), opacity: 0.75, transition: "height .4s ease" }} />
-                    <span style={{ position: "absolute", left: 6, top: 14, width: 5, height: "70%", borderRadius: 3, background: "rgba(255,255,255,.75)" }} />
-                    <span className="tag">{tubeCode(item)}</span>
-                  </span>
-                </button>
-              ))}
-            </div>
-            <div className="vx-glass" style={{ position: "absolute", left: 0, right: 0, bottom: 64, height: 34, borderRadius: 12, zIndex: 2 }} />
-          </div>
-          <div className="vx-rack" style={{ marginTop: 14, alignItems: "start" }}>
-            {paged.visible.map((item) => (
-              <div key={item.id} style={{ textAlign: "center", minWidth: 0 }}>
-                <div style={{ fontWeight: 800, fontSize: 13 }}>{item.animal}</div>
-                <div style={{ fontSize: 12, color: "var(--vx-muted)", overflow: "hidden", textOverflow: "ellipsis" }}>{item.name}</div>
-                <div style={{ fontSize: 12, fontWeight: 700, marginTop: 2 }}>{tubeCode(item)} · {item.status}</div>
-                <button className="vx-chip" style={{ marginTop: 6, minHeight: 24, fontSize: 11 }} onClick={() => advance(item)} disabled={/conclu/i.test(item.status)} aria-label={`Avançar ${item.name} de ${item.animal}`}>
-                  {/conclu/i.test(item.status) ? "Laudo pronto" : /assinatura/i.test(item.status) ? "Assinar" : /aguard/i.test(item.status) ? <>Lançar resultado <ArrowRight size={12} /></> : <>Amostra colhida <ArrowRight size={12} /></>}
-                </button>
+      <div className="exm-grid">
+        {paged.visible.map((g) => {
+          const first = g.exams[0]
+          const a = first.animalId ? animals.get(first.animalId) : undefined
+          const all = allOf(g.key)
+          const done = all.filter((e) => phaseOf(e) === 4).length
+          const allReady = all.length > 0 && done === all.length
+          return (
+            <button key={g.key} type="button" className={`exm-card ${g.urgent ? "urgent" : ""}`} onClick={() => setOpenKey(g.key)} aria-label={`Abrir exames de ${first.animal}`}>
+              <div className="exm-card-hd">
+                <span className="exm-ava">{(first.animal || "?").charAt(0).toUpperCase()}</span>
+                <span className="exm-who">
+                  <strong>{first.animal || "Paciente"}</strong>
+                  <small>Tutor: {first.owner || a?.owner || "—"}</small>
+                  <small>{[a?.species || first.species, a?.breed || first.breed].filter(Boolean).join(" · ") || "—"}</small>
+                </span>
+                {g.urgent && <span className="exm-badge t-red"><AlertTriangle size={11} /> Urgente</span>}
               </div>
-            ))}
-          </div>
-          {!list.length && <div className="vx-glass vx-empty" style={{ marginTop: 20 }}>Nenhum exame neste filtro.</div>}
-          <div className="vx-row" style={{ justifyContent: "space-between", marginTop: 18, flexWrap: "wrap", gap: 10 }}>
-            <div className="vx-row" style={{ gap: 8, flexWrap: "wrap" }}>
-              {[["Hemato", "#b4322a"], ["Bioquímica", "#9a6212"], ["Urina/fezes", "#2457c5"], ["Imagem", "#6d4bc2"]].map(([label, color]) => (
-                <span key={label} className="vx-chip"><span className="vx-dot" style={{ background: color }} />{label}</span>
-              ))}
-            </div>
-            <Pager page={paged.page} pages={paged.pages} onPage={paged.setPage} label={`Bandeja ${paged.page} de ${paged.pages}`} />
-          </div>
+              <ul className="exm-list">
+                {g.exams.slice(0, 4).map((e) => (
+                  <li key={e.id}>
+                    <code>{examNo(e)}</code>
+                    <span>{e.name}</span>
+                    <PhaseBadge item={e} />
+                  </li>
+                ))}
+                {g.exams.length > 4 && <li className="more">+ {g.exams.length - 4} exame(s)</li>}
+              </ul>
+              <div className="exm-card-ft">
+                <span>{fmtDate(itemDate(first))}{first.time ? ` · ${first.time}` : ""} · {first.professional || "—"}</span>
+                {allReady ? <span className="exm-ready"><Printer size={13} /> Pronto p/ impressão</span> : <span>{done}/{all.length} liberado(s)</span>}
+              </div>
+            </button>
+          )
+        })}
+      </div>
+      {!groups.length && <div className="vx-glass vx-empty" style={{ marginTop: 20 }}>Nenhum exame neste filtro.</div>}
+      {groups.length > 12 && (
+        <div className="vx-row" style={{ justifyContent: "flex-end", marginTop: 18 }}>
+          <Pager page={paged.page} pages={paged.pages} onPage={paged.setPage} label={`Página ${paged.page} de ${paged.pages}`} />
         </div>
+      )}
 
-        {selected ? (
-          <div className="vx-laudo" style={{ transform: "rotate(1deg)" }}>
-            <div className="vx-row" style={{ justifyContent: "space-between", borderBottom: "1.5px dashed rgba(26,34,51,.2)", paddingBottom: 12, gap: 10 }}>
-              <div>
-                <div style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 11, color: "#5b6474" }}>LAUDO {tubeCode(selected)} · {fmtDate(itemDate(selected))}</div>
-                <div style={{ fontSize: 19, fontWeight: 800 }}>{selected.name} · {selected.animal}</div>
-              </div>
-              <StatusPill status={selected.status} />
+      {openKey && openExams.length > 0 && (
+        <PatientDrawer
+          exams={openExams}
+          animal={openExams[0].animalId ? animals.get(openExams[0].animalId) : undefined}
+          userName={user?.displayName || "Equipe"}
+          onClose={() => setOpenKey("")}
+          onToast={showToast}
+          onPrint={print}
+          onAdd={(animalId) => setRequest({ animalId })}
+        />
+      )}
+      {request && (
+        <RequestDrawer
+          animalId={request.animalId}
+          onClose={() => setRequest(null)}
+          onSaved={(key, n) => { setRequest(null); setOpenKey(key); showToast(`${n} exame(s) solicitado(s).`) }}
+        />
+      )}
+      {toast}
+    </Page>
+  )
+}
+
+/* =====================================================================
+   Drawer genérico
+   ===================================================================== */
+function Drawer({ title, sub, onClose, onBack, footer, children, wide }: { title: string; sub?: string; onClose: () => void; onBack?: () => void; footer?: ReactNode; children: ReactNode; wide?: boolean }) {
+  return (
+    <div className="exd-backdrop" onMouseDown={onClose}>
+      <aside className={`exd ${wide ? "wide" : ""}`} role="dialog" aria-modal="true" aria-label={title} onMouseDown={(e) => e.stopPropagation()}>
+        <header>
+          {onBack ? <button type="button" onClick={onBack} aria-label="Voltar"><ChevronLeft /></button> : <span />}
+          <div><strong>{title}</strong>{sub && <small>{sub}</small>}</div>
+          <button type="button" onClick={onClose} aria-label="Fechar"><X /></button>
+        </header>
+        <div className="exd-scroll">{children}</div>
+        {footer && <footer>{footer}</footer>}
+      </aside>
+    </div>
+  )
+}
+
+/* =====================================================================
+   Card aberto: paciente + exames, fases no modo Editar
+   ===================================================================== */
+type EditDraft = Record<string, { urgency: boolean; material: string; metodo: string; professionalId: string; notes: string }>
+
+function PatientDrawer({ exams, animal, userName, onClose, onToast, onPrint, onAdd }: {
+  exams: Item[]
+  animal?: Item
+  userName: string
+  onClose: () => void
+  onToast: (t: string) => void
+  onPrint: (exams: Item[]) => void
+  onAdd: (animalId?: string) => void
+}) {
+  const { data, updateItem, deleteItem } = useVetFlow()
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState<EditDraft>({})
+  const [coleta, setColeta] = useState<{ id: string; em: string; por: string } | null>(null)
+  const [resultFor, setResultFor] = useState("")
+  const first = exams[0]
+  const sorted = [...exams].sort((a, b) => examNo(a).localeCompare(examNo(b)))
+  const ready = sorted.filter((e) => phaseOf(e) === 4)
+  const allReady = ready.length === sorted.length
+
+  const startEdit = () => {
+    setDraft(Object.fromEntries(sorted.map((e) => [e.id, {
+      urgency: isUrgent(e),
+      material: e.extra?.material || materialFor(e.name),
+      metodo: e.extra?.metodo || metodoFor(e.name),
+      professionalId: e.professionalId || data.profissionais.find((p) => p.name === e.professional)?.id || "",
+      notes: e.notes || "",
+    }])))
+    setEditing(true)
+  }
+  const saveEdit = () => {
+    for (const e of sorted) {
+      const d = draft[e.id]
+      if (!d) continue
+      const pro = data.profissionais.find((p) => p.id === d.professionalId)
+      updateItem("exames", e.id, {
+        urgency: d.urgency,
+        category: d.urgency ? "Urgente" : "Rotina",
+        status: /urgent/i.test(e.status) ? "Solicitado" : e.status,
+        professionalId: pro?.id || e.professionalId,
+        professional: pro?.name || e.professional,
+        notes: d.notes,
+        extra: { ...(e.extra || {}), material: d.material, metodo: d.metodo },
+      })
+    }
+    setEditing(false)
+    onToast("Alterações salvas.")
+  }
+  const setPhase = (e: Item, phase: number, extra: Record<string, unknown> = {}) => {
+    updateItem("exames", e.id, { status: STATUS_FOR[phase], extra: { ...(e.extra || {}), ...extra } })
+    onToast(`${examNo(e)} · ${e.name} → ${PHASES[phase]}`)
+  }
+  const confirmColeta = () => {
+    const e = sorted.find((x) => x.id === coleta?.id)
+    if (!e || !coleta) return
+    if (!coleta.por.trim()) return onToast("Informe quem colheu a amostra.")
+    setPhase(e, 1, { coleta: { em: new Date(coleta.em).toISOString(), por: coleta.por.trim() } })
+    setColeta(null)
+  }
+  const remove = (e: Item) => {
+    if (!window.confirm(`Excluir o exame ${examNo(e)} (${e.name})? Esta ação não pode ser desfeita.`)) return
+    deleteItem("exames", e.id)
+    onToast(`${examNo(e)} excluído.`)
+    if (sorted.length === 1) onClose()
+  }
+
+  const target = sorted.find((e) => e.id === resultFor)
+  if (target) {
+    return <ResultDrawer exam={target} animal={animal} onBack={() => setResultFor("")} onClose={onClose} onSaved={(msg) => { setResultFor(""); onToast(msg) }} />
+  }
+
+  return (
+    <Drawer
+      title={first.animal || "Paciente"}
+      sub={`${sorted.length} exame(s) · ${ready.length} liberado(s)`}
+      onClose={onClose}
+      footer={editing ? (
+        <>
+          <button type="button" className="exd-btn" onClick={() => setEditing(false)}>Cancelar</button>
+          <button type="button" className="exd-btn primary" onClick={saveEdit}><Check size={15} /> Salvar alterações</button>
+        </>
+      ) : (
+        <>
+          <button type="button" className="exd-btn" onClick={startEdit}><Pencil size={15} /> Editar</button>
+          {allReady
+            ? <button type="button" className="exd-btn primary" onClick={() => onPrint(sorted)}><Printer size={15} /> Imprimir todos ({sorted.length})</button>
+            : <button type="button" className="exd-btn primary" onClick={() => onAdd(first.animalId)}><Plus size={15} /> Adicionar exame</button>}
+        </>
+      )}
+    >
+      <div className="exd-patient">
+        <span className="exm-ava big">{(first.animal || "?").charAt(0).toUpperCase()}</span>
+        <div>
+          <strong>{first.animal}</strong>
+          <small>{[animal?.species || first.species, animal?.breed || first.breed, animal?.sex].filter(Boolean).join(" · ") || "—"}</small>
+          <small>Tutor: <b>{first.owner || animal?.owner || "—"}</b>{animal?.weight ? ` · Peso ${animal.weight}` : ""}</small>
+        </div>
+      </div>
+      {editing && <div className="exd-hint">Modo edição: avance as fases de cada exame, lance o resultado e ajuste os dados do pedido.</div>}
+
+      {sorted.map((e) => {
+        const p = phaseOf(e)
+        const x = e.extra || {}
+        const d = draft[e.id]
+        return (
+          <div key={e.id} className={`exd-exam ${isUrgent(e) && p < 4 ? "urgent" : ""}`}>
+            <div className="exd-exam-hd">
+              <code>{examNo(e)}</code>
+              <strong>{e.name}</strong>
+              {isUrgent(e) && p < 4 && <span className="exm-badge t-red">Urgente</span>}
+              <PhaseBadge item={e} />
             </div>
-            {rows ? (
-              rows.map((row) => {
-                const bad = row.v < row.min || row.v > row.max
-                const span = row.max - row.min || 1
-                const position = Math.max(2, Math.min(98, 25 + ((row.v - row.min) / span) * 50))
-                const prev = prevRows?.find((candidate) => candidate.n === row.n)
-                return (
-                  <div key={row.n}>
-                    <div className="vx-row" style={{ justifyContent: "space-between", fontSize: 13 }}>
-                      <span style={{ fontWeight: 700 }}>{row.n}</span>
-                      <span style={{ fontFamily: "JetBrains Mono, monospace", fontWeight: 800, color: bad ? "#b4322a" : "#1a2233" }}>
-                        {comparing && prev ? <span style={{ color: "#5b6474", fontWeight: 600 }}>{prev.v} → </span> : null}
-                        {row.v.toLocaleString("pt-BR")} {row.u}
-                      </span>
-                    </div>
-                    <div style={{ position: "relative", height: 8, borderRadius: 4, background: "rgba(26,34,51,.07)", marginTop: 6 }}>
-                      <div style={{ position: "absolute", left: "25%", width: "50%", top: 0, bottom: 0, borderRadius: 4, background: "rgba(43,122,75,.22)" }} />
-                      <div style={{ position: "absolute", left: `${position}%`, top: -4, width: 4, height: 16, borderRadius: 2, background: bad ? "#b4322a" : "#1a2233", marginLeft: -2 }} />
-                    </div>
-                    <div className="vx-row" style={{ justifyContent: "space-between", fontSize: 10, color: "#5b6474", marginTop: 3, padding: "0 22%" }}>
-                      <span>{row.min}</span>
-                      <span>{row.max}</span>
-                    </div>
+            <Stepper item={e} />
+            <dl className="exd-info">
+              <div><dt>Solicitado</dt><dd>{fmtDate(itemDate(e))}{e.time ? ` ${e.time}` : ""} · {e.professional || "—"}</dd></div>
+              <div><dt>Material</dt><dd>{x.material || materialFor(e.name) || "—"}</dd></div>
+              {x.coleta && <div><dt>Coleta</dt><dd>{new Date(x.coleta.em).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })} · {x.coleta.por}</dd></div>}
+              {(x.liberadoEm || x.assinadoEm) && <div><dt>Liberado</dt><dd>{fmtDate(x.liberadoEm || x.assinadoEm)} · {x.liberadoPor || x.assinadoPor || "—"}</dd></div>}
+              {e.notes && <div className="wide"><dt>Observações</dt><dd>{e.notes}</dd></div>}
+            </dl>
+
+            {editing && d && (
+              <div className="exd-edit">
+                <label className="exd-check"><input type="checkbox" checked={d.urgency} onChange={(ev) => setDraft({ ...draft, [e.id]: { ...d, urgency: ev.target.checked } })} /> Urgente</label>
+                <label><span>Material</span><input value={d.material} onChange={(ev) => setDraft({ ...draft, [e.id]: { ...d, material: ev.target.value } })} /></label>
+                <label><span>Método</span><input value={d.metodo} onChange={(ev) => setDraft({ ...draft, [e.id]: { ...d, metodo: ev.target.value } })} /></label>
+                <label><span>Veterinário solicitante</span>
+                  <select value={d.professionalId} onChange={(ev) => setDraft({ ...draft, [e.id]: { ...d, professionalId: ev.target.value } })}>
+                    <option value="">—</option>
+                    {data.profissionais.map((pr) => <option key={pr.id} value={pr.id}>{pr.name}</option>)}
+                  </select>
+                </label>
+                <label className="wide"><span>Observações</span><textarea rows={2} value={d.notes} onChange={(ev) => setDraft({ ...draft, [e.id]: { ...d, notes: ev.target.value } })} /></label>
+
+                {coleta?.id === e.id && (
+                  <div className="exd-coleta wide">
+                    <label><span>Data e hora da coleta</span><input type="datetime-local" value={coleta.em} onChange={(ev) => setColeta({ ...coleta, em: ev.target.value })} /></label>
+                    <label><span>Coletado por</span><input value={coleta.por} onChange={(ev) => setColeta({ ...coleta, por: ev.target.value })} /></label>
+                    <div className="exd-row"><button type="button" className="exd-btn sm" onClick={() => setColeta(null)}>Cancelar</button><button type="button" className="exd-btn sm primary" onClick={confirmColeta}><Check size={14} /> Confirmar coleta</button></div>
                   </div>
-                )
-              })
-            ) : (
-              <div style={{ padding: "18px 0", color: "#5b6474", fontSize: 13 }}>
-                {selected.extra?.laudo ? <span style={{ whiteSpace: "pre-wrap", color: "#1a2233" }}>{selected.extra.laudo}{selected.extra?.anexo ? `\nAnexo: ${selected.extra.anexo}` : ""}</span> : /conclu/i.test(selected.status) ? "Concluído sem resultado registrado neste sistema." : "Resultado ainda não lançado."}
+                )}
+
+                <div className="exd-row wide">
+                  {p === 0 && coleta?.id !== e.id && <button type="button" className="exd-btn sm primary" onClick={() => setColeta({ id: e.id, em: toLocalInput(), por: userName })}><Syringe size={14} /> Amostra colhida</button>}
+                  {p === 1 && <button type="button" className="exd-btn sm primary" onClick={() => setPhase(e, 2, { analiseEm: new Date().toISOString() })}>Iniciar análise</button>}
+                  {p >= 1 && p <= 3 && <button type="button" className="exd-btn sm primary" onClick={() => setResultFor(e.id)}>{p === 3 ? "Editar resultado" : "Lançar resultado"}</button>}
+                  {p === 3 && <button type="button" className="exd-btn sm" onClick={() => setResultFor(e.id)}>Revisar e liberar</button>}
+                  {p === 4 && <button type="button" className="exd-btn sm" onClick={() => setPhase(e, 3, { liberadoEm: undefined, liberadoPor: undefined, assinado: false, assinadoEm: undefined })}>Reabrir laudo</button>}
+                  {p > 0 && p < 4 && <button type="button" className="exd-btn sm ghost" onClick={() => setPhase(e, p - 1)}>Voltar etapa</button>}
+                  <button type="button" className="exd-btn sm danger" onClick={() => remove(e)}><Trash2 size={14} /> Excluir</button>
+                </div>
               </div>
             )}
-            {rows && (
-              <div className="vx-note" style={{ marginTop: 4 }}>
-                {outOfRange.length ? <><b>{outOfRange.length} fora da referência:</b> {outOfRange.map((row) => row.n).join(", ")}.</> : <><b>Tudo dentro da referência.</b></>}
-                {selected.extra?.assinado && <> Assinado em {fmtDate(selected.extra.assinadoEm)}.</>}
+
+            {!editing && p === 4 && (
+              <div className="exd-row">
+                <button type="button" className="exd-btn sm primary" onClick={() => onPrint([e])}><Printer size={14} /> Imprimir</button>
               </div>
             )}
-            <div className="vx-row" style={{ gap: 8, flexWrap: "wrap" }}>
-              {!/conclu|assinatura/i.test(selected.status) && (
-                <button className="vx-btn vx-btn-g vx-btn-sm" onClick={() => advance(selected)}>
-                  <ArrowRight /> {/solicit|urgent/i.test(selected.status) ? "Amostra em análise" : "Lançar resultado"}
-                </button>
-              )}
-              {rows && (
-                <button className="vx-btn vx-btn-g vx-btn-sm" onClick={() => (previous ? setComparing(!comparing) : forms.toast("Não há exame anterior igual para comparar."))}>
-                  <GitCompare /> {comparing ? "Ocultar anterior" : "Comparar"}
-                </button>
-              )}
-              <button className="vx-btn vx-btn-g vx-btn-sm" onClick={() => window.print()}>
-                <Printer /> Imprimir
-              </button>
-              <button className="vx-btn vx-btn-g vx-btn-sm" onClick={() => navigate(`/exames/${selected.id}`)}>Ficha</button>
-              {/assinatura|conclu/i.test(selected.status) && !selected.extra?.assinado && (selected.extra?.resultados || selected.extra?.laudo) && (
-                <button className="vx-btn vx-btn-p vx-btn-sm" onClick={sign}>
-                  <PenLine /> Assinar laudo
-                </button>
-              )}
-            </div>
+          </div>
+        )
+      })}
+    </Drawer>
+  )
+}
+
+/* =====================================================================
+   Lançar resultado
+   ===================================================================== */
+function ResultDrawer({ exam, animal, onBack, onClose, onSaved }: { exam: Item; animal?: Item; onBack: () => void; onClose: () => void; onSaved: (msg: string) => void }) {
+  const { data, updateItem, user } = useVetFlow()
+  const species = animal?.species || exam.species
+  const saved: ExamRow[] | undefined = Array.isArray(exam.extra?.resultados) ? exam.extra?.resultados : undefined
+  const tpl = useMemo<ExamRow[] | undefined>(() => {
+    const base = rowsFor(exam.name, species)
+    if (!base) return saved?.length ? saved.map((r) => ({ ...r })) : undefined
+    return base.map((r) => {
+      const old = saved?.find((s) => s.n === r.n)
+      return old ? { ...r, min: old.min, max: old.max } : r
+    })
+  }, [exam.name, species]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const [vals, setVals] = useState<Record<string, string>>(() => {
+    const out: Record<string, string> = {}
+    saved?.forEach((s) => { out[s.n] = s.isPct ? String(s.pct ?? "") : fmtNum(s.v, s.dec).replace(/\./g, "") })
+    return out
+  })
+  const [refs, setRefs] = useState<Record<string, [string, string]>>(() => Object.fromEntries((tpl || []).map((r) => [r.n, [String(r.min).replace(".", ","), String(r.max).replace(".", ",")]])))
+  const [laudo, setLaudo] = useState<string>(exam.extra?.laudo || "")
+  const vets = data.profissionais
+  const defaultVet = vets.find((v) => v.name === exam.extra?.liberadoPor)?.id || vets.find((v) => user && v.name.includes(user.name.split(" ")[0]))?.id || exam.professionalId || vets[0]?.id || ""
+  const [vetId, setVetId] = useState(defaultVet)
+  const [error, setError] = useState("")
+
+  const leuco = parseNum(vals[LEUCO])
+  const pctSum = (tpl || []).filter((r) => r.isPct && !r.calc).reduce((s, r) => s + (parseNum(vals[r.n]) || 0), 0)
+  const neutroPct = (tpl || []).filter((r) => /mielóc|bastonet|segment/i.test(r.n)).reduce((s, r) => s + (parseNum(vals[r.n]) || 0), 0)
+
+  const build = (): ExamRow[] | string => {
+    if (!tpl) return []
+    const rows: ExamRow[] = []
+    const missing: string[] = []
+    for (const r of tpl) {
+      const [mn, mx] = refs[r.n] || [String(r.min), String(r.max)]
+      const min = parseNum(mn), max = parseNum(mx)
+      if (!Number.isFinite(min) || !Number.isFinite(max)) return `Referência inválida em ${r.n}.`
+      if (r.isPct) {
+        const pct = r.calc ? neutroPct : parseNum(vals[r.n] || "0")
+        if (!Number.isFinite(pct)) { missing.push(r.n); continue }
+        if (!Number.isFinite(leuco)) return "Informe os Leucócitos totais para calcular o leucograma."
+        rows.push({ ...r, min, max, pct, v: Math.round((pct * leuco) / 100) })
+      } else {
+        const v = parseNum(vals[r.n])
+        if (!Number.isFinite(v)) { missing.push(r.n); continue }
+        rows.push({ ...r, min, max, v })
+      }
+    }
+    return missing.length ? `Preencha com números: ${missing.join(", ")}.` : rows
+  }
+
+  const save = (release: boolean) => {
+    const rows = build()
+    if (typeof rows === "string") return setError(rows)
+    if (!tpl && laudo.trim().length < 10) return setError("Escreva o laudo descritivo (mínimo de 10 letras).")
+    const vet = vets.find((v) => v.id === vetId)
+    if (release && !vet) return setError("Escolha o veterinário responsável pela liberação.")
+    const now = new Date().toISOString()
+    updateItem("exames", exam.id, {
+      status: release ? STATUS_FOR[4] : STATUS_FOR[3],
+      extra: {
+        ...(exam.extra || {}),
+        ...(tpl ? { resultados: rows } : {}),
+        laudo: laudo.trim(),
+        lancadoEm: exam.extra?.lancadoEm || now,
+        lancadoPor: user?.displayName || "",
+        ...(release ? { liberadoEm: now, liberadoPor: vet?.name, liberadoCrmv: vet?.registration || "", assinado: true, assinadoEm: now, assinadoPor: vet?.name } : {}),
+      },
+    })
+    onSaved(release ? `${examNo(exam)} liberado. Já pode imprimir.` : `Resultado de ${examNo(exam)} salvo. Falta liberar.`)
+  }
+
+  let lastSec = ""
+  return (
+    <Drawer
+      wide
+      title={`Resultado · ${exam.name}`}
+      sub={`${examNo(exam)} · ${exam.animal}${species ? ` · ${species}` : ""}`}
+      onBack={onBack}
+      onClose={onClose}
+      footer={
+        <>
+          <button type="button" className="exd-btn" onClick={() => save(false)}>Salvar resultado</button>
+          <button type="button" className="exd-btn primary" onClick={() => save(true)}><Check size={15} /> Salvar e liberar</button>
+        </>
+      }
+    >
+      {tpl && (
+        <div className="exr-table" role="table">
+          <div className="exr-row exr-head" role="row"><span>Parâmetro</span><span>Resultado</span><span>Absoluto</span><span>Referência (mín – máx)</span></div>
+          {tpl.map((r) => {
+            const newSec = r.sec !== lastSec
+            lastSec = r.sec || ""
+            const v = r.isPct ? (r.calc ? neutroPct : parseNum(vals[r.n] || "0")) : parseNum(vals[r.n])
+            const abs = r.isPct && Number.isFinite(leuco) && Number.isFinite(v) ? Math.round((v * leuco) / 100) : r.isPct ? NaN : v
+            const [mn, mx] = refs[r.n] || ["", ""]
+            const out = Number.isFinite(abs) && (abs < parseNum(mn) || abs > parseNum(mx))
+            return (
+              <Fragment key={r.n}>
+              {newSec && <div className="exr-sec">{r.sec}</div>}
+              <div className={`exr-row ${out ? "out" : ""}`} role="row">
+                <span>{r.n}</span>
+                <span className="exr-in">
+                  {r.calc
+                    ? <b>{fmtNum(neutroPct, 0)} %</b>
+                    : <><input inputMode="decimal" aria-label={r.n} value={vals[r.n] || ""} placeholder={r.isPct ? "0" : ""} onChange={(ev) => setVals({ ...vals, [r.n]: ev.target.value })} /><em>{r.isPct ? "%" : r.u}</em></>}
+                </span>
+                <span className="exr-abs">{r.isPct ? `${fmtNum(abs, 0)} ${r.u}` : ""}</span>
+                <span className="exr-ref">
+                  <input aria-label={`${r.n} mínimo`} value={mn} onChange={(ev) => setRefs({ ...refs, [r.n]: [ev.target.value, mx] })} />
+                  <i>–</i>
+                  <input aria-label={`${r.n} máximo`} value={mx} onChange={(ev) => setRefs({ ...refs, [r.n]: [mn, ev.target.value] })} />
+                </span>
+              </div>
+              </Fragment>
+            )
+          })}
+          {tpl.some((r) => r.isPct) && (
+            <div className={`exr-sum ${Math.abs(pctSum - 100) > 0.5 ? "warn" : ""}`}>Soma do diferencial: <b>{fmtNum(pctSum, 0)} %</b>{Math.abs(pctSum - 100) > 0.5 ? " (deveria somar 100 %)" : " ✓"}</div>
+          )}
+        </div>
+      )}
+      <label className="exr-f">
+        <span>{tpl ? "Observações do laudo" : "Laudo descritivo *"}</span>
+        <textarea rows={tpl ? 3 : 8} value={laudo} onChange={(ev) => setLaudo(ev.target.value)} />
+      </label>
+      <label className="exr-f">
+        <span>Veterinário responsável (assina o laudo)</span>
+        <select value={vetId} onChange={(ev) => setVetId(ev.target.value)}>
+          {vets.map((v) => <option key={v.id} value={v.id}>{v.name}{v.registration ? ` · ${v.registration}` : ""}</option>)}
+        </select>
+      </label>
+      {error && <div className="exr-err" role="alert">{error}</div>}
+    </Drawer>
+  )
+}
+
+/* =====================================================================
+   Solicitar exame (um ou mais para o mesmo paciente)
+   ===================================================================== */
+function RequestDrawer({ animalId: initial, onClose, onSaved }: { animalId?: string; onClose: () => void; onSaved: (patientKey: string, n: number) => void }) {
+  const { data, addItem, activeUnitId } = useVetFlow()
+  const [animalId, setAnimalId] = useState(initial || "")
+  const [q, setQ] = useState("")
+  const [chosen, setChosen] = useState<string[]>([])
+  const [custom, setCustom] = useState("")
+  const [urgent, setUrgent] = useState(false)
+  const [proId, setProId] = useState(data.profissionais[0]?.id || "")
+  const [notes, setNotes] = useState("")
+  const [error, setError] = useState("")
+
+  const animal = data.animais.find((a) => a.id === animalId)
+  const results = useMemo(() => {
+    if (!q.trim()) return []
+    const n = normalize(q)
+    return data.animais.filter((a) => normalize(`${a.name} ${a.owner || ""} ${a.breed || ""}`).includes(n)).slice(0, 8)
+  }, [q, data.animais])
+  const catalog = useMemo(() => [...new Set([...CATALOGO, ...data.exames.map((e) => e.name)])].sort((a, b) => a.localeCompare(b, "pt-BR")), [data.exames])
+  const toggle = (name: string) => setChosen(chosen.includes(name) ? chosen.filter((c) => c !== name) : [...chosen, name])
+  const addCustom = () => { const t = custom.trim(); if (t && !chosen.includes(t)) setChosen([...chosen, t]); setCustom("") }
+
+  const save = () => {
+    if (!animal) return setError("Escolha o paciente.")
+    if (!chosen.length) return setError("Escolha ao menos um exame.")
+    const pro = data.profissionais.find((p) => p.id === proId)
+    const base = Math.max(data.exames.length, ...data.exames.map((e) => Number(e.extra?.numero) || 0))
+    const stamp = Date.now()
+    const today = localISO(new Date())
+    chosen.forEach((name, i) => {
+      addItem("exames", {
+        id: `${activeUnitId}-exames-${stamp}-${i}`,
+        name,
+        subtitle: `${animal.name} • ${animal.owner || ""}`,
+        status: STATUS_FOR[0],
+        animalId: animal.id,
+        animal: animal.name,
+        owner: animal.owner,
+        ownerId: animal.ownerId,
+        species: animal.species,
+        breed: animal.breed,
+        professional: pro?.name,
+        professionalId: pro?.id,
+        urgency: urgent,
+        category: urgent ? "Urgente" : "Rotina",
+        date: today,
+        time: nowHM(),
+        notes: notes.trim(),
+        extra: { numero: base + 1 + i, material: materialFor(name), metodo: metodoFor(name), solicitadoEm: new Date().toISOString() },
+      })
+    })
+    onSaved(animal.id, chosen.length)
+  }
+
+  return (
+    <Drawer
+      title="Solicitar exame"
+      sub="Escolha o paciente e um ou mais exames"
+      onClose={onClose}
+      footer={
+        <>
+          <button type="button" className="exd-btn" onClick={onClose}>Cancelar</button>
+          <button type="button" className="exd-btn primary" onClick={save}><Check size={15} /> Solicitar {chosen.length > 1 ? `${chosen.length} exames` : "exame"}</button>
+        </>
+      }
+    >
+      <div className="exr-f">
+        <span>Paciente *</span>
+        {animal ? (
+          <div className="exd-picked">
+            <span className="exm-ava">{animal.name.charAt(0).toUpperCase()}</span>
+            <div><strong>{animal.name}</strong><small>{animal.species} · {animal.breed} · Tutor: {animal.owner}</small></div>
+            <button type="button" className="exd-btn sm ghost" onClick={() => setAnimalId("")}>Trocar</button>
           </div>
         ) : (
-          <div className="vx-glass vx-empty">Escolha um tubo.</div>
+          <div className="exd-search">
+            <label><Search size={15} /><input autoFocus value={q} onChange={(ev) => setQ(ev.target.value)} placeholder="Nome do animal, tutor ou raça" /></label>
+            {results.map((a) => (
+              <button key={a.id} type="button" onClick={() => { setAnimalId(a.id); setQ("") }}>
+                <strong>{a.name}</strong><small>{a.species} · {a.breed} · {a.owner}</small>
+              </button>
+            ))}
+            {q.trim() && !results.length && <small className="exd-none">Nenhum paciente encontrado.</small>}
+          </div>
         )}
       </div>
-      {entering && selected && (
-        <Modal
-          title={`Resultado · ${selected.name}`}
-          text={attrsFor(selected.name) ? `${selected.animal} · informe os valores medidos (valores de referência ao lado)` : `${selected.animal} · exame descritivo: escreva o laudo e, se houver, anexe o arquivo`}
-          onClose={() => setEntering(false)}
-          actions={
-            <>
-              <button className="vx-btn vx-btn-g" onClick={() => setEntering(false)}>Cancelar</button>
-              <button className="vx-btn vx-btn-p" onClick={saveResults}>Salvar resultado</button>
-            </>
-          }
-        >
-          <div className="vx-g">
-            {!attrsFor(selected.name) && (
-              <>
-                <label className="vx-f" style={{ gridColumn: "1 / -1" }}><span className="vx-fl">Laudo descritivo *</span><textarea className="vx-in" rows={5} value={draft.laudo || ""} onChange={(event) => setDraft({ ...draft, laudo: event.target.value })} /></label>
-                <label className="vx-f" style={{ gridColumn: "1 / -1" }}><span className="vx-fl">Anexo (imagem ou PDF)</span><input className="vx-in" type="file" accept="image/*,application/pdf" onChange={(event) => setDraft({ ...draft, anexo: event.target.files?.[0]?.name || "" })} /></label>
-              </>
-            )}
-            {entryError && <div role="alert" style={{ gridColumn: "1 / -1", color: "#b4322a", fontSize: 13, fontWeight: 600 }}>{entryError}</div>}
-            {(attrsFor(selected.name) || []).map((attr) => (
-              <label key={attr.n} className="vx-f vx-c3">
-                <span className="vx-fl">{attr.n} ({attr.u || "—"}) · ref. {attr.min}–{attr.max}</span>
-                <input className="vx-in" inputMode="decimal" value={draft[attr.n] || ""} onChange={(event) => setDraft({ ...draft, [attr.n]: event.target.value })} />
-              </label>
-            ))}
-          </div>
-        </Modal>
-      )}
-      <style>{`@media (max-width: 1100px){ .vx-ex-grid{ grid-template-columns: 1fr !important; } }`}</style>
-      {forms.node}
-    </Page>
+
+      <div className="exr-f">
+        <span>Exames *</span>
+        <div className="exd-chips">
+          {catalog.map((name) => (
+            <button key={name} type="button" className={chosen.includes(name) ? "on" : ""} onClick={() => toggle(name)} aria-pressed={chosen.includes(name)}>
+              {chosen.includes(name) && <Check size={12} />} {name}
+            </button>
+          ))}
+          {chosen.filter((c) => !catalog.includes(c)).map((name) => (
+            <button key={name} type="button" className="on" onClick={() => toggle(name)}><Check size={12} /> {name}</button>
+          ))}
+        </div>
+        <div className="exd-custom">
+          <input value={custom} onChange={(ev) => setCustom(ev.target.value)} onKeyDown={(ev) => { if (ev.key === "Enter") { ev.preventDefault(); addCustom() } }} placeholder="Outro exame (digite e Enter)" />
+          <button type="button" className="exd-btn sm" onClick={addCustom}><Plus size={14} /> Adicionar</button>
+        </div>
+      </div>
+
+      <div className="exd-two">
+        <label className="exr-f"><span>Prioridade</span>
+          <select value={urgent ? "u" : "r"} onChange={(ev) => setUrgent(ev.target.value === "u")}>
+            <option value="r">Rotina</option>
+            <option value="u">Urgente</option>
+          </select>
+        </label>
+        <label className="exr-f"><span>Veterinário solicitante</span>
+          <select value={proId} onChange={(ev) => setProId(ev.target.value)}>
+            {data.profissionais.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+        </label>
+      </div>
+      <label className="exr-f"><span>Observações / suspeita clínica</span><textarea rows={3} value={notes} onChange={(ev) => setNotes(ev.target.value)} /></label>
+      {error && <div className="exr-err" role="alert">{error}</div>}
+    </Drawer>
   )
 }

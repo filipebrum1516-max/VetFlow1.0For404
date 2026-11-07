@@ -125,7 +125,7 @@ export function tone(status = "") {
     )
   )
     return "orange"
-  if (/(andamento|atendimento|em uso|ativa$|plantao|internado|em tratamento)/.test(value))
+  if (/(andamento|atendimento|em uso|ativa$|plantao|internado|em tratamento|anestesia|recuperacao)/.test(value))
     return "blue"
   if (/(conclu|^paga$|convertid|aplicad|assinad|resolvid|recebid|pago|publicad|alta|aprovad|ativo|ativa|confirmad|disponivel|enviad|lida|respondid|atualizado|gerado)/.test(value))
     return "green"
@@ -178,7 +178,7 @@ export const HELP: Record<string, string> = {
   Procedimentos: "Na aba Catálogo ficam os procedimentos que a clínica oferece. Use “Registrar” para lançar um procedimento feito em um paciente; ele aparece na aba Realizados.",
   Protocolos: "Protocolos são roteiros clínicos da equipe. Para aplicar a um paciente, escolha o protocolo e clique em “Aplicar a um paciente”: ele entra em uso para aquele animal e gera a prescrição.",
   Internações: "Mapa dos leitos e fila de espera. Registre sinais vitais, medicações e dê alta pela janela de alta (motivo e orientações obrigatórios).",
-  Cirurgias: "Salas do dia com o checklist de cirurgia segura. Inicie, acompanhe as fases e encaminhe para a internação pós-cirúrgica.",
+  Cirurgias: "Duas abas: Cirurgias de hoje e Todas as cirurgias. Cada passagem de etapa (pré-operatório, anestesia, cirurgia e recuperação) exige o que a etapa pede, incluindo o protocolo anestésico. O selo vermelho marca cirurgia de risco; abra a cirurgia para ver o motivo e ir ao cadastro do animal.",
   Financeiro: "Entradas e saídas, contas a receber e a pagar. Lançamentos não são apagados: use Estornar com o motivo.",
   Caixa: "Abra o caixa com o troco, receba as vendas da fila e feche conferindo cada forma de pagamento.",
   Entregas: "Pedidos para entregar: atribua o entregador, monte a rota e confirme a entrega. “Pendentes” não inclui as já entregues.",

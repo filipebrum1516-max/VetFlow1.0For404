@@ -3,7 +3,6 @@ import { useNavigate, useSearchParams } from "react-router"
 import { Eye, EyeOff, KeyRound, Plus, Save, ShieldCheck, UserX } from "lucide-react"
 import { modules, ROLE_ACCESS, useVetFlow, type Role, type StaffUser } from "../../store"
 import { initials, normalizeText, Page, SearchBox, useToast } from "../ui"
-import "../equipe.css"
 
 const ROLES: Role[] = ["Administrador", "Vendedor", "Caixa", "Estoque", "Veterinário", "Entregador"]
 export const ROLE_COLOR: Record<Role, string> = { Administrador: "#6b4fbb", Vendedor: "#2b7a4b", Caixa: "#1d5fbf", Estoque: "#c27b0e", "Veterinário": "#b42318", Entregador: "#0f766e" }

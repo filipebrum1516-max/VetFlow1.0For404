@@ -1981,3 +1981,166 @@ textarea.vx-in { height: auto; min-height: 84px; padding: 10px 12px; line-height
     radial-gradient(circle at 94% 8%, rgba(80, 116, 204, .13), transparent 36%),
     linear-gradient(135deg, #0b1018, #111925 55%, #0d131d) !important;
 }
+
+/* Saúde do animal (doenças, condições e alergias) — usado na cirurgia como risco */
+.animal-health { margin-bottom: 10px; padding: 11px; border-radius: 8px; background: #FAFBFC; border: 1px solid #EEF0F3; }
+.animal-health.has { background: #fdeceb; border-color: #f1b9b4; }
+.animal-health > small { display: flex; align-items: center; gap: 5px; margin-bottom: 6px; color: var(--tf-muted, #5d6675); font-size: 11px; font-weight: 700; }
+.animal-health.has > small { color: #b4322a; }
+.animal-health > div { display: flex; flex-wrap: wrap; gap: 6px; }
+.animal-health b { padding: 4px 9px; border-radius: 999px; background: #fff; border: 1px solid #f1b9b4; color: #9b2a23; font-size: 12px; }
+.animal-health p { margin: 6px 0 0; font-size: 12px; line-height: 1.45; color: #2c3644; }
+.animal-health-edit { border: 1px solid var(--tf-line, #d5dae2); border-radius: 7px; padding: 10px 12px 12px; margin: 0; }
+.animal-health-edit legend { padding: 0 5px; color: #59616C; font-size: 11px; font-weight: 700; }
+.animal-health-edit > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 12px; }
+.animal-health-edit label { display: flex; align-items: center; gap: 7px; font-size: 13px; cursor: pointer; }
+.animal-health-edit input { width: 16px; height: 16px; accent-color: #d9601a; flex: none; }
+[data-theme="dark"] .animal-health { background: rgba(255,255,255,.04); border-color: rgba(255,255,255,.1); }
+[data-theme="dark"] .animal-health.has { background: rgba(255,143,135,.12); border-color: rgba(255,143,135,.35); }
+[data-theme="dark"] .animal-health b { background: transparent; color: #ffaba4; }
+[data-theme="dark"] .animal-health p { color: #cfd6e1; }
+@media (max-width: 600px) { .animal-health-edit > div { grid-template-columns: 1fr; } }
+
+/* ===== motion.css (antes em arquivo separado) ===== */
+/* =====================================================================
+   VetFlow · camada global de animações
+   - usa as propriedades independentes `translate` e `scale` (não `transform`),
+     para não brigar com rotações e transformações que as telas já usam;
+   - tudo some em "prefers-reduced-motion" e na impressão.
+   ===================================================================== */
+
+:root {
+  --vf-ease: cubic-bezier(.2, .8, .2, 1);
+  --vf-spring: cubic-bezier(.34, 1.56, .64, 1);
+}
+
+@keyframes vfUp { from { opacity: 0; translate: 0 16px; } to { opacity: 1; translate: none; } }
+@keyframes vfUpSoft { from { opacity: 0; translate: 0 8px; } to { opacity: 1; translate: none; } }
+@keyframes vfPop { 0% { opacity: 0; scale: .92; } 60% { opacity: 1; scale: 1.02; } 100% { opacity: 1; scale: none; } }
+@keyframes vfZoom { from { opacity: 0; scale: .96; translate: 0 10px; } to { opacity: 1; scale: none; translate: none; } }
+@keyframes vfFade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes vfBlurIn { from { opacity: 0; filter: blur(6px); translate: 0 6px; } to { opacity: 1; filter: none; translate: none; } }
+@keyframes vfSlideL { from { opacity: 0; translate: -14px 0; } to { opacity: 1; translate: none; } }
+@keyframes vfBadge { 0%, 100% { scale: 1; } 40% { scale: 1.25; } 70% { scale: .95; } }
+@keyframes vfRing { 0% { box-shadow: 0 0 0 0 rgba(233, 79, 23, .45); } 100% { box-shadow: 0 0 0 9px rgba(233, 79, 23, 0); } }
+@keyframes vfRipple { from { opacity: .35; scale: 0; } to { opacity: 0; scale: 1; } }
+@keyframes vfShimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+@keyframes vfBar { from { scale: 1 0; } to { scale: 1 1; } }
+
+/* ---------- entrada das telas: título, subtítulo e ações em cascata ---------- */
+.vx-page > .vx-top .vx-crumb { animation: vfSlideL .45s var(--vf-ease) both; }
+.vx-page > .vx-top .vx-h1 { animation: vfBlurIn .6s var(--vf-ease) .05s both; }
+.vx-page > .vx-top .vx-sub { animation: vfUpSoft .55s var(--vf-ease) .12s both; }
+.vx-page > .vx-top .vx-actions > * { animation: vfUpSoft .5s var(--vf-ease) both; }
+.vx-page > .vx-top .vx-actions > *:nth-child(1) { animation-delay: .16s; }
+.vx-page > .vx-top .vx-actions > *:nth-child(2) { animation-delay: .21s; }
+.vx-page > .vx-top .vx-actions > *:nth-child(3) { animation-delay: .26s; }
+.vx-page > .vx-top .vx-actions > *:nth-child(4) { animation-delay: .31s; }
+.vx-page > .vx-top .vx-actions > *:nth-child(n+5) { animation-delay: .36s; }
+
+/* ---------- revelar ao rolar (o atributo é colocado pelo motion.ts) ---------- */
+[data-vf-reveal="wait"] { opacity: 0; }
+[data-vf-reveal="in"] { animation: vfUp .6s var(--vf-ease) both; animation-delay: var(--vf-d, 0ms); }
+
+/* ---------- linhas de tabelas e listas em cascata ---------- */
+:is(.op-table, .vx-table, .vx-list) > :is(.op-tr, .vx-tr, .vx-row-item):not(.op-th):not(.vx-th) { animation: vfUpSoft .4s var(--vf-ease) both; }
+:is(.op-table, .vx-table, .vx-list) > :nth-child(2) { animation-delay: .03s; }
+:is(.op-table, .vx-table, .vx-list) > :nth-child(3) { animation-delay: .06s; }
+:is(.op-table, .vx-table, .vx-list) > :nth-child(4) { animation-delay: .09s; }
+:is(.op-table, .vx-table, .vx-list) > :nth-child(5) { animation-delay: .12s; }
+:is(.op-table, .vx-table, .vx-list) > :nth-child(6) { animation-delay: .15s; }
+:is(.op-table, .vx-table, .vx-list) > :nth-child(7) { animation-delay: .18s; }
+:is(.op-table, .vx-table, .vx-list) > :nth-child(8) { animation-delay: .21s; }
+:is(.op-table, .vx-table, .vx-list) > :nth-child(9) { animation-delay: .24s; }
+:is(.op-table, .vx-table, .vx-list) > :nth-child(n+10) { animation-delay: .27s; }
+.op-drop .op-tr { animation: none !important; }
+.op-tr.click, .vx-tr { transition: background .18s ease, translate .18s var(--vf-ease); }
+.op-tr.click:hover { translate: 3px 0; }
+
+/* ---------- botões: hover, clique e brilho ---------- */
+:is(.vx-btn, .op-btn, .vx-icon-btn, .vx-chip, .op-chip, .vx-pill) { transition: translate .18s var(--vf-ease), scale .14s ease, box-shadow .2s ease, background .2s ease, color .2s ease, border-color .2s ease, filter .2s ease; }
+:is(.vx-btn, .op-btn):not(:disabled):hover { translate: 0 -2px; }
+:is(.vx-btn-p, .op-btn.pri):not(:disabled):hover { box-shadow: 0 14px 28px -12px rgba(233, 79, 23, .65); filter: saturate(1.08) brightness(1.03); }
+:is(.vx-btn, .op-btn, .vx-icon-btn, .vx-chip, .op-chip, .vx-pill, .nav-item, .eq-card, .tl-card, .vx-box):not(:disabled):active { scale: .97; translate: none; }
+.vx-icon-btn:not(:disabled):hover { scale: 1.08; }
+:is(.vx-btn, .op-btn, .vx-icon-btn) svg { transition: translate .2s var(--vf-ease), rotate .3s var(--vf-ease); }
+:is(.vx-btn, .op-btn):hover svg { translate: 1px 0; }
+:is(.vx-btn, .op-btn):hover svg.lucide-plus { rotate: 90deg; translate: none; }
+
+/* abas e segmentos deslizam suavemente */
+:is(.vx-seg, .op-tabs, .tl-filters, .pvc-tabs, .op-erp-tabs) button { transition: background .25s var(--vf-ease), color .2s ease, box-shadow .25s ease, scale .14s ease; }
+
+/* ---------- cartões clicáveis levantam no hover ---------- */
+:is(button.vx-glass, a.vx-glass, .tl-card, .vx-box, .eq-card, .tl-wait-card) { transition: translate .25s var(--vf-ease), box-shadow .25s ease, scale .14s ease; }
+:is(button.vx-glass, a.vx-glass, .tl-wait-card, .vx-box):hover { translate: 0 -4px; box-shadow: 0 26px 50px -30px rgba(20, 30, 60, .5); }
+.vx-glass { transition: box-shadow .3s ease, border-color .3s ease; }
+
+/* brilho que segue o mouse nos painéis de vidro (variáveis vindas do motion.ts) */
+.vx-glass::after, .op-card::after, .tl-card::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; opacity: 0; transition: opacity .35s ease; background: radial-gradient(420px circle at var(--vf-mx, 50%) var(--vf-my, 50%), rgba(255, 255, 255, .2), transparent 45%); z-index: 0; }
+:is(.vx-glass, .op-card, .tl-card):hover::after { opacity: 1; }
+[data-theme="dark"] :is(.vx-glass, .op-card, .tl-card)::after { background: radial-gradient(420px circle at var(--vf-mx, 50%) var(--vf-my, 50%), rgba(255, 255, 255, .07), transparent 45%); }
+.op-card { position: relative; }
+
+/* ---------- números grandes aparecem com desfoque ---------- */
+:is(.vx-num, .op-total b, .vx-kpi strong, .tl-time) { animation: vfBlurIn .7s var(--vf-ease) .1s both; }
+
+/* barras e medidores crescem */
+.op-meter i, .op-desc-meter .bar i, .vx-meter i { transform-origin: left; animation: vfBar .9s var(--vf-ease) .15s both; scale: 1 1; }
+
+/* ---------- menu lateral ---------- */
+.sidebar .nav-item { transition: background .2s ease, color .2s ease, translate .2s var(--vf-ease); }
+.sidebar .nav-item:hover { translate: 3px 0; }
+.sidebar .nav-item svg { transition: scale .25s var(--vf-spring), rotate .25s var(--vf-ease); }
+.sidebar .nav-item:hover svg { scale: 1.15; rotate: -6deg; }
+.sidebar .nav-item b, .bc-notify b, .header .badge, .nav-item .cnt { animation: vfBadge 1.1s var(--vf-spring) .4s both; }
+.sidebar nav > * { animation: vfSlideL .45s var(--vf-ease) both; }
+.sidebar nav > :nth-child(2) { animation-delay: .03s; } .sidebar nav > :nth-child(3) { animation-delay: .06s; }
+.sidebar nav > :nth-child(4) { animation-delay: .09s; } .sidebar nav > :nth-child(5) { animation-delay: .12s; }
+.sidebar nav > :nth-child(6) { animation-delay: .15s; } .sidebar nav > :nth-child(n+7) { animation-delay: .18s; }
+
+/* ---------- topo ---------- */
+.bc-logo .bc-cat { transition: rotate .4s var(--vf-spring), scale .3s var(--vf-spring); }
+.bc-logo:hover .bc-cat { rotate: -10deg; scale: 1.12; }
+.header :is(button, a) { transition: background .2s ease, scale .15s ease, translate .2s var(--vf-ease); }
+
+/* ---------- janelas, gavetas, menus e avisos ---------- */
+:is(.op-modal, .vx-modal) { animation: vfZoom .32s var(--vf-ease) both; }
+.op-modal-layer { animation: vfFade .2s ease both; }
+.dropdown-panel, .op-drop { animation: vfZoom .2s var(--vf-ease) both; transform-origin: top; }
+.vx-toast, .op-toast { animation: vfPop .4s var(--vf-spring) both; }
+.vx-note, .op-note { animation: vfUpSoft .35s var(--vf-ease) both; }
+
+/* ---------- foco visível com anel animado ---------- */
+:is(.vx-in, .op-in, .eq-fields input, .eq-fields select):focus { transition: box-shadow .25s ease, border-color .25s ease; }
+.vx-status .vx-dot, .op-tag .vx-dot { animation: vfRing 2.2s ease-out infinite; border-radius: 50%; }
+
+/* ---------- carregando: shimmer ---------- */
+.vx-loading, .vx-empty.loading { background: linear-gradient(90deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, .55) 50%, rgba(255, 255, 255, 0) 100%) 0 0 / 200% 100%; animation: vfShimmer 1.4s linear infinite; }
+
+/* ---------- efeito de onda no clique (criado pelo motion.ts, fora da árvore do React) ---------- */
+.vf-ripple-box { position: fixed; pointer-events: none; overflow: hidden; z-index: 3000; }
+.vf-ripple-box i { position: absolute; border-radius: 50%; background: currentColor; animation: vfRipple .6s ease-out forwards; }
+
+/* ---------- login ---------- */
+.login-form-card { animation: vfZoom .6s var(--vf-ease) .1s both; }
+.login-form-card > * { animation: vfUpSoft .5s var(--vf-ease) both; }
+.login-form-card > :nth-child(2) { animation-delay: .15s; } .login-form-card > :nth-child(3) { animation-delay: .2s; }
+.login-form-card > :nth-child(4) { animation-delay: .25s; } .login-form-card > :nth-child(5) { animation-delay: .3s; }
+.login-form-card > :nth-child(6) { animation-delay: .35s; } .login-form-card > :nth-child(n+7) { animation-delay: .4s; }
+.login-scene .ls-brand { animation: vfBlurIn .8s var(--vf-ease) both; }
+.login-scene .ls-paw { animation: vfPop .8s var(--vf-spring) both; }
+.login-scene .ls-paw.p2 { animation-delay: .15s; } .login-scene .ls-paw.p3 { animation-delay: .3s; }
+.login-scene .ls-bone { transition: rotate .4s var(--vf-spring); }
+.login-scene .ls-brand:hover .ls-bone.b1 { rotate: -12deg; } .login-scene .ls-brand:hover .ls-bone.b2 { rotate: 12deg; }
+
+/* ---------- acessibilidade e impressão ---------- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .001ms !important; animation-delay: 0ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
+  [data-vf-reveal="wait"] { opacity: 1; }
+  .vf-ripple-box { display: none; }
+}
+@media print {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+  [data-vf-reveal] { opacity: 1 !important; translate: none !important; }
+  .vx-glass::after, .op-card::after, .tl-card::after, .vf-ripple-box { display: none !important; }
+}

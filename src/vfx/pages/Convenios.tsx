@@ -3,12 +3,14 @@ import { useNavigate } from "react-router"
 import { ChevronDown, ChevronUp, Edit3, FileStack, Plus } from "lucide-react"
 import { useVetFlow, type Item } from "../../store"
 import { usePageForms } from "../hooks"
+import { ConveniosLista } from "../cadastroListas"
+import { ModoBar, ModoSwitch, useModo } from "../CadastroLista"
 import { brl, colorFor, hash, matches, Page, SearchBox, Seg, StatusPill } from "../ui"
 
 const gradient = (color: string) => `linear-gradient(135deg, ${color}, ${color}cc)`
 type Coverage = { servico: string; cobertura: string; repasse: string; limite: string }
 
-export default function Convenios() {
+function ConveniosVisual() {
   const { data, updateItem, addItem } = useVetFlow()
   const navigate = useNavigate()
   const forms = usePageForms("convenios", (saved) => setSelectedId(saved.id))
@@ -146,4 +148,19 @@ export default function Convenios() {
       {forms.node}
     </Page>
   )
+}
+
+/* Padrão de cadastro (lista igual a Animais/Tutores); a visão ilustrada continua disponível. */
+const MODOS: [string, string][] = [["lista", "Lista"], ["cartoes", "Cartões"]]
+export default function Convenios() {
+  const [modo, setModo] = useModo("convenios")
+  const switcher = <ModoSwitch value={modo} onChange={setModo} options={MODOS} />
+  if (modo !== "lista")
+    return (
+      <>
+        <ModoBar value={modo} onChange={setModo} options={MODOS} />
+        <ConveniosVisual />
+      </>
+    )
+  return <ConveniosLista modo={switcher} />
 }

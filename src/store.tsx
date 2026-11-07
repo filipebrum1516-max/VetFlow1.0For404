@@ -1577,15 +1577,73 @@ function fillToday(data: UnitData, unitId: string, unitIndex: number): UnitData 
   const novasConsultas = consultas.map(([off, name, status, valor], i) =>
     make("consultas", i, off, { name, status, amountValue: valor, amount: money(valor), service: name, extra: { prioridade: i === 8 ? "Preferencial" : "Normal", sala: `Consultório ${(i % 3) + 1}` } }),
   )
+  /* protocolos de anestesia ligados às cirurgias (ids fixos, não mexem no restante dos dados) */
+  const anest: [string, string, string, { fase: string; farmaco: string; dose: string; via: string }[]][] = [
+    ["Anestesia geral · cão hígido (ASA I–II)", "Aprovado", "Evitar acepromazina em cardiopatas, hipovolêmicos e braquicefálicos graves. Reduzir doses em geriátricos.", [
+      { fase: "MPA", farmaco: "Acepromazina", dose: "0,03 mg/kg", via: "IM" }, { fase: "MPA", farmaco: "Metadona", dose: "0,3 mg/kg", via: "IM" },
+      { fase: "Indução", farmaco: "Propofol", dose: "4 mg/kg (dose-efeito)", via: "IV" }, { fase: "Manutenção", farmaco: "Isoflurano", dose: "CAM 1,2–1,5", via: "inalatória" }]],
+    ["Anestesia geral · felino hígido", "Aprovado", "Cautela com alfa-2 agonistas em cardiopatas e em doença renal descompensada.", [
+      { fase: "MPA", farmaco: "Dexmedetomidina", dose: "5 µg/kg", via: "IM" }, { fase: "MPA", farmaco: "Metadona", dose: "0,3 mg/kg", via: "IM" },
+      { fase: "Indução", farmaco: "Alfaxalona", dose: "2 mg/kg (dose-efeito)", via: "IV" }, { fase: "Manutenção", farmaco: "Isoflurano", dose: "CAM 1,2", via: "inalatória" }]],
+    ["Anestesia em paciente cardiopata", "Aprovado", "Sem acepromazina nem alfa-2. Fluidoterapia restrita (2–3 mL/kg/h). ECG e PA contínuos.", [
+      { fase: "MPA", farmaco: "Metadona", dose: "0,2 mg/kg", via: "IM" },
+      { fase: "Indução", farmaco: "Etomidato", dose: "1–2 mg/kg", via: "IV" }, { fase: "Manutenção", farmaco: "Isoflurano + fentanil", dose: "CAM baixa + 5 µg/kg/h", via: "inalatória / IV" }]],
+    ["Anestesia em braquicefálico", "Ativo", "Pré-oxigenar 5 min, intubação rápida, extubação tardia. Ter traqueotomia à mão.", [
+      { fase: "MPA", farmaco: "Butorfanol", dose: "0,2 mg/kg", via: "IM" },
+      { fase: "Indução", farmaco: "Propofol", dose: "4 mg/kg (rápido)", via: "IV" }, { fase: "Manutenção", farmaco: "Isoflurano", dose: "CAM 1,2", via: "inalatória" }]],
+  ]
+  const novosProtos: Item[] = anest.map(([name, status, contra, doses], i) => ({
+    id: `${unitId}-protocolos-anest-${i + 1}`, name, subtitle: `Anestesia • v2 • ${doses.length + 2} etapas`, status, unitId, category: "Anestesia",
+    createdAt: iso(-60 * 24 * 40), date: localISO(new Date(now.getTime() - 40 * DAY)), professional: vet(i).name, professionalId: vet(i).id,
+    extra: {
+      categoria: "Anestesia", versao: "v2", contraindicacoes: contra, criterios: "Paciente com avaliação pré-anestésica concluída.", doses, criaPrescricao: false,
+      etapas: [
+        { tipo: "Ação", titulo: "Avaliação pré-anestésica e jejum conferidos" },
+        { tipo: "Medicação", titulo: `MPA: ${doses.filter((d) => d.fase === "MPA").map((d) => d.farmaco).join(" + ")}`, tempo: "-20 min" },
+        { tipo: "Medicação", titulo: `Indução: ${doses.find((d) => d.fase === "Indução")?.farmaco || ""}` },
+        { tipo: "Monitorar", titulo: "ECG, SpO₂, PA e temperatura a cada 5 min", tempo: "5/5 min" },
+        { tipo: "Fim", titulo: "Recuperação monitorada até extubação" },
+      ],
+    },
+  }))
+  const pa = (i: number) => novosProtos[i].id
+  const reg = (por: string) => ({ em: iso(-200), por })
   const cir: [number, string, string, number, Record<string, unknown>][] = [
-    [-260, "Castração", "Concluída", 650, { fase: 3, inicio: iso(-250), fim: iso(-180), checklist: { signin: true, timeout: true, signout: true } }],
-    [-45, "Ovariohisterectomia", "Em andamento", 980, { fase: 2, inicio: iso(-40), checklist: { signin: true, timeout: true } }],
-    [95, "Profilaxia dentária", "Agendada", 540, {}],
-    [180, "Retirada de nódulo", "Agendada", 1200, {}],
+    [-260, "Castração", "Concluída", 650, {
+      fase: 3, asa: "I · saudável", risco: "Não", protocoloId: pa(0), manutencao: "Inalatória · isoflurano", destino: "Alta no mesmo dia", analgesia: "Meloxicam 0,1 mg/kg SC + dipirona 25 mg/kg VO 8/8 h",
+      t: { preop: iso(-300), anestesia: iso(-275), cirurgia: iso(-255), recuperacao: iso(-205), fim: iso(-170) }, inicio: iso(-300), fim: iso(-170),
+      registro: {
+        preop: { ...reg("Equipe"), chegada: hm(-300), peso: "14,2", fc: "96", fr: "24", temperatura: "38,4", asa: "I · saudável", exames: ["Hemograma", "Bioquímica"], jejumOk: true, termoOk: true },
+        anestesia: { ...reg("Equipe"), protocoloId: pa(0), cuidados: ["Acesso venoso", "Fluidoterapia iniciada", "Tricotomia da área"], mpa: "Acepromazina 0,03 mg/kg IM + Metadona 0,3 mg/kg IM", mpaHora: hm(-280) },
+        cirurgia: { ...reg("Equipe"), inducao: "Propofol 4 mg/kg IV", inducaoHora: hm(-258), via: "Intubação endotraqueal", sonda: "7,0", manutencao: "Inalatória · isoflurano", monitorizacao: ["ECG", "SpO₂", "Temperatura"], procedimento: "Castração", regiao: "Pré-escrotal", tecnica: "Orquiectomia fechada" },
+        recuperacao: { ...reg("Equipe"), descricao: "Orquiectomia bilateral fechada por acesso pré-escrotal, ligadura dupla dos cordões.", intercorrencia: "Nenhuma", sangramento: "Mínimo", contagem: true, histopato: "Não" },
+        fim: { ...reg("Equipe"), extubacao: hm(-200), temperaturaRec: "37,6", consciencia: "Alerta", dor: "2", analgesia: "Meloxicam + dipirona", destino: "Alta no mesmo dia", orientacoes: "Colar elizabetano por 10 dias, retorno para retirada de pontos." },
+      },
+    }],
+    [-45, "Ovariohisterectomia", "Em andamento", 980, {
+      fase: 2, asa: "III · grave", risco: "Sim", condicoes: ["Cardiopatia"], motivoRisco: "Sopro mitral grau III/VI (DMVM estágio B2). Evitar acepromazina e alfa-2.", protocoloId: pa(2), manutencao: "Inalatória · isoflurano",
+      t: { preop: iso(-95), anestesia: iso(-70), cirurgia: iso(-40) }, inicio: iso(-95),
+      registro: {
+        preop: { ...reg("Equipe"), chegada: hm(-95), peso: "8,6", fc: "132", fr: "30", temperatura: "38,6", asa: "III · grave", exames: ["Hemograma", "Bioquímica", "Ecocardiograma"], jejumOk: true, termoOk: true },
+        anestesia: { ...reg("Equipe"), protocoloId: pa(2), cuidados: ["Acesso venoso", "Fluidoterapia iniciada", "Pré-oxigenação", "Antibiótico profilático"], antibiotico: "Cefazolina 22 mg/kg IV", mpa: "Metadona 0,2 mg/kg IM", mpaHora: hm(-72) },
+        cirurgia: { ...reg("Equipe"), inducao: "Etomidato 1,5 mg/kg IV", inducaoHora: hm(-45), via: "Intubação endotraqueal", sonda: "6,0", manutencao: "Inalatória · isoflurano", monitorizacao: ["ECG", "SpO₂", "PA não invasiva", "Capnografia", "Temperatura"], procedimento: "Ovariohisterectomia", regiao: "Linha média ventral", tecnica: "Celiotomia retroumbilical, técnica das 3 pinças" },
+      },
+    }],
+    [-25, "Orquiectomia", "Recuperação", 520, {
+      fase: 3, asa: "II · doença leve", risco: "Não", protocoloId: pa(1), manutencao: "Inalatória · isoflurano",
+      t: { preop: iso(-120), anestesia: iso(-100), cirurgia: iso(-85), recuperacao: iso(-50) }, inicio: iso(-120),
+    }],
+    [95, "Profilaxia dentária", "Agendada", 540, { asa: "III · grave", risco: "Sim", condicoes: ["Doença renal crônica", "Geriátrico"], motivoRisco: "DRC estágio 2 (creatinina 2,1 mg/dL), 13 anos. Fluidoterapia e evitar AINE." }],
+    [180, "Retirada de nódulo", "Agendada", 1200, { asa: "II · doença leve", risco: "Não" }],
   ]
   const novasCir = cir.map(([off, name, status, valor, extra], i) =>
     make("cirurgias", i, off, { name, status, amountValue: valor, amount: money(valor), extra: { sala: i % 2 ? "Sala 2" : "Sala 1", duracao: "1 h 30", anestesista: vet(i + 2).name, ...extra } }),
   )
+  /* doenças no cadastro dos animais das cirurgias de risco */
+  const condAnimal = new Map<string, Record<string, unknown>>()
+  novasCir.forEach((c) => {
+    if (c.extra?.condicoes) condAnimal.set(c.animalId || "", { condicoes: c.extra.condicoes, ...(/cardi/i.test(String(c.extra.condicoes)) ? { alergias: "Reação a tramadol (vômito intenso)" } : {}) })
+  })
   const catalogo = [...new Set(data.procedimentos.map((p) => p.name))]
   const proc: [number, string][] = [[-210, "Concluído"], [-160, "Concluído"], [-110, "Concluído"], [-60, "Concluído"], [-20, "Em andamento"], [40, "Agendado"], [110, "Agendado"]]
   const novosProc = proc.map(([off, status], i) => {
@@ -1673,6 +1731,8 @@ function fillToday(data: UnitData, unitId: string, unitIndex: number): UnitData 
     ...data,
     consultas: add("consultas", novasConsultas),
     cirurgias: add("cirurgias", novasCir),
+    protocolos: [...novosProtos, ...data.protocolos.filter((p) => !novosProtos.some((n) => n.id === p.id))],
+    animais: data.animais.map((a) => (condAnimal.has(a.id) ? { ...a, extra: { ...(a.extra || {}), ...condAnimal.get(a.id) } } : a)),
     procedimentos: add("procedimentos", novosProc),
     exames: add("exames", novosExames),
     vacinas: add("vacinas", novasVac),
@@ -1829,6 +1889,8 @@ export const MINHA_UNIT: Unit = {
 
 const StoreContext = createContext<StoreValue | null>(null)
 const STORAGE_KEY = "vetflow-state-v4"
+/** Troque este valor a cada versão publicada no Figma Make (formato livre). */
+export const APP_VERSION = "2026-11-07-cadastros"
 const defaultProfile: UserProfile = {
   name: "Rafael Souza",
   displayName: "Dr. Rafael",
@@ -1891,6 +1953,14 @@ export function VetFlowProvider({ children }: { children: ReactNode }) {
       return null
     }
   }, [])
+  /* Versão do app: quando muda, as alterações antigas feitas nos DADOS DE EXEMPLO são descartadas
+     (assim a prévia abre direto na versão atual, sem misturar registros de versões anteriores).
+     O que foi cadastrado na "Minha clínica" e em unidades criadas pelo usuário é mantido. */
+  if (persisted && persisted.appVersion !== APP_VERSION) {
+    const custom = new Set((persisted.customUnits || []).map((u: Unit) => u.id))
+    persisted.changes = (persisted.changes || []).filter((c: DataChange) => c.unitId === "minha" || custom.has(c.unitId))
+    persisted.appVersion = APP_VERSION
+  }
   const seed = useMemo(() => makeSeed(), [])
   const [customUnits, setCustomUnits] = useState<Unit[]>(
     persisted?.customUnits || [],
@@ -2030,6 +2100,7 @@ export function VetFlowProvider({ children }: { children: ReactNode }) {
       localStorage.setItem(
         STORAGE_KEY,
         JSON.stringify({
+          appVersion: APP_VERSION,
           activeUnitId,
           changes,
           authenticated: false,

@@ -3,7 +3,6 @@ import { AlertTriangle, ArrowDown, ArrowUp, Camera, Check, MapPin, MessageCircle
 import { useVetFlow, type Item } from "../../store"
 import { brl, fmtDate, normalizeText, todayISO, Page } from "../ui"
 import { ENTREGADORES, lineTotal, printHtml, saleSlipHtml, saleTone, stamp, type Entrega, type Line } from "../vendasShared"
-import "../ops.css"
 import Layer from "../OpLayer"
 import { PrintBar } from "../PrintMenu"
 

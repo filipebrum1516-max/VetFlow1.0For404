@@ -22,10 +22,11 @@ export default function Protocolos() {
   const [applying, setApplying] = useState(false)
   const [petQuery, setPetQuery] = useState("")
   const list = useMemo(() => data.protocolos.filter((item) => matches(item, query)), [data.protocolos, query])
-  const [selectedId, setSelectedId] = useState("")
+  const [selectedId, setSelectedId] = useState(() => new URLSearchParams(window.location.search).get("id") || "")
   const selected = list.find((item) => item.id === selectedId) || list[0]
   const steps = selected ? stepsFor(selected) : []
-  const uses: { animal: string; animalId: string; em: string; por: string }[] = selected?.extra?.aplicacoes || []
+  const uses: { animal: string; animalId: string; em: string; por: string; cirurgiaId?: string; origem?: string }[] = selected?.extra?.aplicacoes || []
+  const cirurgias = selected ? data.cirurgias.filter((c) => c.extra?.protocoloId === selected.id || c.extra?.protocoloPosId === selected.id) : []
   const pets = petQuery.trim() ? data.animais.filter((item) => normalize(`${item.name} ${item.owner}`).includes(normalize(petQuery))).slice(0, 6) : data.animais.slice(0, 6)
 
   const apply = (pet: Item) => {
@@ -111,11 +112,21 @@ export default function Protocolos() {
             <div className="vx-glass" style={{ padding: 18 }}>
               <div className="vx-lbl">Em uso</div>
               {uses.length ? uses.slice(0, 4).map((use, index) => (
-                <button key={index} className="vx-up" onClick={() => navigate(`/animais?animal=${encodeURIComponent(use.animal)}`)}>
-                  <span style={{ flex: 1 }}><strong style={{ fontSize: 14 }}>{use.animal}</strong><small>aplicado {fmtDate(use.em)}</small></span>
+                <button key={index} className="vx-up" onClick={() => navigate(use.cirurgiaId ? "/cirurgias?aba=todas" : `/animais?animal=${encodeURIComponent(use.animal)}`)}>
+                  <span style={{ flex: 1 }}><strong style={{ fontSize: 14 }}>{use.animal}</strong><small>{use.origem ? `${use.origem} · ` : ""}aplicado {fmtDate(use.em)}</small></span>
                 </button>
               )) : <div className="vx-hint" style={{ marginTop: 8 }}>Nenhum paciente usando agora.</div>}
             </div>
+            {cirurgias.length > 0 && (
+              <div className="vx-glass" style={{ padding: 18 }}>
+                <div className="vx-lbl">Cirurgias com este protocolo · {cirurgias.length}</div>
+                {cirurgias.slice(0, 4).map((c) => (
+                  <button key={c.id} className="vx-up" onClick={() => navigate("/cirurgias?aba=todas")}>
+                    <span style={{ flex: 1 }}><strong style={{ fontSize: 14 }}>{c.animal} · {c.name}</strong><small>{fmtDate(c.date)} · {c.status}</small></span>
+                  </button>
+                ))}
+              </div>
+            )}
             <div className="vx-glass" style={{ padding: 18, display: "flex", flexDirection: "column", gap: 8 }}>
               <div className="vx-lbl">Revisão</div>
               <StatusPill status={selected.status} />

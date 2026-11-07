@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { Navigate, useNavigate } from "react-router"
 import { ArrowRight, LogOut, Plus } from "lucide-react"
 import { ROLE_HOME, useVetFlow, type Clinic } from "../../store"
-import "../escolha.css"
 
 export default function EscolherClinica() {
   const { authenticated, user, allData, chooseClinic, logout } = useVetFlow()

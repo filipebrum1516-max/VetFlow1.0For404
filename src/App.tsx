@@ -4,7 +4,6 @@ import ClienteForm, { fromItem, toItem } from "./vfx/ClienteForm"
 import { CadastroDrawer } from "./vfx/CadastroDrawer"
 import {
   Suspense,
-  lazy,
   useEffect,
   useMemo,
   useRef,
@@ -88,6 +87,7 @@ import {
   useLocation,
   useNavigate,
   useParams,
+  useRouteError,
 } from "react-router"
 import {
   VetFlowProvider,
@@ -104,9 +104,9 @@ import {
   type UnitData,
 } from "./store"
 import "./vfx.css"
-import "./vfx/motion.css"
 import { startMotion } from "./vfx/motion"
 import Detail from "./vfx/Detail"
+import { isChunkError, lazyPage as lazy, reloadOnce } from "./boot"
 
 startMotion()
 
@@ -2548,6 +2548,9 @@ function ReportDetails() {
 }
 
 function RouteError() {
+  const routeError = useRouteError()
+  /* tela desatualizada depois de uma atualização: recarrega uma vez e abre a versão atual */
+  useEffect(() => { if (isChunkError(routeError)) reloadOnce() }, [routeError])
   return (
     <div className="vx vx-loader" role="alert" style={{ flexDirection: "column", minHeight: "100vh", textAlign: "center", padding: 24 }}>
       <strong style={{ fontSize: 22, color: "#1a2233" }}>Algo deu errado nesta tela.</strong>

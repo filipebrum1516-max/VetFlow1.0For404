@@ -5,7 +5,6 @@ import { useVetFlow, type Item } from "../../store"
 import { usePageForms } from "../hooks"
 import RowActions from "../RowActions"
 import { addDays, Confirm, fmtDate, fmtLong, itemDate, matches, Modal, Page, Pager, SearchBox, StatusPill, todayISO, usePaged } from "../ui"
-import "../consultas.css"
 
 /*
  * Consultas do dia em 5 colunas de vidro. A consulta nasce em "Chegou" já com a senha
