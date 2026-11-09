@@ -1,10 +1,11 @@
 import { useMemo, useState } from "react"
 import { useNavigate } from "react-router"
-import { ArrowDownLeft, ArrowUpRight, CalendarClock, Check, CircleAlert, Plus, Receipt, Search, Wallet, X } from "lucide-react"
+import { ArrowDownLeft, ArrowUpRight, CalendarClock, Check, Plus, Receipt, Wallet } from "lucide-react"
 import { normalize, useVetFlow, type Item } from "../../store"
 import { usePageForms } from "../hooks"
 import RowActions, { RowButton } from "../RowActions"
-import { addDays, brl, fmtDate, itemDate, Page, Pager, Seg, todayISO, usePaged } from "../ui"
+import { addDays, brl, fmtDate, itemDate, Page, Seg, todayISO } from "../ui"
+import { Duo, Ident, ListaCard, Status } from "../CadastroLista"
 
 /*
  * Financeiro: saldo e resultado no topo, gráfico de entradas x saídas, contas que vencem
@@ -72,7 +73,6 @@ export default function Financeiro() {
     return base.sort((a, b) => itemDate(b).localeCompare(itemDate(a)))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data.financeiro, aba, faixa, query, hoje])
-  const paged = usePaged(lista, 12, [aba, faixa, query])
 
   const quitar = (item: Item) => {
     updateItem("financeiro", item.id, { status: isIn(item) ? "Recebido" : "Pago", extra: { ...(item.extra || {}), dataPagamento: hoje, situacao: "Pago / recebido" } })
@@ -163,55 +163,46 @@ export default function Financeiro() {
         </div>
       </section>
 
-      <section className="fn-card fn-list">
-        <div className="fn-toolbar">
-          <div className="fn-tabs" role="tablist">
-            {ABAS.map(([k, label, count]) => (
-              <button key={k} role="tab" aria-selected={aba === k} className={`${aba === k ? "on" : ""} ${k === "vencidos" ? "late" : ""}`} onClick={() => setAba(k)}>
-                {label} <b>{count}</b>
-              </button>
-            ))}
-          </div>
-          <label className="vx-search fn-search">
-            <Search />
-            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar lançamento, paciente ou tutor" aria-label="Buscar lançamento" />
-          </label>
-        </div>
-        {faixa && (
-          <div className="fn-filter-chip">
-            Período do gráfico: {fmtDate(faixa.de)} a {fmtDate(faixa.ate)}
-            <button aria-label="Limpar período" onClick={() => setFaixa(null)}><X /></button>
-          </div>
+      <ListaCard
+        className="fn-lista"
+        label="Lançamentos"
+        abas={ABAS.map(([key, label, count]) => ({ key, label, count, tone: key === "vencidos" ? ("red" as const) : undefined }))}
+        aba={aba}
+        onAba={(k) => setAba((k || "todos") as Aba)}
+        query={query}
+        onQuery={setQuery}
+        placeholder="Buscar lançamento, paciente ou tutor"
+        chips={faixa ? [{ label: `Período do gráfico: ${fmtDate(faixa.de)} a ${fmtDate(faixa.ate)}`, onClear: () => setFaixa(null) }] : []}
+        rows={lista}
+        rowKey={(item) => item.id}
+        onRow={(item) => navigate(`/financeiro/${item.id}`)}
+        noun="lançamentos"
+        vazio="Nenhum lançamento com esses filtros"
+        perPageDefault={10}
+        resumo={<>entradas <b className="fn-pos">{brl(sum(lista.filter(isIn)))}</b> · saídas <b className="fn-neg">{brl(sum(lista.filter((i) => !isIn(i))))}</b></>}
+        emMassa={(itens, limpar) => {
+          const abertos = itens.filter((i) => !quitado(i))
+          return abertos.length ? (
+            <button type="button" onClick={() => { abertos.forEach(quitar); limpar() }}>
+              <Check /> Dar baixa em {abertos.length}
+            </button>
+          ) : null
+        }}
+        exportar={{ nome: "lancamentos", linha: (item) => ({ Data: fmtDate(itemDate(item)), Descricao: item.name.replace(" • Receita", ""), Paciente: item.animal || "", Tutor: item.owner || "", Tipo: isIn(item) ? "Entrada" : "Saída", Valor: item.amountValue || 0, Situacao: situacao(item)[1] }) }}
+        colunas={[
+          { label: "Lançamento", w: "minmax(250px,1.6fr)", cell: (item) => <Ident square title={item.name.replace(" • Receita", "")} sub={item.animal ? `${item.animal} · ${item.owner || ""}` : item.subtitle?.split(" • ")[0]} icon={isIn(item) ? <ArrowDownLeft /> : <ArrowUpRight />} color={isIn(item) ? "#1f7a3f" : "#c43b3b"} /> },
+          { label: "Data", w: "110px", cell: (item) => <Duo title={fmtDate(itemDate(item))} sub={item.extra?.forma || (isIn(item) ? "entrada" : "saída")} /> },
+          { label: "Categoria", w: "minmax(140px,.9fr)", cell: (item) => <Duo title={item.extra?.categoriaConta || (isIn(item) ? (item.service || item.animalId ? "Atendimentos" : "Outras receitas") : /fornecedor|materiais|laborat/i.test(item.name) ? "Compras / insumos" : /folha/i.test(item.name) ? "Pessoal" : "Despesas fixas")} sub={item.extra?.centro || ""} /> },
+          { label: "Valor", w: "130px", align: "right", cell: (item) => <span className={`cl-money ${isIn(item) ? "fn-pos" : "fn-neg"}`}>{isIn(item) ? "+ " : "− "}{brl(item.amountValue || 0)}</span> },
+          { label: "Situação", w: "130px", cell: (item) => { const [cls, label] = situacao(item); return <Status status={label} toneOverride={cls === "ok" ? "green" : cls === "late" ? "red" : "orange"} /> } },
+        ]}
+        acoesW="170px"
+        acoes={(item) => (
+          <RowActions name={item.name} onView={() => navigate(`/financeiro/${item.id}`)} onEdit={() => forms.open("financeiro", item)} onDelete={() => navigate(`/financeiro/${item.id}?excluir=1`)}>
+            {!quitado(item) && <RowButton title={isIn(item) ? "Marcar como recebido" : "Marcar como pago"} onClick={() => quitar(item)}><Check /></RowButton>}
+          </RowActions>
         )}
-        <div className="fn-table">
-          <div className="fn-tr fn-th"><span>Data</span><span>Descrição</span><span>Categoria</span><span>Situação</span><span className="r">Valor</span><span className="r">Ações</span></div>
-          {paged.visible.map((item) => {
-            const [cls, label] = situacao(item)
-            return (
-              <div key={item.id} className="fn-tr" onClick={() => navigate(`/financeiro/${item.id}`)}>
-                <span className="fn-date" data-label="Data">{fmtDate(itemDate(item))}</span>
-                <span className="fn-desc">
-                  <i className={isIn(item) ? "in" : "out"}>{isIn(item) ? <ArrowDownLeft /> : <ArrowUpRight />}</i>
-                  <span><strong>{item.name.replace(" • Receita", "")}</strong><small>{item.animal ? `${item.animal} · ${item.owner || ""}` : item.subtitle?.split(" • ")[0]}</small></span>
-                </span>
-                <span data-label="Categoria"><small className="fn-cat">{item.extra?.categoriaConta || (isIn(item) ? (item.service || item.animalId ? "Atendimentos" : "Outras receitas") : /fornecedor|materiais|laborat/i.test(item.name) ? "Compras / insumos" : /folha/i.test(item.name) ? "Pessoal" : "Despesas fixas")}</small></span>
-                <span data-label="Situação"><span className={`fn-pill ${cls}`}>{cls === "late" && <CircleAlert />}{label}</span></span>
-                <b className={`r fn-val ${isIn(item) ? "pos" : "neg"}`} data-label="Valor">{isIn(item) ? "+ " : "− "}{brl(item.amountValue || 0)}</b>
-                <span className="r" data-label="Ações" onClick={(e) => e.stopPropagation()}>
-                  <RowActions name={item.name} onView={() => navigate(`/financeiro/${item.id}`)} onEdit={() => forms.open("financeiro", item)} onDelete={() => navigate(`/financeiro/${item.id}?excluir=1`)}>
-                    {!quitado(item) && <RowButton title={isIn(item) ? "Marcar como recebido" : "Marcar como pago"} onClick={() => quitar(item)}><Check /></RowButton>}
-                  </RowActions>
-                </span>
-              </div>
-            )
-          })}
-          {!lista.length && <div className="vx-empty">Nenhum lançamento com esses filtros.</div>}
-        </div>
-        <footer className="fn-foot">
-          <span>{lista.length} lançamentos · entradas {brl(sum(lista.filter(isIn)))} · saídas {brl(sum(lista.filter((i) => !isIn(i))))}</span>
-          {paged.pages > 1 && <Pager page={paged.page} pages={paged.pages} onPage={paged.setPage} />}
-        </footer>
-      </section>
+      />
       {forms.node}
     </Page>
   )

@@ -16,7 +16,7 @@ import {
   Trash2,
   Users,
 } from "lucide-react"
-import { modules, useVetFlow, type Item, type ModuleSlug } from "../store"
+import { accessLevel, modules, useVetFlow, type Item, type ModuleSlug } from "../store"
 import FormDrawer, { permModules, type Field } from "./FormDrawer"
 import { formFor, statusOptions } from "./forms"
 import { brl, colorFor, Confirm, fmtDate, initials, itemDate, StatusPill, useToast } from "./ui"
@@ -54,7 +54,7 @@ function moduleName(slug: string) {
   return modules.find(([key]) => key === slug)?.[1] || slug
 }
 
-function display(value: unknown, field: Field | undefined, lookup: (kind: "animal" | "pro", id: string) => string): ReactNode {
+export function display(value: unknown, field: Field | undefined, lookup: (kind: "animal" | "pro", id: string) => string): ReactNode {
   if (value === undefined || value === null || value === "") return "—"
   if (field?.t === "toggle" || typeof value === "boolean") return value ? "Sim" : "Não"
   if (field?.t === "animal") return lookup("animal", String(value))
@@ -111,6 +111,7 @@ export default function Detail({
   const [confirmDelete, setConfirmDelete] = useState(() => new URLSearchParams(window.location.search).get("excluir") === "1")
   const [toast, showToast] = useToast()
   // Registros financeiros, vendas e prontuários nunca são apagados: são cancelados ou estornados com motivo (L-05, L-08, M-13).
+  const soVer = accessLevel(store.user?.role, slug, store.user?.perms) === "Ver"
   const keepHistory = ["financeiro", "vendas", "caixa", "prontuarios", "prescricoes", "documentos"].includes(slug)
   const cancelWord = slug === "financeiro" || slug === "vendas" || slug === "caixa" ? "Estornar" : "Cancelar"
   const list = data[slug] || []
@@ -291,15 +292,15 @@ export default function Detail({
           <button className="vx-btn vx-btn-g" onClick={() => window.print()}>
             <Printer /> Imprimir
           </button>
-          <button className="vx-btn vx-btn-g" onClick={() => setEdit(true)}>
+          {!soVer && <button className="vx-btn vx-btn-g" onClick={() => setEdit(true)}>
             <Edit3 /> Editar
-          </button>
+          </button>}
           {slug === "financeiro" && !/receb|pago|estorn|cancel/i.test(item.status) && (
             <button className="vx-btn vx-btn-p" onClick={() => { const paid = item.category === "Receita" ? "Recebido" : "Pago"; updateItem(slug, item.id, { status: paid, extra: { ...(item.extra || {}), pagoEm: new Date().toISOString() } }); showToast(`Lançamento marcado como ${paid.toLowerCase()}.`) }}>
               Marcar como {item.category === "Receita" ? "recebido" : "pago"}
             </button>
           )}
-          {!(keepHistory && /estorn|cancel/i.test(item.status)) && (
+          {!soVer && !(keepHistory && /estorn|cancel/i.test(item.status)) && (
             <button className="vx-btn vx-btn-d" onClick={() => setConfirmDelete(true)}>
               <Trash2 /> {keepHistory ? cancelWord : "Excluir"}
             </button>

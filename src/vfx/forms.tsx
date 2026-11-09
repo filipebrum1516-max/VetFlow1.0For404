@@ -42,6 +42,8 @@ const pills = (k: string, label: string, opts: Field["opts"], span: Span = 6, ex
 const multi = (k: string, label: string, opts: Field["opts"], span: Span = 6, extra: Partial<Field> = {}) => f(k, label, "multi", span, { opts, ...extra })
 const tog = (k: string, label: string, def = false, small?: string, span: Span = 6) => f(k, label, "toggle", span, { def, small })
 const animal = (label = "Paciente", required = true) => ({ ...f("animalId", label, "animal", 6), req: required })
+/** Tutor com sugestões; some quando já há um paciente escolhido (o tutor vem dele). */
+const tutor = (label = "Tutor", required = false) => ({ ...f("tutorId", label, "tutor", 6), req: required, show: (values: Values) => !values.animalId })
 const pro = (label = "Veterinário responsável", required = true, k = "professionalId", span: Span = 3) => ({ ...f(k, label, "professional", span), req: required })
 const proNames = (ctx: Ctx) => ctx.data.profissionais.map((item) => item.name)
 const unitNames = (ctx: Ctx) => ctx.units.map((unit) => unit.shortName)
@@ -445,6 +447,30 @@ export const bedLayout: { room: string; beds: string[] }[] = [
   { room: "Gatil", beds: ["G-01", "G-02", "G-03", "G-04"] },
   { room: "Isolamento", beds: ["I-01", "I-02"] },
 ]
+/* Baias criadas pela clínica (botão "Nova baia" em Internações), guardadas neste aparelho. */
+export type BaiaExtra = { room: string; bed: string; porte?: string; obs?: string }
+const BAIAS_KEY = "vetflow-baias-extras"
+export function baiasExtras(): BaiaExtra[] {
+  try {
+    const list = JSON.parse(localStorage.getItem(BAIAS_KEY) || "[]")
+    return Array.isArray(list) ? list.filter((b) => b && typeof b.bed === "string" && typeof b.room === "string") : []
+  } catch {
+    return []
+  }
+}
+export function salvarBaiasExtras(list: BaiaExtra[]) {
+  try { localStorage.setItem(BAIAS_KEY, JSON.stringify(list)) } catch { /* sem armazenamento: vale só nesta sessão */ }
+}
+/** Mapa de baias completo: as fixas + as criadas, na ordem das alas. */
+export function getBedLayout(): { room: string; beds: string[] }[] {
+  const layout = bedLayout.map((r) => ({ room: r.room, beds: [...r.beds] }))
+  baiasExtras().forEach(({ room, bed }) => {
+    let r = layout.find((x) => x.room.toLowerCase() === room.toLowerCase())
+    if (!r) { r = { room, beds: [] }; layout.push(r) }
+    if (!r.beds.includes(bed)) r.beds.push(bed)
+  })
+  return layout
+}
 export const activeAdmission = (item: Item) => ["Em andamento", "Em observação"].includes(item.status)
 export function bedAssignments(items: Item[], animals: Item[]) {
   const map = new Map<string, Item>()
@@ -460,8 +486,9 @@ export function bedAssignments(items: Item[], animals: Item[]) {
     .forEach((item) => {
       const species = animals.find((candidate) => candidate.id === item.animalId)?.species
       const preferred = item.category === "UTI" || /UTI/i.test(item.name) ? "UTI" : species === "Gato" ? "Gatil" : "Canil"
-      const order = [preferred, ...bedLayout.map((room) => room.room).filter((room) => room !== preferred && room !== "Isolamento")]
-      const bed = order.flatMap((room) => bedLayout.find((entry) => entry.room === room)!.beds).find((code) => !map.has(code))
+      const layout = getBedLayout()
+      const order = [preferred, ...layout.map((room) => room.room).filter((room) => room !== preferred && room !== "Isolamento")]
+      const bed = order.flatMap((room) => layout.find((entry) => entry.room === room)?.beds || []).find((code) => !map.has(code))
       if (bed) map.set(bed, item)
       else queue.push(item)
     })
@@ -477,7 +504,7 @@ const internacoes: FormDef = {
   submit: "Internar",
   sections: [
     { title: "Paciente", fields: [animal(), req(pills("situacao", "Situação", ["Triagem / orçamento", "Internado"], 3, { def: "Internado" })), req(pills("gravidade", "Gravidade", ["Estável", "Atenção", "Crítico"], 3, { def: "Estável" })), pills("tipo", "Tipo", ["Clínica", "Pós-cirúrgica", "UTI", "Isolamento", "Observação < 12 h"], 6, { def: "Clínica" }), pro(), req(f("date", "Entrada", "date", 2, { def: today })), f("time", "Hora", "time", 1, { def: nowHM }), f("altaPrevista", "Alta prevista", "date", 3), sel("origem", "Origem", ["Consulta", "Emergência", "Pós-cirúrgico", "Transferência externa"])] },
-    { title: "Baia", desc: "livres conforme o mapa de leitos", fields: [sel("box", "Baia", (ctx) => { const { map } = bedAssignments(ctx.data.internacoes, ctx.data.animais); return bedLayout.flatMap((room) => room.beds.filter((bed) => !map.has(bed)).map((bed) => [bed, `${room.room} · ${bed}`] as [string, string])) }, 6, { ph: "Escolher depois (fila de espera)" })] },
+    { title: "Baia", desc: "livres conforme o mapa de leitos", fields: [sel("box", "Baia", (ctx) => { const { map } = bedAssignments(ctx.data.internacoes, ctx.data.animais); return getBedLayout().flatMap((room) => room.beds.filter((bed) => !map.has(bed)).map((bed) => [bed, `${room.room} · ${bed}`] as [string, string])) }, 6, { ph: "Escolher depois (fila de espera)" })] },
     { title: "Quadro clínico", fields: [req(sel("name", "Motivo", ["Observação clínica", "Pós-operatório", "Fluidoterapia", "UTI e monitoramento"])), pills("prognostico", "Prognóstico", ["Favorável", "Reservado", "Desfavorável"], 3), req(f("queixa", "Queixa / motivo da internação", "textarea", 6)), f("diagnostico", "Diagnóstico / suspeita", "text", 6), multi("condicoes", "Alergias e condições", ["Alérgico", "Cardiopata", "Diabético", "Sênior", "Nefropata", "Infectocontagioso"]), sel("dieta", "Dieta", ["Ração habitual", "Hipossódica", "Pastosa", "Jejum", "Sonda"]), f("restricoes", "Restrições")] },
     { title: "Monitorização", fields: [f("parametros", "Parâmetros a monitorar", "rows", 6, { cols: [{ k: "parametro", label: "Parâmetro" }, { k: "intervalo", label: "A cada" }, { k: "alerta", label: "Alertar se" }], def: [{ parametro: "FC", intervalo: "2 h", alerta: "> 160 bpm" }, { parametro: "Temperatura", intervalo: "4 h", alerta: "> 39,5 °C" }, { parametro: "Dor", intervalo: "4 h", alerta: "≥ 4/10" }] })] },
     { title: "Prescrição", desc: "vai para o relógio de medicação", fields: [f("prescricao", "Prescrição inicial", "rows", 6, { cols: [{ k: "item", label: "Item", w: "1.4fr" }, { k: "dose", label: "Dose" }, { k: "via", label: "Via", w: ".6fr" }, { k: "freq", label: "Frequência" }, { k: "inicio", label: "Início", t: "time" }], def: [{ item: "", dose: "", via: "IV", freq: "12/12 h", inicio: "08:00" }], ph: "Adicionar item" })] },
@@ -487,7 +514,7 @@ const internacoes: FormDef = {
   validate: (values, ctx) => {
     if (values.altaPrevista && values.date && values.altaPrevista < values.date) return "A alta prevista não pode ser antes da data de entrada."
     const sp = speciesOf(ctx, values)
-    const room = bedLayout.find((r) => r.beds.includes(values.box))?.room
+    const room = getBedLayout().find((r) => r.beds.includes(values.box))?.room
     if (room === "Gatil" && sp && !isCat(sp) && !window.confirm(`A baia ${values.box} fica no Gatil, mas o paciente é ${sp}. Internar mesmo assim?`)) return "Escolha uma baia da ala adequada à espécie."
     if (room === "Canil" && isCat(sp) && !window.confirm(`A baia ${values.box} fica no Canil, mas o paciente é gato. Internar mesmo assim?`)) return "Escolha uma baia da ala adequada à espécie."
     if (values.box) { const { map } = bedAssignments(ctx.data.internacoes, ctx.data.animais); const occ = map.get(values.box); if (occ) return `A baia ${values.box} está ocupada por ${occ.animal || "outro paciente"}.` }
@@ -615,6 +642,7 @@ const financeiro: FormDef = {
   submit: "Salvar lançamento",
   sections: [
     { title: "Tipo e valor", fields: [req(pills("tipo", "Tipo", ["Receita", "Despesa", "Transferência"], 6, { def: "Receita" })), req(f("valor", "Valor", "money", 2)), req(f("name", "Descrição", "text", 4))] },
+    { title: "Cliente", desc: "opcional · liga o lançamento ao paciente e ao tutor", fields: [animal("Paciente", false), tutor("Tutor / cliente (sem paciente)")] },
     { title: "Classificação", fields: [sel("categoriaConta", "Categoria", (_ctx, values) => values.tipo === "Despesa" ? ["Despesas fixas", "Pessoal", "Compras / insumos", "Impostos", "Marketing", "Manutenção"] : ["Atendimentos", "Vendas de produtos", "Convênios", "Outras receitas"]), f("subcategoria", "Subcategoria"), sel("centro", "Centro de custo", ["Operação", "Centro cirúrgico", "Internação", "Estética", "Rede"]), f("competencia", "Competência", "text", 3, { ph: "MM/AAAA" }), f("contraparte", "Cliente / fornecedor"), sel("vinculo", "Vincular a", ["—", "Atendimento / venda", "Nota de entrada", "Convênio (repasse)"])] },
     { title: "Pagamento", fields: [req(pills("situacao", "Situação", ["Pendente", "Pago / recebido", "Vencido"], 6, { def: "Pendente" })), req(f("date", "Vencimento / data", "date", 2, { def: today })), f("dataPagamento", "Data do pagamento", "date", 2), sel("conta", "Conta / cartão", ["Banco · conta PJ", "Caixa da recepção", "Cartões a receber"], 2, { def: "Banco · conta PJ" }), sel("forma", "Forma", ["Pix", "Dinheiro", "Cartão de débito", "Cartão de crédito", "Boleto", "Débito automático", "Convênio"], 3, { def: "Pix" }), sel("parcelas", "Parcelamento", ["À vista", "2x", "3x", "6x", "12x"], 3, { def: "À vista" }), f("juros", "Juros / multa", "money", 3), f("descontoValor", "Desconto", "money", 3)] },
     { title: "Recorrência", fields: [tog("repetir", "Repetir este lançamento"), sel("frequencia", "Frequência", ["Mensal", "Semanal", "Anual"], 3, { def: "Mensal", show: (values: Values) => values.repetir }), sel("vezes", "Quantas vezes", ["2", "3", "6", "12"], 3, { def: "3", show: (values: Values) => values.repetir })] },
@@ -714,7 +742,7 @@ const comunicacao: FormDef = {
   submit: "Salvar campanha",
   sections: [
     { title: "Objetivo", fields: [req(f("name", "Nome interno", "text", 6)), req(pills("objetivo", "Objetivo", ["Lembrete de vacina", "Retorno", "Aniversário do pet", "Promoção / pacote", "Comunicado", "Pesquisa NPS", "Reativar sumidos"]))] },
-    { title: "Público", fields: [sel("especie", "Espécie", ["Todas", "Cão", "Gato"], 2, { def: "Todas" }), f("semVisita", "Sem visita há (meses)", "number", 2), sel("statusTutor", "Situação do tutor", ["Todos", "Ativo", "Inadimplente"], 2, { def: "Todos" }), f("publico", "Público estimado", "calc", 6, { calc: (values, ctx) => `${audience(values, ctx).length} tutores receberão · os que optaram por não receber ficam de fora (LGPD)` })] },
+    { title: "Público", fields: [{ ...f("tutorId", "Só para um tutor (opcional)", "tutor", 6), ph: "Deixe vazio para mandar a um grupo" }, sel("especie", "Espécie", ["Todas", "Cão", "Gato"], 2, { def: "Todas" }), f("semVisita", "Sem visita há (meses)", "number", 2), sel("statusTutor", "Situação do tutor", ["Todos", "Ativo", "Inadimplente"], 2, { def: "Todos" }), f("publico", "Público estimado", "calc", 6, { calc: (values, ctx) => `${audience(values, ctx).length} tutores receberão · os que optaram por não receber ficam de fora (LGPD)` })] },
     { title: "Canal", fields: [{ ...multi("canais", "Canais", ["WhatsApp", "E-mail", "SMS", "Notificação no app"], 6, { def: ["WhatsApp"] }), req: true }, sel("remetente", "Número remetente", (ctx) => ctx.units.map((unit) => `${unit.phone} · ${unit.shortName}`))] },
     { title: "Mensagem", fields: [req(f("mensagem", "Texto", "textarea", 6, { def: "Oi, {tutor}! O {pet} está com a vacina perto de vencer. Agende pelo link: {link_agendamento}" })), f("variaveis", "", "info", 6, { small: "Variáveis: {tutor} {pet} {ultima_visita} {vacina_vencida} {link_agendamento} {unidade}" }), f("midia", "Mídia", "file", 3), multi("botoes", "Botões", ["Agendar", "Falar com a clínica", "Não quero receber"], 3, { def: ["Agendar"] }), f("previa", "Prévia", "calc", 6, { calc: (values, ctx) => previewMessage(values.mensagem || "", ctx) })] },
     { title: "Envio", fields: [req(pills("quando", "Quando", ["Agora", "Agendar", "Automático por gatilho"], 6, { def: "Agendar" })), f("date", "Data", "date", 2, { def: today, show: (values: Values) => values.quando === "Agendar" }), f("time", "Hora", "time", 2, { def: "10:00", show: (values: Values) => values.quando === "Agendar" }), sel("gatilho", "Gatilho", ["X dias antes do vencimento da vacina", "No aniversário do pet", "Y dias após a consulta", "Sem visita há Z meses"], 6, { show: (values: Values) => values.quando === "Automático por gatilho" }), tog("comercial", "Respeitar horário comercial (8h–20h)", true), tog("teste", "Enviar teste para mim antes", false)] },
@@ -724,6 +752,7 @@ const comunicacao: FormDef = {
 }
 
 function audience(values: Values, ctx: Ctx) {
+  if (values.tutorId) return ctx.data.tutores.filter((t) => t.id === values.tutorId)
   const species = values.especie && values.especie !== "Todas" ? values.especie : ""
   const owners = new Set(ctx.data.animais.filter((item) => !species || item.species === species).map((item) => item.ownerId))
   return ctx.data.tutores.filter((tutor) => owners.has(tutor.id) && (values.statusTutor === "Todos" || !values.statusTutor || tutor.status === values.statusTutor))
@@ -786,6 +815,7 @@ const ocorrencias: FormDef = {
   submit: "Salvar ocorrência",
   sections: [
     { title: "O que houve", fields: [req(f("name", "Título (vira o post-it)", "text", 6)), f("descricao", "Descrição", "textarea", 6), req(pills("tipo", "Categoria", ["Equipamento", "Paciente / clínico", "Atendimento / tutor", "Estrutura predial", "Financeiro", "TI / sistema", "Biossegurança", "Equipe"])), req(pills("gravidade", "Gravidade", ["Baixa", "Média", "Alta", "Crítica"], 6, { def: "Média" }))] },
+    { title: "Envolvidos", desc: "opcional · paciente ou tutor ligado à ocorrência", fields: [animal("Paciente envolvido", false), tutor("Tutor envolvido (sem paciente)")] },
     { title: "Onde e quando", fields: [sel("setor", "Setor", ["Recepção", "Consultórios", "Centro cirúrgico", "Internação", "Laboratório", "Farmácia", "Banho e tosa"]), req(f("date", "Data", "date", 2, { def: today })), f("time", "Hora", "time", 1), f("equipamento", "Equipamento / patrimônio", "text", 6), { ...animal("Paciente envolvido (opcional)", false) }] },
     { title: "Evidências", fields: [f("anexos", "Fotos, vídeo ou áudio", "file", 6), f("testemunhas", "Quem presenciou", "text", 6)] },
     { title: "Tratativa", fields: [f("acao", "Ação imediata tomada", "textarea", 6), pro("Responsável"), f("prazo", "Prazo", "date"), tog("fornecedorExterno", "Precisa de assistência técnica / fornecedor"), f("fornecedor", "Fornecedor", "text", 3, { show: (values: Values) => values.fornecedorExterno }), f("custo", "Custo estimado", "money", 3), multi("avisar", "Avisar", ["Gestor da unidade", "Responsável técnico", "Equipe do setor", "Rede inteira"], 6, { def: ["Gestor da unidade"] })] },

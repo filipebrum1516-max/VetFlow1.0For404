@@ -56,6 +56,7 @@ export type FieldType =
   | "pills"
   | "multi"
   | "animal"
+  | "tutor"
   | "professional"
   | "color"
   | "rows"
@@ -163,6 +164,7 @@ export function initialValues(def: FormDef, item?: Item, prefill?: Values) {
       date: item.date,
       time: item.time,
       animalId: item.animalId,
+      tutorId: item.extra?.tutorId || (!item.animalId ? item.ownerId : undefined),
       professionalId: item.professionalId,
       notes: item.notes,
       category: item.category,
@@ -289,6 +291,7 @@ export default function FormDrawer({
     const animal = values.animalId
       ? ctx.data.animais.find((candidate) => candidate.id === values.animalId)
       : undefined
+    const tutorSel = !animal && values.tutorId ? ctx.data.tutores.find((candidate) => candidate.id === values.tutorId) : undefined
     const professional = values.professionalId
       ? ctx.data.profissionais.find((candidate) => candidate.id === values.professionalId)
       : undefined
@@ -306,6 +309,7 @@ export default function FormDrawer({
             subtitle: `${animal.name} • ${animal.owner}`,
           }
         : {}),
+      ...(tutorSel ? { ownerId: tutorSel.id, owner: tutorSel.name } : {}),
       ...(professional
         ? { professionalId: professional.id, professional: professional.name }
         : {}),
@@ -564,6 +568,14 @@ function FieldView({
       return <FileField field={field} value={value || []} onChange={onChange} span={span} label={label} />
     case "animal":
       return <AnimalField field={field} value={value} onChange={onChange} ctx={ctx} span={span} label={label} err={err} setValues={setValues} />
+    case "tutor":
+      return (
+        <div className={`vx-f ${span || "vx-c6"}`}>
+          {label}
+          <TutorBusca tutores={ctx.data.tutores} animais={ctx.data.animais} value={value || ""} onChange={onChange} placeholder={field.ph} />
+          {err}
+        </div>
+      )
     case "rows":
       return <RowsField field={field} value={value || []} onChange={onChange} span={span} label={label} err={err} />
     case "perms":
@@ -751,6 +763,68 @@ function AnimalField({
         </div>
       )}
       {err}
+    </div>
+  )
+}
+
+/**
+ * Busca de tutor com sugestões (nome, telefone, CPF ou nome do pet) — mesmo modelo da busca de paciente.
+ * Usada nos formulários e nas fichas.
+ */
+export function TutorBusca({ tutores, animais = [], value, onChange, placeholder }: { tutores: Item[]; animais?: Item[]; value: string; onChange: (id: string) => void; placeholder?: string }) {
+  const [query, setQuery] = useState("")
+  const selected = tutores.find((t) => t.id === value)
+  const petsOf = (id: string) => animais.filter((a) => a.ownerId === id)
+  const results = useMemo(() => {
+    const term = normalize(query.trim())
+    const digits = query.replace(/\D/g, "")
+    if (!term) return tutores.slice(0, 6)
+    return tutores
+      .filter((t) => {
+        const pets = animais.filter((a) => a.ownerId === t.id).map((a) => a.name).join(" ")
+        return normalize(`${t.name} ${pets}`).includes(term) || (digits.length >= 3 && `${t.phone || ""}${t.extra?.cpf || ""}`.replace(/\D/g, "").includes(digits))
+      })
+      .slice(0, 8)
+  }, [tutores, animais, query])
+  if (selected) {
+    const pets = petsOf(selected.id)
+    return (
+      <div className="vx-pick">
+        <span className="vx-av" style={{ width: 44, height: 44, borderRadius: 14, background: colorFor(selected.name) }}>{initials(selected.name)}</span>
+        <span style={{ flex: 1, minWidth: 0 }}>
+          <strong style={{ display: "block" }}>{selected.name}</strong>
+          <small style={{ display: "block", color: "var(--vx-muted)", fontSize: 12 }}>
+            {selected.phone || "sem telefone"} · {pets.length ? pets.map((a) => a.name).join(", ") : "sem animais"} · {selected.status || "Ativo"}
+          </small>
+        </span>
+        <button type="button" className="vx-chip" onClick={() => onChange("")}>Trocar</button>
+      </div>
+    )
+  }
+  return (
+    <div>
+      <label className="vx-search" style={{ borderRadius: 12, height: 42 }}>
+        <Search />
+        <input aria-label={placeholder || "Buscar tutor"} value={query} placeholder={placeholder || "Buscar tutor por nome, telefone, CPF ou pet"} onChange={(event) => setQuery(event.target.value)} />
+      </label>
+      <div className="vx-pick-list" role="listbox">
+        {results.length ? (
+          results.map((t) => {
+            const pets = petsOf(t.id)
+            return (
+              <button type="button" key={t.id} onClick={() => onChange(t.id)}>
+                <span className="vx-av" style={{ width: 30, height: 30, fontSize: 10, background: colorFor(t.id) }}>{initials(t.name)}</span>
+                <span>
+                  <strong>{t.name}</strong>
+                  <small>{t.phone || "sem telefone"}{pets.length ? ` · ${pets.map((a) => a.name).slice(0, 3).join(", ")}` : ""}</small>
+                </span>
+              </button>
+            )
+          })
+        ) : (
+          <p className="vx-hint" style={{ padding: 12, margin: 0 }}>Nenhum tutor encontrado. Cadastre-o em Tutores.</p>
+        )}
+      </div>
     </div>
   )
 }

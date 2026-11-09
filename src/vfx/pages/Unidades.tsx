@@ -1,14 +1,15 @@
 import { clinicMetrics } from "../../metrics"
-import { useState } from "react"
+import { useState, type ReactNode } from "react"
 import { useNavigate } from "react-router"
-import { Edit3, LogIn, MapPinned, Plus, Power } from "lucide-react"
+import { Building2, Edit3, LogIn, MapPinned, Plus, Power, Stethoscope, Users } from "lucide-react"
 import { useVetFlow, type Item, type Unit } from "../../store"
 import { usePageForms } from "../hooks"
 import { brl, colorFor, hash, Seg } from "../ui"
+import { CadastroLista, Duo, Ident, ModoSwitch, Status, useModo } from "../CadastroLista"
 
 const unitItem = (unit: Unit): Item => ({ id: unit.id, name: unit.name, subtitle: unit.city, status: unit.status, createdAt: "", extra: { name: unit.name, cnpj: unit.cnpj, phone: unit.phone, email: unit.email, street: unit.street, number: unit.number, neighborhood: unit.neighborhood, city: unit.city, state: unit.state, cep: unit.cep, responsible: unit.responsible, status: unit.status, ...(unit.extra || {}) } })
 
-export default function Unidades() {
+function UnidadesMapa({ modo }: { modo: ReactNode }) {
   const { units, activeUnitId, setActiveUnitId, updateUnit, allData } = useVetFlow()
   const navigate = useNavigate()
   const forms = usePageForms("unidades", (saved) => setSelectedId(saved.id))
@@ -75,6 +76,7 @@ export default function Unidades() {
           <div className="vx-crumb"><b>Vetflow</b> / Unidades</div>
           <div style={{ fontSize: 28, fontWeight: 800, letterSpacing: "-.03em" }}>A rede no mapa</div>
         </div>
+        {modo}
         <Seg options={[["mapa", "Mapa"], ["comparar", "Comparar"]]} value={view} onChange={setView} />
         <button className="vx-btn vx-btn-p" onClick={() => forms.open()}>
           <Plus /> Nova unidade
@@ -144,5 +146,97 @@ export default function Unidades() {
       </div>
       {forms.node}
     </div>
+  )
+}
+
+/* ================= Unidades · lista + ficha (padrão dos cadastros) ================= */
+export default function Unidades() {
+  const [modo, setModo] = useModo("unidades")
+  const switcher = <ModoSwitch value={modo} onChange={setModo} options={[["lista", "Lista"], ["mapa", "Mapa"]]} />
+  return modo === "mapa" ? <UnidadesMapa modo={switcher} /> : <UnidadesLista modo={switcher} />
+}
+
+function UnidadesLista({ modo }: { modo: ReactNode }) {
+  const { units, activeUnitId, setActiveUnitId, updateUnit, allData, staff } = useVetFlow()
+  const forms = usePageForms("unidades")
+  const [query, setQuery] = useState("")
+  const [sit, setSit] = useState("Todas")
+  const statsOf = (unit: Unit) => {
+    const data = allData[unit.id]
+    if (!data) return { team: 0, beds: 0, consults: 0, revenue: 0, patients: 0 }
+    const m = clinicMetrics(data)
+    return { team: m.team, beds: m.hospitalized, consults: data.consultas.filter((item) => !/cancel/i.test(item.status)).length, revenue: m.revenue(30), patients: m.patients }
+  }
+  const norm = (t: string) => t.toLowerCase()
+  const base = units.filter((u) => !query.trim() || norm(`${u.name} ${u.city} ${u.cnpj} ${u.responsible}`).includes(norm(query.trim())))
+  const naSit = (u: Unit, k: string) => k === "Todas" || (k === "Ativas" ? u.status === "Ativa" : u.status !== "Ativa")
+  const rows = base.filter((u) => naSit(u, sit))
+  const total = units.reduce((n, u) => { const s = statsOf(u); return { revenue: n.revenue + s.revenue, patients: n.patients + s.patients, team: n.team + s.team } }, { revenue: 0, patients: 0, team: 0 })
+  const ativas = units.filter((u) => u.status === "Ativa").length
+  return (
+    <CadastroLista
+      crumb="Unidades"
+      title="Unidades"
+      sub="Cada endereço da clínica com documento, horário, equipe e números do mês."
+      headerActions={modo}
+      kpis={[
+        { label: "Unidades", value: units.length, detail: `${ativas} ativas`, icon: <Building2 />, tone: "orange", aba: "Ativas" },
+        { label: "Equipe", value: total.team, detail: `${staff.length} logins no sistema`, icon: <Users />, tone: "aqua" },
+        { label: "Receita 30 dias", value: brl(total.revenue), detail: "somando as unidades", icon: <Stethoscope />, tone: "green" },
+        { label: "Pacientes", value: total.patients.toLocaleString("pt-BR"), detail: "na rede", icon: <MapPinned />, tone: "gray" },
+      ]}
+      query={query}
+      onQuery={setQuery}
+      placeholder="Buscar unidade, cidade ou CNPJ..."
+      abas={["Todas", "Ativas", "Inativas"].map((key) => ({ key, label: key, count: base.filter((u) => naSit(u, key)).length }))}
+      aba={sit}
+      onAba={setSit}
+      novo={{ label: "Nova unidade", onClick: () => forms.open() }}
+      rows={rows}
+      rowKey={(u) => u.id}
+      noun="unidades"
+      vazio="Nenhuma unidade encontrada"
+      colunas={[
+        { label: "Unidade", w: "minmax(240px,1.5fr)", cell: (u) => <Ident title={u.shortName || u.name} sub={`${u.street || ""}${u.number ? `, ${u.number}` : ""} · ${u.city}/${u.state}`} initials={u.extra?.sigla || (u.shortName || u.name).slice(0, 2).toUpperCase()} color={u.extra?.cor || colorFor(u.id)} tag={u.id === activeUnitId ? "Você está aqui" : undefined} /> },
+        { label: "Receita 30 d", w: "130px", cell: (u) => { const s = statsOf(u); return <Duo title={brl(s.revenue)} sub={`${s.consults} consultas`} /> } },
+        { label: "Responsável", w: "minmax(140px,1fr)", ficha: false, cell: (u) => <Duo title={u.responsible || "—"} sub={u.phone} /> },
+        { label: "Situação", w: "120px", cell: (u) => <Status status={u.status} /> },
+      ]}
+      ficha={(u) => {
+        const s = statsOf(u)
+        const ativa = u.status === "Ativa"
+        const unica = ativa && units.filter((x) => x.status === "Ativa").length < 2
+        return (
+          <aside className="cd-side" aria-label={`Ficha de ${u.name}`}>
+            <section className="cd-pane">
+              <div className="cd-hero">
+                <i className="cd-big" style={{ background: u.extra?.cor || colorFor(u.id) }}>{u.extra?.sigla || (u.shortName || u.name).slice(0, 2).toUpperCase()}</i>
+                <div className="cd-hero-t">
+                  <strong>{u.name}</strong>
+                  <span>{u.city}/{u.state}{u.id === activeUnitId ? " · você está nesta unidade" : ""}</span>
+                  <span className={`lv-pill ${ativa ? "" : "gray"}`}><i />{u.status}</span>
+                </div>
+              </div>
+              <div className="cd-acts">
+                <button type="button" className="main" disabled={!ativa || u.id === activeUnitId} onClick={() => { setActiveUnitId(u.id); forms.toast(`Agora você está em ${u.shortName}.`) }}><LogIn />Entrar nesta unidade</button>
+                <button type="button" onClick={() => forms.open("unidades", unitItem(u))}><Edit3 />Editar</button>
+                <button type="button" onClick={() => window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${u.street}, ${u.number}, ${u.city} ${u.state}`)}`, "_blank", "noopener")}><MapPinned />Ver no mapa</button>
+                <button type="button" className={ativa ? "danger" : ""} disabled={unica} title={unica ? "É a única unidade ativa" : undefined} onClick={() => { updateUnit(u.id, { status: ativa ? "Inativa" : "Ativa" }); forms.toast(`${u.shortName} ${ativa ? "desativada. O histórico continua guardado." : "reativada."}`) }}><Power />{ativa ? "Desativar" : "Reativar"}</button>
+              </div>
+              <div className="cd-dl">
+                {([
+                  ["CNPJ", u.cnpj], ["Telefone", u.phone], ["E-mail", u.email],
+                  ["Endereço", `${u.street || ""}${u.number ? `, ${u.number}` : ""}${u.neighborhood ? ` · ${u.neighborhood}` : ""}`], ["CEP", u.cep], ["Responsável técnico", u.responsible],
+                  ["Equipe", String(s.team)], ["Internados agora", String(s.beds)], ["Pacientes", s.patients.toLocaleString("pt-BR")], ["Receita 30 dias", brl(s.revenue)],
+                ] as [string, string][]).filter(([, v]) => v && v.trim()).map(([k, v]) => <div key={k}><small>{k}</small><b>{v}</b></div>)}
+              </div>
+              <p className="cd-empty">Unidades não são excluídas: desativar tira a unidade da troca de unidade e mantém todo o histórico.</p>
+            </section>
+          </aside>
+        )
+      }}
+    >
+      {forms.node}
+    </CadastroLista>
   )
 }

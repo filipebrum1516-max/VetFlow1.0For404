@@ -1,11 +1,12 @@
 import { useMemo, useState } from "react"
 import { useNavigate } from "react-router"
-import { Activity, CircleDollarSign, ClipboardList, History, Layers, Play, Stethoscope } from "lucide-react"
+import { Activity, CircleDollarSign, ClipboardList, Layers, Play, Stethoscope } from "lucide-react"
 import { useVetFlow, type Item } from "../../store"
 import { usePageForms } from "../hooks"
 import RowActions, { RowButton } from "../RowActions"
 import { brl, fmtDate, itemDate, todayISO } from "../ui"
 import { CadastroLista, Duo, Ident, initialsOf, Status } from "../CadastroLista"
+import { FichaCadastro } from "../Ficha"
 
 const CATEGORIAS: Record<string, string> = {
   Clínico: "#d9601a",
@@ -75,16 +76,14 @@ export default function Procedimentos() {
     { label: "Em andamento", value: todosHist.filter((p) => /andamento/i.test(p.status)).length, detail: "sendo feitos agora", icon: <Stethoscope />, tone: "green" as const },
     { label: "Faturado", value: brl(faturado), detail: "procedimentos concluídos", icon: <CircleDollarSign />, tone: "gray" as const },
   ]
-  const abas = (
-    <div className="pc-tabs cl-tabs" role="tablist">
-      <button role="tab" aria-selected={aba === "lista"} className={aba === "lista" ? "on" : ""} onClick={() => setAba("lista")}>
-        <ClipboardList size={16} /> Catálogo <b>{linhas.length}</b>
-      </button>
-      <button role="tab" aria-selected={aba === "historico"} className={aba === "historico" ? "on" : ""} onClick={() => setAba("historico")}>
-        <History size={16} /> Histórico <b>{historico.length}</b>
-      </button>
-    </div>
-  )
+  const abas = {
+    abas: [
+      { key: "lista", label: "Catálogo", count: linhas.length },
+      { key: "historico", label: "Histórico", count: historico.length },
+    ],
+    aba,
+    onAba: (k: string) => setAba(k === "historico" ? "historico" : "lista"),
+  }
 
   if (aba === "lista")
     return (
@@ -92,21 +91,55 @@ export default function Procedimentos() {
         crumb="Procedimentos"
         title="Procedimentos"
         kpis={kpis}
-        above={abas}
+        {...abas}
         query={query}
         onQuery={setQuery}
         placeholder="Buscar procedimento ou categoria..."
         filtros={[{ label: "Categoria", icon: <Layers />, value: cat, onChange: setCat, options: [["Todas", "Todas as categorias"], ...Object.keys(CATEGORIAS)] }]}
         novo={{ label: "Novo procedimento", onClick: () => forms.open("procedimentos") }}
         rows={lista}
+        exportar={{ nome: "procedimentos", linha: (row) => ({ Procedimento: row.name, Categoria: row.cat, Duracao: row.duration, Realizados: realizados(row.name), Preco: row.price || "" }) }}
         rowKey={(row) => row.name}
-        onRow={(row) => editar(row)}
         noun="procedimentos"
+        ficha={(row) =>
+          row.catalog ? (
+            <FichaCadastro
+              slug="procedimentos"
+              item={row.catalog}
+              sub={`${row.cat} · ${row.duration} · ${realizados(row.name)} realizados`}
+              acoes={[{ label: "Fazer agora", icon: <Play />, main: true, onClick: () => fazer(row) }]}
+              campos={[
+                ["Categoria", row.cat],
+                ["Duração", row.duration],
+                ["Preço", row.price ? brl(row.price) : undefined],
+                ["Sala", row.catalog.extra?.sala || "Sala de procedimentos"],
+                ["Realizados", `${realizados(row.name)} no histórico`],
+                ["Exige termo", row.catalog.extra?.termo ? "Sim" : undefined],
+              ]}
+              onEdit={() => editar(row)}
+              onToast={forms.toast}
+            />
+          ) : (
+            <aside className="cd-side">
+              <section className="cd-pane">
+                <div className="cd-hero">
+                  <i className="cd-big" style={{ background: CATEGORIAS[row.cat] || "#667" }}>{initialsOf(row.name)}</i>
+                  <div className="cd-hero-t"><strong>{row.name}</strong><span>{row.cat} · {realizados(row.name)} realizados</span><span className="lv-pill orange"><i />Fora do catálogo</span></div>
+                </div>
+                <div className="cd-acts">
+                  <button type="button" className="main" onClick={() => editar(row)}><ClipboardList />Adicionar ao catálogo</button>
+                  <button type="button" onClick={() => fazer(row)}><Play />Fazer agora</button>
+                </div>
+                <p className="cd-empty">Este procedimento foi registrado em atendimentos, mas ainda não tem cadastro com preço, duração e materiais.</p>
+              </section>
+            </aside>
+          )
+        }
         vazio="Nenhum procedimento encontrado"
         colunas={[
           { label: "Procedimento", w: "minmax(260px,1.5fr)", cell: (row) => <Ident title={row.name} sub={row.catalog ? "no catálogo" : "registrado em atendimentos"} icon={<Stethoscope />} color={CATEGORIAS[row.cat] || "#667"} /> },
-          { label: "Categoria", w: "minmax(140px,.8fr)", cell: (row) => <Duo title={row.cat} sub={row.catalog?.extra?.sala || "Sala de procedimentos"} /> },
-          { label: "Duração", w: "120px", cell: (row) => <Duo title={row.duration} sub="média" /> },
+          { label: "Categoria", w: "minmax(140px,.8fr)", ficha: false, cell: (row) => <Duo title={row.cat} sub={row.catalog?.extra?.sala || "Sala de procedimentos"} /> },
+          { label: "Duração", w: "120px", ficha: false, cell: (row) => <Duo title={row.duration} sub="média" /> },
           { label: "Realizados", w: "120px", cell: (row) => <Duo title={`${realizados(row.name)}×`} sub="no histórico" /> },
           { label: "Preço", w: "130px", cell: (row) => <span className="cl-money">{row.price ? brl(row.price) : "—"}</span> },
         ]}
@@ -125,13 +158,14 @@ export default function Procedimentos() {
       crumb="Procedimentos"
       title="Procedimentos"
       kpis={kpis}
-      above={abas}
+      {...abas}
       query={query}
       onQuery={setQuery}
       placeholder="Buscar paciente, tutor, procedimento ou profissional..."
       filtros={[{ label: "Situação", icon: <Activity />, value: sit, onChange: setSit, options: [["Todas", "Todas as situações"], "Agendados", "Em andamento", "Concluídos"] }]}
       novo={{ label: "Registrar procedimento", onClick: () => forms.open("procedimentos-exec") }}
       rows={historico}
+      exportar={{ nome: "procedimentos-historico", linha: (item) => ({ Paciente: item.animal || "", Tutor: item.owner || "", Procedimento: item.name, Data: fmtDate(itemDate(item)), Profissional: item.professional || "", Valor: item.amountValue || "", Situacao: item.status }) }}
       rowKey={(item) => item.id}
       onRow={(item) => navigate(`/procedimentos/${item.id}`)}
       noun="registros"

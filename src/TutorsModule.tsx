@@ -23,7 +23,8 @@ import {
 } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router"
-import { useVetFlow, type Item } from "./store"
+import { FichaCadastro } from "./vfx/Ficha"
+import { useVetFlow, type Item, accessLevel } from "./store"
 import ClienteForm, { fromItem, toItem } from "./vfx/ClienteForm"
 import { Confirm } from "./vfx/ui"
 import { printHtml } from "./vfx/vendasShared"
@@ -275,7 +276,8 @@ function ToggleRow({
 }
 
 export default function TutorsModule() {
-  const { addItem, updateItem, deleteItem, data, theme, activeUnit } = useVetFlow()
+  const { addItem, updateItem, deleteItem, data, theme, activeUnit, user } = useVetFlow()
+  const soVer = accessLevel(user?.role, "tutores", user?.perms) === "Ver"
   // Cadastro e edição usam o mesmo formulário completo, com CEP, máscara e validação de CPF/CNPJ (M-12, B-16, B-17, V-10..V-14).
   const [clienteForm, setClienteForm] = useState<{ item: Item | null } | null>(() => (new URLSearchParams(window.location.search).get("novo") === "1" ? { item: null } : null))
   const [confirmTutor, setConfirmTutor] = useState<{ kind: "inativar" | "excluir" | "anonimizar"; tutor: TutorRow } | null>(null)
@@ -297,6 +299,7 @@ export default function TutorsModule() {
   const [sort, setSort] = useState("Mais recentes")
   const [addedRows, setAddedRows] = useState<TutorRow[]>([])
   const [page, setPage] = useState(1)
+  const [fichaId, setFichaId] = useState("")
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [step, setStep] = useState(1)
   const [form, setForm] = useState({ ...emptyTutor })
@@ -397,8 +400,15 @@ export default function TutorsModule() {
     if (sort === "Mais antigos") return [...matching].reverse()
     return matching
   }, [query, rows, sort, statusFilter])
+  const statusTabs = useMemo(() => {
+    const term = query.trim().toLowerCase()
+    const base = rows.filter((row) => !term || row.name.toLowerCase().includes(term) || row.phone.includes(term) || row.pets.some((animal) => animal.name.toLowerCase().includes(term)))
+    return [["Todos os status", "Todos"], ["Ativo", "Ativos"], ["Inativo", "Inativos"]].map(([key, label]) => ({ key, label, count: key === "Todos os status" ? base.length : base.filter((r) => r.status === key).length }))
+  }, [rows, query])
   const pages = Math.max(1, Math.ceil(filtered.length / perPage))
   const visibleRows = filtered.slice((page - 1) * perPage, page * perPage)
+  const fichaAtual = filtered.find((row) => row.id === fichaId) || visibleRows[0] || filtered[0]
+  const fichaItem = fichaAtual ? data.tutores.find((t) => t.id === fichaAtual.id) : undefined
   const activeCount = rows.filter((row) => row.status === "Ativo").length
   const inactiveCount = rows.length - activeCount
   const pageItems: Array<number | "…"> = useMemo(() => {
@@ -685,8 +695,15 @@ export default function TutorsModule() {
         </div>
       </section>
 
-      <main className="tutors-main">
-        <section className="tutors-list-card">
+      <main className="tutors-main cd-grid cd-tutores">
+        <section className="tutors-list-card lv-card cd-list">
+          <nav className="lv-tabs" role="tablist" aria-label="Situação">
+            {statusTabs.map((tab) => (
+              <button key={tab.key} type="button" role="tab" aria-selected={statusFilter === tab.key} className={`lv-tab ${statusFilter === tab.key ? "on" : ""}`} onClick={() => setStatusFilter(tab.key)}>
+                {tab.label} <b>{tab.count.toLocaleString("pt-BR")}</b>
+              </button>
+            ))}
+          </nav>
           <div className="tutors-actions">
             <label className="tutors-search-field">
               <Search size={18} />
@@ -697,17 +714,6 @@ export default function TutorsModule() {
               />
             </label>
             <label className="tutors-filter">
-              <select
-                value={statusFilter}
-                onChange={(event) => setStatusFilter(event.target.value)}
-              >
-                <option>Todos os status</option>
-                <option>Ativo</option>
-                <option>Inativo</option>
-              </select>
-              <ChevronDown size={15} />
-            </label>
-            <label className="tutors-filter">
               <select value={sort} onChange={(event) => setSort(event.target.value)}>
                 <option>Mais recentes</option>
                 <option>Mais antigos</option>
@@ -715,10 +721,12 @@ export default function TutorsModule() {
               </select>
               <ChevronDown size={15} />
             </label>
+          {soVer ? null : (
             <button className="tf-primary" onClick={() => setClienteForm({ item: null })}>
               <Plus size={18} />
               Novo tutor
             </button>
+          )}
           </div>
             <div className="tutors-list-head">
               <span>Tutor</span>
@@ -729,11 +737,13 @@ export default function TutorsModule() {
             </div>
             {visibleRows.map((tutor, index) => (
               <div
-                className="tutor-row"
+                className={`tutor-row ${fichaAtual?.id === tutor.id ? "lv-cur" : ""}`}
                 key={tutor.id}
                 role="button"
                 tabIndex={0}
-                onClick={() => openTutor(tutor)}
+                aria-current={fichaAtual?.id === tutor.id ? "true" : undefined}
+                onClick={() => { setFichaId(tutor.id); if (window.innerWidth < 1100) window.setTimeout(() => document.querySelector(".cd-tutores .cd-side-wrap")?.scrollIntoView({ behavior: "smooth", block: "start" }), 40) }}
+                onKeyDown={(event) => { if (event.key === "Enter") setFichaId(tutor.id) }}
               >
                 <span className="tutor-person">
                   <i className={`avatar-tone-${index % 5}`}>
@@ -849,6 +859,43 @@ export default function TutorsModule() {
               </label>
             </footer>
           </section>
+        <div className="cd-side-wrap">
+          {fichaItem && fichaAtual ? (
+            <FichaCadastro
+              slug="tutores"
+              item={fichaItem}
+              sub={[fichaItem.cpf ? `CPF ${fichaItem.cpf}` : "", fichaAtual.phone].filter(Boolean).join(" · ")}
+              acoes={[
+                { label: "Agendar", icon: <CalendarDays />, main: true, onClick: () => navigate(`/agendas?locate=1&client=${encodeURIComponent(fichaAtual.name)}`) },
+                { label: "Adicionar animal", onClick: () => navigate(`/animais?novo=1&tutor=${fichaAtual.id}`) },
+                { label: "Enviar mensagem", onClick: () => navigate(`/comunicacao?tutor=${fichaAtual.id}`) },
+                { label: "Imprimir ficha", onClick: () => printTutor(fichaAtual) },
+              ]}
+              campos={[
+                ["Telefone", fichaAtual.phone],
+                ["E-mail", fichaItem.email],
+                ["CPF", fichaItem.cpf],
+                ["Endereço", fichaItem.address],
+                ["Animais", fichaAtual.pets.map((a) => a.name).join(", ") || "nenhum"],
+                ["Última visita", fichaAtual.lastVisit],
+                ["Cliente desde", fichaItem.createdAt ? fichaItem.createdAt.slice(0, 10).split("-").reverse().join("/") : undefined],
+              ]}
+              abasExtras={[{ label: "Animais", content: (
+                <div>
+                  {fichaAtual.pets.map((a) => (
+                    <button key={a.id} type="button" className="cd-li" onClick={() => { setPetTab("Dados"); setSelectedPet({ pet: a, tutor: fichaAtual, edit: true }) }}>
+                      <time>{a.species || "Animal"}</time><span><b>{a.name}</b>{a.breed ? ` · ${a.breed}` : ""}</span><ChevronRight size={15} />
+                    </button>
+                  ))}
+                  {!fichaAtual.pets.length && <p className="cd-empty">Nenhum animal cadastrado para este tutor.</p>}
+                </div>
+              ) }]}
+              onEdit={() => openTutor(fichaAtual, true)}
+            />
+          ) : (
+            <aside className="cd-side"><section className="cd-pane"><p className="cd-empty">Nenhum tutor com estes filtros.</p></section></aside>
+          )}
+        </div>
       </main>
 
       {drawerOpen && (

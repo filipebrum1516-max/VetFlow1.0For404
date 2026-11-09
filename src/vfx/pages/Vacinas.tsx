@@ -1,12 +1,14 @@
-import { useEffect, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
 import { useNavigate } from "react-router"
-import { ArrowLeft, BookOpen, CalendarClock, CircleCheck, MessageCircle, Plus, Printer, Search, Syringe, TriangleAlert } from "lucide-react"
+import { ArrowLeft, BookOpen, CalendarClock, CircleCheck, MessageCircle, Plus, Printer, Syringe, TriangleAlert } from "lucide-react"
 import { normalize, useVetFlow, type Item } from "../../store"
 import { usePageForms } from "../hooks"
-import { addDays, colorFor, daysBetween, fmtDate, initials, itemDate, Page, Pager, StatusPill, todayISO, usePaged, useQueryParam } from "../ui"
+import { addDays, colorFor, daysBetween, fmtDate, initials, itemDate, Page, StatusPill, todayISO, useQueryParam } from "../ui"
+import RowActions, { RowButton } from "../RowActions"
+import { CadastroLista, Duo, Ident, Status } from "../CadastroLista"
 
 /*
- * Vacinas abre numa PASTA com abas (Atrasadas · A vencer · Em dia · Todos), uma linha por animal.
+ * Vacinas abre na lista padrão com abas (Atrasadas · A vencer · Em dia · Todos), uma linha por animal.
  * Clicar no animal abre a CARTEIRA dele: doses aplicadas (carimbo), atrasadas e próximas.
  */
 type Aba = "Atrasadas" | "A vencer" | "Em dia" | "Todos"
@@ -44,54 +46,28 @@ const quando = (iso: string) => {
 export default function Vacinas() {
   const { data, addItem } = useVetFlow()
   const navigate = useNavigate()
+  const forms = usePageForms("vacinas", (saved) => saved.animalId && setAnimalId(saved.animalId))
   const initialFilter = useQueryParam("filtro")
   const paramAnimal = useQueryParam("animal")
-  // Estados persistidos por versões anteriores podem chegar sem uma coleção
-  // ou com vínculos apenas pelo nome. A pasta precisa renderizar durante a hidratação.
-  const animals = Array.isArray(data.animais) ? data.animais : []
-  const vaccines = Array.isArray(data.vacinas) ? data.vacinas : []
   const [aba, setAba] = useState<Aba>(initialFilter === "A vencer" ? "A vencer" : initialFilter === "Atrasada" ? "Atrasadas" : "Atrasadas")
   const [query, setQuery] = useState("")
   const [animalId, setAnimalId] = useState(() => {
     if (!paramAnimal) return ""
-    return animals.find((item) => item.id === paramAnimal || normalize(item.name) === normalize(paramAnimal))?.id || ""
-  })
-  const forms = usePageForms("vacinas", (saved) => {
-    const linked = animals.find((item) => item.id === saved.animalId || normalize(item.name) === normalize(saved.animal || ""))
-    if (linked) setAnimalId(linked.id)
+    return data.animais.find((item) => item.id === paramAnimal || normalize(item.name) === normalize(paramAnimal))?.id || ""
   })
   const hoje = todayISO()
 
-  useEffect(() => {
-    if (!animals.length) {
-      if (animalId) setAnimalId("")
-      return
-    }
-    if (animalId && !animals.some((item) => item.id === animalId)) {
-      setAnimalId("")
-      return
-    }
-    if (!animalId && paramAnimal) {
-      const linked = animals.find((item) => item.id === paramAnimal || normalize(item.name) === normalize(paramAnimal))
-      if (linked) setAnimalId(linked.id)
-    }
-  }, [animalId, animals, paramAnimal])
-
   const resumos = useMemo(() => {
     const porAnimal = new Map<string, Item[]>()
-    const animais = new Map(animals.map((animal) => [animal.id, animal]))
-    const animaisPorNome = new Map(animals.map((animal) => [normalize(animal.name), animal.id]))
-    vaccines.forEach((vaccine) => {
-      const linkedId = vaccine.animalId || animaisPorNome.get(normalize(vaccine.animal || ""))
-      if (linkedId) porAnimal.set(linkedId, [...(porAnimal.get(linkedId) || []), vaccine])
-    })
+    data.vacinas.forEach((v) => v.animalId && porAnimal.set(v.animalId, [...(porAnimal.get(v.animalId) || []), v]))
+    const animais = new Map(data.animais.map((a) => [a.id, a]))
     const out: Resumo[] = []
     porAnimal.forEach((doses, id) => {
       const animal = animais.get(id)
       if (animal) out.push(resumir(animal, doses, hoje))
     })
     return out
-  }, [animals, vaccines, hoje])
+  }, [data.vacinas, data.animais, hoje])
   const contagem = {
     Atrasadas: resumos.filter((r) => r.situacao === "Atrasadas").length,
     "A vencer": resumos.filter((r) => r.situacao === "A vencer").length,
@@ -101,11 +77,10 @@ export default function Vacinas() {
   const lista = resumos
     .filter((r) => (aba === "Todos" || r.situacao === aba) && (!query.trim() || normalize(`${r.animal.name} ${r.animal.owner} ${r.doses.map((d) => d.name).join(" ")}`).includes(normalize(query))))
     .sort((a, b) => (a.proxima?.when || "9999").localeCompare(b.proxima?.when || "9999"))
-  const paged = usePaged(lista, 10, [aba, query])
 
-  const lembrar = () => {
+  const lembrar = (alvo?: Resumo[]) => {
     let sent = 0
-    resumos.filter((r) => r.situacao === "Atrasadas").forEach((r) => {
+    ;(alvo || resumos.filter((r) => r.situacao === "Atrasadas")).forEach((r) => {
       if (sent >= 40) return
       addItem("comunicacao", { name: "Lembrete de vacina", animalId: r.animal.id, status: "Enviada", category: "WhatsApp", extra: { mensagem: `Olá! A vacina de ${r.animal.name} está atrasada. Responda para agendar.` } })
       sent++
@@ -113,83 +88,59 @@ export default function Vacinas() {
     forms.toast(`${sent} lembretes registrados em Comunicação (envio simulado: nenhuma mensagem real sai desta versão).`)
   }
 
-  const animal = animals.find((item) => item.id === animalId)
+  const animal = data.animais.find((item) => item.id === animalId)
   if (animal) return <Carteira animal={animal} onBack={() => setAnimalId("")} forms={forms} />
 
-  const ABAS: [Aba, string, typeof TriangleAlert][] = [["Atrasadas", "late", TriangleAlert], ["A vencer", "soon", CalendarClock], ["Em dia", "ok", CircleCheck], ["Todos", "all", BookOpen]]
+  const doMes = data.vacinas.filter((v) => itemDate(v).slice(0, 7) === hoje.slice(0, 7) && /aplicad|conclu/i.test(v.status)).length
   return (
-    <Page
-      bg="#eef6f0"
-      blobs={[["#9fe3c6", 160, 200, 560, 520], ["#ffd39a", "80%", -60, 380, 380], ["#ffb8b0", "65%", 600, 300, 300]]}
-      crumb="Vacinas"
+    <CadastroLista
+      crumb="Clínico / Vacinas"
       title="Vacinas"
-      actions={
-        <>
-          <label className="vx-search">
-            <Search />
-            <input aria-label="Buscar animal, tutor ou vacina" placeholder="Buscar animal, tutor ou vacina" value={query} onChange={(event) => setQuery(event.target.value)} />
-          </label>
-          <button className="vx-btn vx-btn-p" onClick={() => forms.open("vacinas")}>
-            <Plus /> Registrar aplicação
-          </button>
-        </>
-      }
+      sub="Pasta de vacinação: toque num animal para abrir a carteira com as doses aplicadas e as que faltam."
+      headerActions={contagem.Atrasadas > 0 ? <button className="vx-btn vx-btn-g" onClick={() => lembrar()}><MessageCircle /> Lembrar atrasadas</button> : undefined}
+      novo={{ label: "Registrar aplicação", onClick: () => forms.open("vacinas") }}
+      kpis={[
+        { label: "Com vacina atrasada", value: contagem.Atrasadas, detail: "reforço ou dose vencida", icon: <TriangleAlert />, tone: "red", aba: "Atrasadas" },
+        { label: `A vencer em ${JANELA} dias`, value: contagem["A vencer"], detail: "avise o tutor antes", icon: <CalendarClock />, tone: "orange", aba: "A vencer" },
+        { label: "Carteiras em dia", value: contagem["Em dia"], detail: "nada pendente", icon: <CircleCheck />, tone: "green", aba: "Em dia" },
+        { label: "Aplicadas no mês", value: doMes, detail: `${contagem.Todos} animais com carteira`, icon: <BookOpen />, tone: "aqua" },
+      ]}
+      abas={[
+        { key: "Atrasadas", label: "Atrasadas", count: contagem.Atrasadas, tone: "red" },
+        { key: "A vencer", label: "A vencer", count: contagem["A vencer"] },
+        { key: "Em dia", label: "Em dia", count: contagem["Em dia"] },
+        { key: "Todos", label: "Todos", count: contagem.Todos },
+      ]}
+      aba={aba}
+      onAba={(k) => setAba((k || "Atrasadas") as Aba)}
+      query={query}
+      onQuery={setQuery}
+      placeholder="Buscar animal, tutor ou vacina"
+      rows={lista}
+      rowKey={(r) => r.animal.id}
+      onRow={(r) => setAnimalId(r.animal.id)}
+      noun="animais"
+      vazio="Nenhum animal nesta aba"
+      perPageDefault={10}
+      emMassa={(itens, limpar) => (
+        <button type="button" onClick={() => { lembrar(itens); limpar() }}><MessageCircle /> Lembrar tutores</button>
+      )}
+      exportar={{ nome: "vacinas", linha: (r) => ({ Animal: r.animal.name, Tutor: r.animal.owner || "", UltimaAplicada: r.ultima ? `${r.ultima.name} ${fmtDate(itemDate(r.ultima))}` : "", ProximaDose: r.proxima ? `${r.proxima.item.name} ${fmtDate(r.proxima.when)}` : "", Situacao: r.situacao }) }}
+      colunas={[
+        { label: "Animal", w: "minmax(240px,1.4fr)", cell: (r) => <Ident title={r.animal.name} sub={`${r.animal.subtitle?.split(" • ").slice(0, 2).join(" · ")} · ${r.animal.owner || "sem tutor"}`} initials={initials(r.animal.name)} color={colorFor(r.animal.id)} /> },
+        { label: "Última aplicada", w: "minmax(160px,1fr)", cell: (r) => (r.ultima ? <Duo title={r.ultima.name.replace(/^Vacina\s+/i, "")} sub={fmtDate(itemDate(r.ultima))} /> : <Duo title="—" sub="nenhuma aplicada" />) },
+        { label: "Próxima dose", w: "minmax(180px,1fr)", cell: (r) => (r.proxima ? <Duo title={r.proxima.item.name.replace(/^Vacina\s+/i, "")} sub={<span className={r.proxima.when < hoje ? "vf-late-txt" : ""}>{fmtDate(r.proxima.when)} · {quando(r.proxima.when)}</span>} /> : <Duo title="—" sub="nada programado" />) },
+        { label: "Situação", w: "150px", cell: (r) => <Status status={r.situacao === "Atrasadas" ? `${r.atrasadas} atrasada${r.atrasadas > 1 ? "s" : ""}` : r.situacao === "A vencer" ? "A vencer" : "Em dia"} toneOverride={r.situacao === "Atrasadas" ? "red" : r.situacao === "A vencer" ? "orange" : "green"} /> },
+      ]}
+      acoesW="120px"
+      acoes={(r) => (
+        <RowActions name={r.animal.name} onView={() => setAnimalId(r.animal.id)}>
+          <RowButton title="Registrar aplicação" onClick={() => forms.open("vacinas", undefined, { animalId: r.animal.id })}><Syringe /></RowButton>
+        </RowActions>
+      )}
     >
-      <div className="vf-folder">
-        <div className="vf-tabs" role="tablist" aria-label="Situação vacinal">
-          {ABAS.map(([nome, cls, Icon]) => (
-            <button key={nome} role="tab" aria-selected={aba === nome} className={`vf-tab ${cls} ${aba === nome ? "on" : ""}`} onClick={() => setAba(nome)}>
-              <Icon /> {nome} <b>{contagem[nome]}</b>
-            </button>
-          ))}
-        </div>
-        <div className={`vf-body ${ABAS.find(([n]) => n === aba)?.[1]}`}>
-          <div className="vf-paper">
-            <div className="vf-paper-head">
-              <div>
-                <span className="vf-label">Pasta de vacinação · {aba}</span>
-                <h2>{aba === "Atrasadas" ? "Animais com vacina atrasada" : aba === "A vencer" ? `Reforços nos próximos ${JANELA} dias` : aba === "Em dia" ? "Carteiras em dia" : "Todos os animais vacinados"}</h2>
-              </div>
-              {aba === "Atrasadas" && contagem.Atrasadas > 0 && (
-                <button className="vx-btn vx-btn-g" onClick={lembrar}><MessageCircle /> Lembrar tutores por WhatsApp</button>
-              )}
-            </div>
-            <div className="vf-list">
-              <div className="vf-row vf-th">
-                <span>Animal</span><span>Última aplicada</span><span>Próxima dose</span><span>Situação</span><span />
-              </div>
-              {paged.visible.map((r) => (
-                <button key={r.animal.id} className="vf-row" onClick={() => setAnimalId(r.animal.id)}>
-                  <span className="vf-pet">
-                    <i style={{ background: colorFor(r.animal.id) }}>{initials(r.animal.name)}</i>
-                    <span><strong>{r.animal.name}</strong><small>{r.animal.subtitle?.split(" • ").slice(0, 2).join(" · ")} · {r.animal.owner || "sem tutor"}</small></span>
-                  </span>
-                  <span className="vf-cell" data-label="Última aplicada">
-                    {r.ultima ? <><strong>{r.ultima.name.replace(/^Vacina\s+/i, "")}</strong><small>{fmtDate(itemDate(r.ultima))}</small></> : <small>nenhuma aplicada</small>}
-                  </span>
-                  <span className="vf-cell" data-label="Próxima dose">
-                    {r.proxima ? <><strong>{r.proxima.item.name.replace(/^Vacina\s+/i, "")}</strong><small className={r.proxima.when < hoje ? "late" : ""}>{fmtDate(r.proxima.when)} · {quando(r.proxima.when)}</small></> : <small>nada programado</small>}
-                  </span>
-                  <span className="vf-cell" data-label="Situação">
-                    <span className={`vf-pill ${r.situacao === "Atrasadas" ? "late" : r.situacao === "A vencer" ? "soon" : "ok"}`}>
-                      {r.situacao === "Atrasadas" ? `${r.atrasadas} atrasada${r.atrasadas > 1 ? "s" : ""}` : r.situacao === "A vencer" ? "A vencer" : "Em dia"}
-                    </span>
-                  </span>
-                  <span className="vf-open"><BookOpen /> Abrir carteira</span>
-                </button>
-              ))}
-              {!lista.length && <div className="vx-empty">Nenhum animal nesta aba{query ? " com essa busca" : ""}.</div>}
-            </div>
-            {paged.pages > 1 && (
-              <div className="vx-row" style={{ justifyContent: "center", marginTop: 14 }}>
-                <Pager page={paged.page} pages={paged.pages} onPage={paged.setPage} />
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
       {forms.node}
-    </Page>
+    </CadastroLista>
   )
 }
 
@@ -198,17 +149,8 @@ function Carteira({ animal, onBack, forms }: { animal: Item; onBack: () => void;
   const { data } = useVetFlow()
   const navigate = useNavigate()
   const hoje = todayISO()
-  const animals = Array.isArray(data.animais) ? data.animais : []
-  const vaccines = Array.isArray(data.vacinas) ? data.vacinas : []
-  const tutors = Array.isArray(data.tutores) ? data.tutores : []
-  const tutor = tutors.find((item) => item.id === animal.ownerId)
-    || tutors.find((item) => normalize(item.name) === normalize(animal.owner || ""))
-  const doses = useMemo(
-    () => vaccines
-      .filter((item) => item.animalId === animal.id || normalize(item.animal || "") === normalize(animal.name))
-      .sort((a, b) => itemDate(a).localeCompare(itemDate(b))),
-    [animal.id, animal.name, vaccines],
-  )
+  const tutor = data.tutores.find((item) => item.id === animal.ownerId)
+  const doses = useMemo(() => data.vacinas.filter((item) => item.animalId === animal.id).sort((a, b) => itemDate(a).localeCompare(itemDate(b))), [animal.id, data.vacinas])
   const r = resumir(animal, doses, hoje)
   const aplicadas = doses.filter((d) => d.status === "Aplicada").length
 
@@ -229,7 +171,7 @@ function Carteira({ animal, onBack, forms }: { animal: Item; onBack: () => void;
       <div className="vx-booklet">
         <div className="spine" />
         <div className="pg">
-          <div className="vx-lbl" style={{ color: "var(--vx-teal)" }}>Carteira nº {String(Math.max(0, animals.indexOf(animal)) + 1).padStart(4, "0")} · ativa</div>
+          <div className="vx-lbl" style={{ color: "var(--vx-teal)" }}>Carteira nº {String(data.animais.indexOf(animal) + 1).padStart(4, "0")} · ativa</div>
           <div className="vx-row" style={{ gap: 16 }}>
             <span className="vx-av" style={{ width: 84, height: 84, fontSize: 28, borderRadius: 26, background: colorFor(animal.id) }}>{initials(animal.name)}</span>
             <div>

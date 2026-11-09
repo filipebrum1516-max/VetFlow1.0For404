@@ -419,7 +419,7 @@ function Sidebar({
   const location = useLocation()
   const navigate = useNavigate()
   const role = user?.role
-  const groups = navGroups.map(([g, slugs]) => [g, slugs.filter((slug) => canAccess(role, slug))] as [string, ModuleSlug[]]).filter(([, slugs]) => slugs.length)
+  const groups = navGroups.map(([g, slugs]) => [g, slugs.filter((slug) => canAccess(role, slug, user?.perms))] as [string, ModuleSlug[]]).filter(([, slugs]) => slugs.length)
   const todayKey = localISO()
   const openAgendaCount = data.agendas.filter(
     (item) => item.date === todayKey && !/conclu|cancel|falt/i.test(item.status),
@@ -463,7 +463,7 @@ function Sidebar({
         </div>
       )}
       <nav className="nav-scroll">
-        {canAccess(role, "dashboard") && <button
+        {canAccess(role, "dashboard", user?.perms) && <button
           className={`nav-item ${
             location.pathname === "/" ? "nav-item-active" : ""
           }`}
@@ -969,7 +969,11 @@ function Shell() {
   if (user?.mustChange) return <Navigate to="/login" replace />
   if (!clinic) return <Navigate to="/escolher-clinica" replace />
   const area = location.pathname === "/" ? "dashboard" : location.pathname.split("/")[1]
-  if (user && !canAccess(user.role, area)) return <Navigate to={ROLE_HOME[user.role]} replace />
+  if (user && !canAccess(user.role, area, user.perms)) {
+    const home = ROLE_HOME[user.role]
+    const homeArea = home === "/" ? "dashboard" : home.split("/")[1]
+    return <Navigate to={canAccess(user.role, homeArea, user.perms) && homeArea !== area ? home : canAccess(user.role, "dashboard", user.perms) && area !== "dashboard" ? "/" : "/perfil"} replace />
+  }
   return (
     <div className={`app-shell ${collapsed ? "shell-collapsed" : ""}`}>
       <Sidebar

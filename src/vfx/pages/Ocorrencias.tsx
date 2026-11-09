@@ -67,7 +67,7 @@ export default function Ocorrencias() {
         <div className="vx-glass" style={{ padding: 16 }}><div className="vx-lbl">Graves em aberto</div><div className="vx-num" style={{ fontSize: 26, color: "var(--vx-red)" }}>{critical}</div></div>
         <div className="vx-glass" style={{ padding: 16 }}><div className="vx-lbl">Tempo médio p/ resolver</div><div className="vx-num" style={{ fontSize: 26 }}>{avg} dias</div></div>
         <form className="vx-glass" style={{ padding: 12, display: "flex", gap: 8, alignItems: "center" }} onSubmit={(event) => { event.preventDefault(); addQuick() }}>
-          <input className="vx-in" aria-label="Post-it rápido" value={quick} onChange={(event) => setQuick(event.target.value)} placeholder="Post-it rápido…" style={{ flex: 1, minWidth: 0 }} />
+          <input className="vx-in" aria-label="Post-it rápido" value={quick} onChange={(event) => setQuick(event.target.value)} placeholder="Novo post-it…" style={{ flex: 1, minWidth: 0 }} />
           <button className="vx-icon-btn" aria-label="Pregar post-it" type="submit"><Plus /></button>
         </form>
       </div>

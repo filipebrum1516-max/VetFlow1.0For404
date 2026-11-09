@@ -1,4 +1,5 @@
 import RowActions, { RowButton } from "./vfx/RowActions"
+import { CadastroLista, Duo, Ident } from "./vfx/CadastroLista"
 import {
   useEffect,
   useMemo,
@@ -9,6 +10,7 @@ import {
 } from "react"
 import {
   ArrowLeft,
+  UserRound,
   CalendarDays,
   Check,
   ChevronDown,
@@ -551,6 +553,15 @@ export default function ProntuariosModule() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [rows, query, status, vet, nameMap, extrasMap],
   )
+  const semStatus = useMemo(
+    () =>
+      rows.filter((item) => {
+        const text = normalize(`${recordAnimalName(item)} ${item.owner || ""} ${item.diagnosis || ""} ${diseaseOf(item.id)} ${item.professional || ""} ${codeOf(item.id, extrasMap[item.id])}`)
+        return text.includes(normalize(query)) && (vet === "Todos os veterinários" || item.professional === vet)
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rows, query, vet, nameMap, extrasMap],
+  )
   const pages = Math.max(1, Math.ceil(filtered.length / perPage))
   const visible = filtered.slice((page - 1) * perPage, page * perPage)
   useEffect(() => {
@@ -652,137 +663,49 @@ export default function ProntuariosModule() {
           </button>
         </section>
       ) : (
-        <>
-          <div className="pr-list-head">
-            <button className="pr-back" onClick={() => setView("folder")} title="Ver resumo da pasta">
-              <ArrowLeft size={16} /> Resumo
-            </button>
-            <div>
-              <h1>Prontuários</h1>
-              <p>Histórico clínico completo dos pacientes da unidade ativa.</p>
-            </div>
-            <button className="pr-btn-primary" onClick={() => setDrawer(true)}>
-              <Plus size={18} /> Novo prontuário
-            </button>
-          </div>
-
-          <section className="pr-panel">
-            <div className="pr-toolbar">
-              <label className="pr-search">
-                <Search size={16} />
-                <input
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Buscar por animal, tutor, veterinário, doença ou código..."
-                />
-              </label>
-              <select className="pr-select" value={status} onChange={(event) => setStatus(event.target.value)}>
-                <option>Todos os status</option>
-                {statusFilterOptions.map((value) => (
-                  <option key={value}>{value}</option>
-                ))}
-              </select>
-              <select className="pr-select" value={vet} onChange={(event) => setVet(event.target.value)}>
-                <option>Todos os veterinários</option>
-                {veterinarians.map((value) => (
-                  <option key={value}>{value}</option>
-                ))}
-              </select>
-              <span className="pr-count">{filtered.length} resultados</span>
-            </div>
-
-            <div className="pr-scroll">
-              <div className="pr-table">
-                <div className="pr-row pr-head">
-                  <span>Paciente</span>
-                  <span>Tutor</span>
-                  <span>Veterinário responsável</span>
-                  <span>Suspeita ou diagnóstico</span>
-                  <span>Data</span>
-                  <span>Situação</span>
-                  <span>Ações</span>
-                </div>
-                {visible.length ? (
-                  visible.map((item) => {
-                    const extra = extrasMap[item.id]
-                    const tutor = data.tutores.find((candidate) => candidate.id === item.ownerId)
-                    const name = recordAnimalName(item)
-                    const code = codeOf(item.id, extra)
-                    return (
-                      <div
-                        className="pr-row pv-clickable"
-                        key={item.id}
-                        onClick={() => openDetail(item.id)}
-                      >
-                        <span className="pr-patient">
-                          <i><PawPrint size={18} /></i>
-                          <span>
-                            <strong>{name}</strong>
-                            <small>
-                              Prontuário de {name} · cód. {code}
-                              {extra?.files?.physical?.length ? (
-                                <span className="pv-clip" title="Prontuário físico anexado">
-                                  <Paperclip size={12} />
-                                </span>
-                              ) : null}
-                            </small>
-                          </span>
-                        </span>
-                        <span data-label="Tutor">
-                          <strong>{item.owner || "Não informado"}</strong>
-                          <small>{tutor?.phone || ""}</small>
-                        </span>
-                        <span data-label="Veterinário responsável">
-                          <strong>{item.professional || "Não informado"}</strong>
-                          <small>{item.category || extra?.recordType || "Consulta clínica"}</small>
-                        </span>
-                        <span className="pr-summary" data-label="Suspeita ou diagnóstico">
-                          {item.diagnosis ||
-                            extra?.suspicion ||
-                            (extra ? "Não informado" : diseaseOf(item.id))}
-                        </span>
-                        <span data-label="Data">
-                          <strong>{formatDate(item.date)}</strong>
-                          <small>{item.time || ""}</small>
-                        </span>
-                        <span data-label="Situação" onClick={(event) => event.stopPropagation()}>
-                          <StatusMenu
-                            status={item.status}
-                            onChange={(value) => changeStatus(item.id, value)}
-                          />
-                        </span>
-                        <RowActions name={`prontuário de ${name}`} onView={() => openDetail(item.id)} onEdit={() => openEdit(item.id)} onDelete={() => setDeleteId(item.id)} deleteLabel="Cancelar">
-                          <RowButton title="Imprimir" onClick={() => openDetail(item.id, true)}><Printer /></RowButton>
-                        </RowActions>
-                      </div>
-                    )
-                  })
-                ) : (
-                  <div className="pr-empty">
-                    <ClipboardList size={28} />
-                    <strong>Nenhum prontuário encontrado</strong>
-                    <span>Ajuste a busca ou crie um novo prontuário.</span>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <footer className="pv-foot">
-              <span className="pv-foot-info">
-                Mostrando {filtered.length ? (page - 1) * perPage + 1 : 0}–
-                {Math.min(page * perPage, filtered.length)} de {filtered.length} prontuários
-              </span>
-              <Pagination page={page} pages={pages} onPage={setPage} />
-              <label className="pv-per">
-                <select value={perPage} onChange={(event) => setPerPage(Number(event.target.value))}>
-                  {PER_PAGE_OPTIONS.map((value) => (
-                    <option value={value} key={value}>{value} por página</option>
-                  ))}
-                </select>
-              </label>
-            </footer>
-          </section>
-        </>
+        <CadastroLista
+          crumb="Clínico / Prontuários"
+          title="Prontuários"
+          sub="Histórico clínico completo dos pacientes da unidade ativa."
+          headerActions={<button className="vx-btn vx-btn-g" onClick={() => setView("folder")} title="Ver resumo da pasta"><ArrowLeft size={16} /> Resumo da pasta</button>}
+          novo={{ label: "Novo prontuário", onClick: () => setDrawer(true) }}
+          kpis={[
+            { label: "Prontuários", value: rows.length, detail: "na unidade ativa", icon: <FolderOpen />, tone: "orange" },
+            { label: "Em andamento", value: ongoingCount, detail: "atendimentos abertos", icon: <ClipboardList />, tone: "aqua", aba: "Em andamento" },
+            { label: "Últimos 30 dias", value: recentCount, detail: "registros recentes", icon: <PawPrint />, tone: "green" },
+            { label: "Veterinários", value: veterinarians.length, detail: "responsáveis pelos registros", icon: <UserRound />, tone: "gray" },
+          ]}
+          abas={[{ key: "Todos os status", label: "Todos", count: semStatus.length }, ...statusFilterOptions.map((value) => ({ key: value, label: value, count: semStatus.filter((r) => r.status === value).length })).filter((a) => a.count > 0 || a.key === status)]}
+          aba={status}
+          onAba={(k) => setStatus(k || "Todos os status")}
+          query={query}
+          onQuery={setQuery}
+          placeholder="Buscar por animal, tutor, veterinário, doença ou código..."
+          filtros={[{ label: "Veterinário", icon: <UserRound />, value: vet, onChange: setVet, options: ["Todos os veterinários", ...veterinarians] }]}
+          rows={filtered}
+          rowKey={(item) => item.id}
+          onRow={(item) => openDetail(item.id)}
+          noun="prontuários"
+          vazio="Nenhum prontuário encontrado"
+          exportar={{ nome: "prontuarios", linha: (item) => ({ Codigo: codeOf(item.id, extrasMap[item.id]), Paciente: recordAnimalName(item), Tutor: item.owner || "", Veterinario: item.professional || "", Diagnostico: item.diagnosis || extrasMap[item.id]?.suspicion || "", Data: formatDate(item.date), Situacao: item.status }) }}
+          colunas={[
+            { label: "Paciente", w: "minmax(230px,1.3fr)", cell: (item) => { const name = recordAnimalName(item); const extra = extrasMap[item.id]; return <Ident title={name} sub={<>cód. {codeOf(item.id, extra)}{extra?.files?.physical?.length ? <span className="pv-clip" title="Prontuário físico anexado"> <Paperclip size={12} /></span> : null}</>} icon={<PawPrint />} /> } },
+            { label: "Tutor", w: "minmax(150px,.9fr)", cell: (item) => <Duo title={item.owner || "Não informado"} sub={data.tutores.find((c) => c.id === item.ownerId)?.phone || ""} /> },
+            { label: "Veterinário", w: "minmax(150px,.9fr)", cell: (item) => <Duo title={item.professional || "Não informado"} sub={item.category || extrasMap[item.id]?.recordType || "Consulta clínica"} /> },
+            { label: "Suspeita ou diagnóstico", w: "minmax(170px,1fr)", cell: (item) => { const extra = extrasMap[item.id]; return <Duo title={item.diagnosis || extra?.suspicion || (extra ? "Não informado" : diseaseOf(item.id))} /> } },
+            { label: "Data", w: "110px", cell: (item) => <Duo title={formatDate(item.date)} sub={item.time || ""} /> },
+            { label: "Situação", w: "150px", cell: (item) => <span onClick={(event) => event.stopPropagation()}><StatusMenu status={item.status} onChange={(value) => changeStatus(item.id, value)} /></span> },
+          ]}
+          acoesW="170px"
+          acoes={(item) => {
+            const name = recordAnimalName(item)
+            return (
+              <RowActions name={`prontuário de ${name}`} onView={() => openDetail(item.id)} onEdit={() => openEdit(item.id)} onDelete={() => setDeleteId(item.id)} deleteLabel="Cancelar">
+                <RowButton title="Imprimir" onClick={() => openDetail(item.id, true)}><Printer /></RowButton>
+              </RowActions>
+            )
+          }}
+        />
       )}
 
       {detail && (

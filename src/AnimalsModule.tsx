@@ -1,6 +1,7 @@
 import RowActions, { RowButton, RowMenu } from "./vfx/RowActions"
 import { clinicMetrics } from "./metrics"
 import { CadastroDrawer, CadSec, Campo, cadInput } from "./vfx/CadastroDrawer"
+import { TutorBusca } from "./vfx/FormDrawer"
 import { localISO } from "./date"
 import {
   ArrowLeft,
@@ -13,7 +14,6 @@ import {
   Dog,
   Eye,
   FileText,
-  Filter,
   HeartPulse,
   Mars,
   PawPrint,
@@ -33,8 +33,9 @@ import {
   useState,
 } from "react"
 import { useNavigate } from "react-router"
-import { useVetFlow, type Item, type UnitData } from "./store"
+import { accessLevel, useVetFlow, type Item, type UnitData } from "./store"
 import { alergiasDoAnimal, CONDICOES, condicoesDoAnimal } from "./vfx/clinico"
+import { FichaCadastro } from "./vfx/Ficha"
 
 type AnimalRow = {
   id: string
@@ -164,7 +165,8 @@ function Highlight({ text, term }: { text: string; term: string }) {
 }
 
 export default function AnimalsModule() {
-  const { addItem, data, theme, updateItem, deleteItem } = useVetFlow()
+  const { addItem, data, theme, updateItem, deleteItem, user } = useVetFlow()
+  const soVer = accessLevel(user?.role, "animais", user?.perms) === "Ver"
   const navigate = useNavigate()
   const lastVisits = useMemo(() => {
     const map = new Map<string, Item>()
@@ -198,6 +200,7 @@ export default function AnimalsModule() {
     })
   }, [data.animais, data.tutores, lastVisits])
   const [menuId, setMenuId] = useState("")
+  const [fichaId, setFichaId] = useState("")
   const [confirmDelete, setConfirmDelete] = useState<AnimalRow | null>(null)
   const [recordAnimal, setRecordAnimal] = useState<Item | null>(() => {
     const ficha = new URLSearchParams(window.location.search).get("ficha")
@@ -243,8 +246,14 @@ export default function AnimalsModule() {
     return result
   }, [query, rows, sort, species, status])
 
+  const statusTabs = useMemo(() => {
+    const base = rows.filter((animal) => normalize(`${animal.name} ${animal.owner} ${animal.microchip}`).includes(normalize(query)) && (species === "Todos os tipos" || animal.species === species))
+    return [["Todos os status", "Todos"], ["Ativo", "Ativos"], ["Em tratamento", "Em tratamento"], ["Inativo", "Inativos"]].map(([key, label]) => ({ key, label, count: key === "Todos os status" ? base.length : base.filter((a) => a.status === key).length }))
+  }, [rows, query, species])
   const pages = Math.max(1, Math.ceil(filtered.length / perPage))
   const visibleRows = filtered.slice((page - 1) * perPage, page * perPage)
+  const fichaAtual = filtered.find((animal) => animal.id === fichaId) || visibleRows[0] || filtered[0]
+  const fichaItem = fichaAtual ? data.animais.find((animal) => animal.id === fichaAtual.id) : undefined
   const pageItems: Array<number | "…"> = useMemo(() => {
     if (pages <= 7) return Array.from({ length: pages }, (_, index) => index + 1)
     const values: Array<number | "…"> = [1]
@@ -375,7 +384,15 @@ export default function AnimalsModule() {
         </div>
       </section>
 
-      <section className="animals-table-card">
+      <div className="cd-grid cd-animais">
+      <section className="animals-table-card lv-card cd-list">
+        <nav className="lv-tabs" role="tablist" aria-label="Situação">
+          {statusTabs.map((tab) => (
+            <button key={tab.key} type="button" role="tab" aria-selected={status === tab.key} className={`lv-tab ${status === tab.key ? "on" : ""}`} onClick={() => setStatus(tab.key)}>
+              {tab.label} <b>{tab.count.toLocaleString("pt-BR")}</b>
+            </button>
+          ))}
+        </nav>
         <div className="animals-toolbar">
           <label className="animals-search">
             <Search />
@@ -384,16 +401,6 @@ export default function AnimalsModule() {
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Buscar por nome, tutor ou microchip..."
             />
-          </label>
-          <label className="animals-select">
-            <Filter />
-            <select value={status} onChange={(event) => setStatus(event.target.value)}>
-              <option>Todos os status</option>
-              <option>Ativo</option>
-              <option>Em tratamento</option>
-              <option>Inativo</option>
-            </select>
-            <ChevronDown />
           </label>
           <label className="animals-select">
             <PawPrint />
@@ -414,9 +421,11 @@ export default function AnimalsModule() {
             </select>
             <ChevronDown />
           </label>
+          {soVer ? null : (
           <button className="new-animal-button" onClick={() => setDrawerOpen(true)}>
             <Plus /> Novo registro
           </button>
+          )}
         </div>
         <div className="animals-table-scroll">
           <div className="animals-table">
@@ -430,7 +439,12 @@ export default function AnimalsModule() {
             </div>
             {visibleRows.length ? (
               visibleRows.map((animal) => (
-                <div className="animals-table-row" key={animal.id}>
+                <div
+                  className={`animals-table-row cl-click ${fichaAtual?.id === animal.id ? "lv-cur" : ""}`}
+                  key={animal.id}
+                  aria-current={fichaAtual?.id === animal.id ? "true" : undefined}
+                  onClick={(event) => { if ((event.target as HTMLElement).closest("button, a, input, select")) return; setFichaId(animal.id); if (window.innerWidth < 1100) window.setTimeout(() => document.querySelector(".cd-animais .cd-side-wrap")?.scrollIntoView({ behavior: "smooth", block: "start" }), 40) }}
+                >
                   <div className="animal-identity">
                     <i className="animal-placeholder">
                       <PawPrint />
@@ -542,6 +556,37 @@ export default function AnimalsModule() {
           </label>
         </footer>
       </section>
+      <div className="cd-side-wrap">
+        {fichaItem ? (
+          <FichaCadastro
+            slug="animais"
+            item={fichaItem}
+            foto={typeof fichaItem.extra?.foto === "string" ? fichaItem.extra.foto : undefined}
+            sub={fichaAtual ? `${fichaAtual.species} · ${fichaAtual.breed} · ${fichaAtual.code}` : undefined}
+            acoes={[
+              { label: "Nova consulta", icon: <CalendarDays />, main: true, onClick: () => navigate(`/consultas?novo=1&animal=${fichaItem.id}`) },
+              { label: "Aplicar vacina", onClick: () => navigate(`/vacinas?novo=1&animal=${fichaItem.id}`) },
+              { label: "Ver tutor", onClick: () => navigate(`/tutores?tutor=${encodeURIComponent(fichaItem.owner || "")}`) },
+            ]}
+            campos={fichaAtual ? [
+              ["Tutor", fichaAtual.owner],
+              ["Telefone", fichaAtual.phone],
+              ["Espécie", fichaAtual.species],
+              ["Raça", fichaAtual.breed],
+              ["Sexo · idade · peso", fichaAtual.facts],
+              ["Microchip", fichaAtual.microchip],
+              ["Última consulta", fichaAtual.doctor ? `${fichaAtual.lastVisit} · ${fichaAtual.doctor}` : fichaAtual.lastVisit],
+              ["Alergias", alergiasDoAnimal(fichaItem) || undefined],
+              ["Código", fichaAtual.code],
+            ] : undefined}
+            onEdit={() => openAnimalRecord(fichaItem.id, true)}
+            onToast={flash}
+          />
+        ) : (
+          <aside className="cd-side"><section className="cd-pane"><p className="cd-empty">Nenhum animal com estes filtros.</p></section></aside>
+        )}
+      </div>
+      </div>
 
       {drawerOpen && (
         <AnimalDrawer
@@ -758,7 +803,7 @@ function AnimalRecordDrawer({
                 <label className="tf-field"><span>Nome *</span><input value={form.name} onChange={(event) => field("name", event.target.value)} /></label>
                 <label className="tf-field"><span>Situação</span><select value={form.status} onChange={(event) => field("status", event.target.value)}>{["Ativo", "Em tratamento", "Internado", "Inativo", "Falecido"].map((value) => <option key={value}>{value}</option>)}</select></label>
               </div>
-              <label className="tf-field"><span>Tutor responsável</span><select value={form.ownerId} onChange={(event) => field("ownerId", event.target.value)}><option value="">Não informado</option>{tutors.map((tutor) => <option key={tutor.id} value={tutor.id}>{tutor.name}</option>)}</select></label>
+              <div className="tf-field tf-tutor-busca"><span>Tutor responsável</span><TutorBusca tutores={data.tutores} animais={data.animais} value={form.ownerId} onChange={(id) => field("ownerId", id)} /></div>
               <div className="tf-two-fields">
                 <label className="tf-field"><span>Espécie</span><select value={form.species} onChange={(event) => field("species", event.target.value)}>{["Cão", "Gato", "Bovino", "Equino", "Ave", "Roedor", "Réptil", "Outro"].map((value) => <option key={value}>{value}</option>)}</select></label>
                 <label className="tf-field"><span>Raça</span><input value={form.breed} onChange={(event) => field("breed", event.target.value)} /></label>

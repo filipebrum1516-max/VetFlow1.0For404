@@ -2144,3 +2144,461 @@ textarea.vx-in { height: auto; min-height: 84px; padding: 10px 12px; line-height
   [data-vf-reveal] { opacity: 1 !important; translate: none !important; }
   .vx-glass::after, .op-card::after, .tl-card::after, .vf-ripple-box { display: none !important; }
 }
+
+/* =====================================================================
+   LISTA VETFLOW — padrão único de todas as listas (aprovado em 08/11/2026)
+   Cabeçalho · 4 cards de vidro (filtram) · abas com contador · busca e filtros ·
+   etiquetas de filtro · linhas de 80 px · situação em pílula · ações redondas ·
+   barra de ações em massa · rodapé com paginação. Mesmo desenho no claro, escuro e celular.
+   ===================================================================== */
+:root {
+  --lv-brand: #f47c20; --lv-brand-ink: #b84f06; --lv-cta: #bf5508; --lv-cta-ink: #fff;
+  --lv-ink: #1d2333; --lv-muted: #5f626c; --lv-line: #e9e4dc; --lv-soft: #f8f5f0; --lv-card: #fff;
+  --lv-green: #1f7a3f; --lv-red: #c43b3b; --lv-blue: #3d5fd6; --lv-violet: #7046c9; --lv-aqua: #007a71;
+}
+[data-theme="dark"] {
+  --lv-brand-ink: #ff9b4a; --lv-cta: #f47c20; --lv-cta-ink: #1a1206;
+  --lv-ink: #f3f4fb; --lv-muted: #b3b6cf; --lv-line: #292c48; --lv-soft: #181a35; --lv-card: #12142b;
+  --lv-green: #5fd38a; --lv-red: #ff7a7a; --lv-blue: #8fa6ff; --lv-violet: #b99cff; --lv-aqua: #3fd1c4;
+}
+
+/* ---- 1 · cabeçalho ---- */
+.cl-page .cl-crumb { font-size: 13px; color: var(--lv-muted); }
+.cl-page .cl-crumb b { color: var(--lv-brand-ink); }
+.cl-page .cl-head h1 { font-weight: 700; color: var(--lv-ink); }
+.cl-page .cl-sub { margin: 4px 0 0; font-size: 14px; color: var(--lv-muted); }
+.animals-page .new-animal-button, .tutors-module .tutors-actions .tf-primary {
+  height: 46px; padding: 0 18px; border: 0; border-radius: 14px; color: var(--lv-cta-ink) !important; background: var(--lv-cta) !important;
+  box-shadow: 0 9px 20px rgba(191,85,8,.25); font-size: 14px !important; font-weight: 600; display: inline-flex; align-items: center; gap: 8px;
+}
+.animals-page .new-animal-button svg, .tutors-module .tf-primary svg { width: 17px; height: 17px; }
+.cl-page .cl-head-actions .new-animal-button { margin-left: 0; }
+
+/* ---- 2 · cards de vidro ---- */
+.animals-glass-metrics article small, .tutors-hero .tutor-metric small { font-size: 13px !important; color: var(--lv-muted); }
+.animals-glass-metrics article strong, .tutors-hero .tutor-metric strong { font-size: 28px; font-variant-numeric: tabular-nums; }
+.animals-glass-metrics article em, .tutors-hero .tutor-metric em { font-size: 12px !important; color: var(--lv-muted); }
+.animals-glass-metrics .lv-kpi-btn { padding: 0 !important; transition: transform .18s ease; }
+.animals-glass-metrics .lv-kpi-btn:hover { transform: translateY(-2px); }
+.animals-glass-metrics .lv-kpi-btn.on { outline: 2px solid var(--lv-brand); outline-offset: -2px; }
+.lv-kpi-btn > button { all: unset; box-sizing: border-box; position: relative; z-index: 1; width: 100%; min-height: inherit; padding: 18px; display: flex; align-items: center; gap: 13px; border-radius: inherit; cursor: pointer; }
+.lv-kpi-btn > button:focus-visible { outline: 3px solid #2457c5; outline-offset: 2px; }
+.lv-kpi-btn > button > i { width: 44px; height: 44px; flex: 0 0 auto; display: grid; place-items: center; color: var(--lv-brand-ink); background: rgba(244,124,32,.13); border: 1px solid rgba(244,124,32,.12); border-radius: 50%; }
+.lv-kpi-btn > button > i svg { width: 20px; }
+.lv-kpi-btn > button > i.aqua { color: var(--lv-aqua); background: rgba(0,169,157,.12); }
+.lv-kpi-btn > button > i.red { color: var(--lv-red); background: rgba(219,75,75,.12); }
+.lv-kpi-btn > button > i.green { color: var(--lv-green); background: rgba(47,168,79,.12); }
+.lv-kpi-btn > button > i.gray { color: var(--lv-muted); background: rgba(129,131,139,.12); }
+.lv-kpi-btn > button > i.violet { color: var(--lv-violet); background: rgba(112,70,201,.12); }
+.lv-kpi-btn > button > i.blue { color: var(--lv-blue); background: rgba(61,95,214,.12); }
+.lv-kpi-btn > button > span { min-width: 0; display: block; }
+
+/* ---- 3 · painel e abas ---- */
+.lv-card { border-radius: 24px !important; }
+.lv-tabs { display: flex; gap: 4px; padding: 12px 18px 0; overflow-x: auto; border-bottom: 1px solid var(--lv-line); scrollbar-width: none; }
+.lv-tabs::-webkit-scrollbar { display: none; }
+.lv-tab { height: 46px; padding: 0 14px; margin-bottom: -1px; display: inline-flex; align-items: center; gap: 8px; flex: none; white-space: nowrap; background: none; border: 0; border-bottom: 3px solid transparent; font: inherit; font-size: 14px; font-weight: 600; color: var(--lv-muted); cursor: pointer; transition: color .15s ease, border-color .15s ease; }
+.lv-tab b { min-width: 24px; height: 22px; padding: 0 7px; display: inline-grid; place-items: center; border-radius: 11px; background: var(--lv-soft); color: var(--lv-muted); font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.lv-tab:hover { color: var(--lv-ink); }
+.lv-tab.on { color: var(--lv-ink); border-bottom-color: var(--lv-brand); }
+.lv-tab.on b { color: var(--lv-cta-ink); background: var(--lv-cta); }
+.lv-tab.red b { color: var(--lv-red); background: rgba(219,75,75,.1); }
+.lv-tab.red.on b { color: #fff; background: var(--lv-red); }
+
+/* ---- 4 · busca e filtros ---- */
+.animals-page .animals-toolbar, .tutors-module .tutors-actions { min-height: 78px; padding: 16px 18px; flex-wrap: wrap; gap: 10px; border-bottom: 1px solid var(--lv-line); margin: 0 !important; }
+.animals-page .animals-search, .tutors-module .tutors-actions .tutors-search-field { flex: 1 1 280px; width: auto; max-width: 440px; height: 46px; border-radius: 14px; background: var(--lv-soft); color: var(--lv-muted); }
+.animals-page .animals-search input, .tutors-module .tutors-search-field input { font-size: 14px !important; color: var(--lv-ink); }
+.animals-page .animals-search input::placeholder, .tutors-module .tutors-search-field input::placeholder { color: var(--lv-muted); }
+.animals-page .animals-search input[type="search"]::-webkit-search-cancel-button { display: none; }
+.lv-search-x { width: 28px; height: 28px; flex: none; display: grid; place-items: center; padding: 0; border: 0; border-radius: 8px; background: transparent; color: var(--lv-muted); cursor: pointer; }
+.lv-search-x svg { width: 15px !important; }
+.animals-page .animals-select, .tutors-module .tutors-filter { height: 46px; border-radius: 14px; border-color: var(--lv-line); background: var(--lv-card); }
+.animals-page .animals-select select, .tutors-module .tutors-filter select { font-size: 14px !important; font-weight: 500; color: var(--lv-ink); }
+.animals-page .animals-select > svg:first-child { color: var(--lv-brand-ink); }
+.lv-spacer { flex: 1 1 0; }
+.lv-chips { padding: 10px 18px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; border-bottom: 1px solid var(--lv-line); background: var(--lv-soft); }
+.lv-chips > span { font-size: 13px; color: var(--lv-muted); }
+.lv-chip { height: 32px; padding: 0 8px 0 12px; display: inline-flex; align-items: center; gap: 6px; border-radius: 16px; border: 1px solid rgba(244,124,32,.35); background: rgba(244,124,32,.08); color: var(--lv-brand-ink); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.lv-chip svg { width: 14px; height: 14px; }
+.lv-chip:hover { background: rgba(244,124,32,.16); }
+.lv-link { padding: 0 4px; background: none; border: 0; color: var(--lv-brand-ink); font: inherit; font-size: 13px; font-weight: 600; text-decoration: underline; cursor: pointer; }
+
+/* ---- 5 · tabela ---- */
+.app-main .lv-card .cl-row, .lv-card .cl-row { grid-template-columns: var(--lv-cols) !important; }
+.lv-card .animals-table { min-width: 960px; }
+.animals-page .animals-table-head, .tutors-module .tutors-list-head { min-height: 46px; padding: 0 22px; background: var(--lv-soft) !important; color: var(--lv-muted) !important; font-size: 12px !important; letter-spacing: .05em; }
+.animals-page .animals-table-head strong { font-size: 12px; font-weight: 600; }
+.lv-card .animals-table-head .r, .lv-card .cl-cell.r { justify-self: end; text-align: right; }
+.animals-page .animals-table-row, .tutors-module .tutor-row { min-height: 80px !important; padding: 12px 22px; border-bottom: 1px solid var(--lv-line); }
+.app-main .animals-page .animals-table-row:hover, .app-main .tutors-module .tutor-row:hover, .animals-page .animals-table-row:hover { background: rgba(244,124,32,.045) !important; box-shadow: inset 3px 0 var(--lv-brand); }
+.app-main .lv-card .animals-table-row.sel, .lv-card .animals-table-row.sel { background: rgba(244,124,32,.08) !important; box-shadow: inset 3px 0 var(--lv-brand); }
+.lv-check { width: 18px; height: 18px; margin: 0; accent-color: var(--lv-cta); cursor: pointer; }
+/* identidade */
+.animals-page .animal-identity .animal-placeholder, .tutors-module .tutor-person > i { width: 46px; height: 46px; }
+.lv-card .cl-avatar.sq { border-radius: 14px; }
+.animals-page .animals-table-row .animal-identity strong, .tutors-module .tutor-person strong { font-size: 15px !important; font-weight: 600; color: var(--lv-ink); }
+.animals-page .animals-table-row .animal-identity small, .tutors-module .tutor-person small { font-size: 13px !important; color: var(--lv-muted); }
+.animals-page .animals-table-row .animal-identity em { margin-top: 4px; padding: 2px 8px; border-radius: 6px; font-size: 12px !important; color: var(--lv-brand-ink); }
+/* duas linhas */
+.animals-page .animals-table-row .cl-duo strong, .animals-page .animal-owner strong, .animals-page .animal-species strong, .animals-page .animal-last-visit strong, .tutors-module .last-visit strong { font-size: 14px !important; font-weight: 500; color: var(--lv-ink); }
+.animals-page .animals-table-row .cl-duo small, .animals-page .animal-owner small, .animals-page .animal-species small, .animals-page .animal-last-visit small, .tutors-module .last-visit small { font-size: 13px !important; color: var(--lv-muted); }
+.animals-page .cl-money { font-size: 14px; }
+/* situação */
+.animals-page .animal-status, .tutors-module .tutor-status { height: 30px; padding: 0 12px !important; display: inline-flex; align-items: center; gap: 7px; border-radius: 15px; font-size: 13px !important; font-weight: 600; white-space: nowrap; }
+.animals-page .animal-status { color: var(--lv-green); }
+.animals-page .animal-status.status-em-tratamento { color: var(--lv-brand-ink); }
+.animals-page .animal-status.cl-red { color: var(--lv-red); }
+.animals-page .animal-status.cl-blue { color: var(--lv-blue); }
+.animals-page .animal-status.cl-violet { color: var(--lv-violet); }
+.animals-page .animal-status.status-inativo { color: var(--lv-muted); }
+.animals-page .animal-status i { width: 7px; height: 7px; }
+/* ações redondas */
+.animals-page .animal-actions { gap: 6px; justify-content: flex-end; }
+.app-main .animals-page .animal-actions .vx-ra, .app-main .tutors-module .tutor-row .vx-ra, .animals-page .animal-actions .vx-ra { gap: 6px; }
+.app-main .animals-page .animal-actions .vx-ra > button, .app-main .animals-page .animal-actions .vx-ra > span > button,
+.app-main .tutors-module .tutor-row .vx-ra > button, .app-main .tutors-module .tutor-row .vx-ra > span > button,
+.animals-page .animal-actions .vx-ra > button, .animals-page .animal-actions .vx-ra > span > button {
+  width: 38px !important; min-width: 38px !important; height: 38px !important; min-height: 38px !important; padding: 0; display: grid; place-items: center;
+  border: 1px solid var(--lv-line) !important; border-radius: 50% !important; background: var(--lv-soft) !important; color: var(--lv-muted) !important; transition: .15s ease;
+}
+.app-main .animals-page .animal-actions .vx-ra > button:first-child, .app-main .tutors-module .tutor-row .vx-ra > button:first-child, .animals-page .animal-actions .vx-ra > button:first-child {
+  color: var(--lv-brand-ink) !important; border-color: rgba(244,124,32,.35) !important; background: rgba(244,124,32,.08) !important;
+}
+.app-main .animals-page .animal-actions .vx-ra > button:hover:not(:disabled), .app-main .animals-page .animal-actions .vx-ra > span > button:hover:not(:disabled),
+.app-main .tutors-module .tutor-row .vx-ra > button:hover:not(:disabled), .app-main .tutors-module .tutor-row .vx-ra > span > button:hover:not(:disabled),
+.animals-page .animal-actions .vx-ra > button:hover:not(:disabled) {
+  color: var(--lv-cta-ink) !important; background: var(--lv-cta) !important; border-color: var(--lv-cta) !important; transform: translateY(-1px);
+}
+.app-main .animals-page .animal-actions .vx-ra > button.danger:hover:not(:disabled), .app-main .tutors-module .tutor-row .vx-ra > button.danger:hover:not(:disabled) { color: #fff !important; background: var(--lv-red) !important; border-color: var(--lv-red) !important; }
+.animals-page .animal-actions .vx-ra svg, .tutors-module .tutor-row .vx-ra svg { width: 16px; height: 16px; }
+
+/* ---- 6 · barra de ações em massa ---- */
+.lv-bulk { margin: 12px 18px 0; padding: 8px 8px 8px 18px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; border-radius: 16px; background: #1d2333; color: #fff; animation: vfUpSoft .25s ease both; }
+[data-theme="dark"] .lv-bulk { background: #f3f4fb; color: #12142b; }
+.lv-bulk strong { font-size: 14px; }
+.lv-bulk button { height: 38px; padding: 0 14px; display: inline-flex; align-items: center; gap: 7px; border-radius: 11px; border: 1px solid rgba(255,255,255,.22); background: rgba(255,255,255,.08); color: inherit; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.lv-bulk button:hover { background: rgba(255,255,255,.18); }
+[data-theme="dark"] .lv-bulk button { border-color: rgba(0,0,0,.15); background: rgba(0,0,0,.05); }
+.lv-bulk button svg { width: 15px; height: 15px; }
+
+/* ---- 7 · rodapé ---- */
+.animals-page .animals-table-footer, .tutors-module .tutors-pagination { min-height: 68px; padding: 12px 20px; }
+.animals-page .animals-table-footer > span, .tutors-module .tutors-pagination > span { font-size: 13px !important; color: var(--lv-muted); }
+.animals-page .animals-pagination button, .tutors-module .tutors-pagination > div button { min-width: 36px; width: auto; height: 36px; padding: 0 6px; border-radius: 10px; font-size: 13px; font-weight: 600; color: var(--lv-muted); }
+.animals-page .animals-pagination button.active, .tutors-module .tutors-pagination button.active { color: var(--lv-cta-ink); background: var(--lv-cta); box-shadow: 0 5px 12px rgba(191,85,8,.24); }
+.animals-page .animals-pagination svg { width: 15px; }
+.animals-page .animals-pagination span { font-size: 13px; }
+.animals-page .animals-table-footer > label, .tutors-module .tutors-pagination > label { width: auto; min-width: 130px; height: 38px; border-radius: 11px; }
+.animals-page .animals-table-footer select, .tutors-module .tutors-pagination > label select { font-size: 13px !important; }
+.animals-page .animals-empty strong { font-size: 16px; }
+.animals-page .animals-empty span { font-size: 13px; }
+
+/* ---- tutores: mesma pele ---- */
+.tutors-module .tutors-list-card { overflow: hidden; border: 1px solid var(--lv-line) !important; background: var(--lv-card) !important; box-shadow: 0 16px 45px rgba(36,31,26,.07); }
+.tutors-module .pet-name-link { font-size: 14px !important; color: var(--lv-brand-ink); }
+.tutors-module .tutor-status.ativo { color: var(--lv-green); }
+.tutors-module .tutor-status.inativo { color: var(--lv-muted); }
+
+/* ---- banners de Animais e Tutores inteiros (aba afetiva) ---- */
+@media (min-width: 1101px) {
+  .app-main .animals-hero, .app-main .tutors-hero, .animals-hero, .tutors-hero { aspect-ratio: 2.3 / 1 !important; margin-bottom: 86px !important; }
+  .animals-hero picture img, .tutors-hero picture img { object-position: center 45% !important; }
+  .animals-hero .animals-glass-metrics, .tutors-hero .tutor-metrics { bottom: -58px !important; }
+}
+
+/* ---- tela média e celular: cada linha vira um cartão ---- */
+@media (max-width: 1100px) {
+  .lv-card .animals-table { min-width: 0 !important; }
+  .lv-card .animals-table-head { display: none !important; }
+  .app-main .lv-card .cl-row.animals-table-row, .lv-card .cl-row.animals-table-row { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 12px 16px !important; padding: 16px 18px !important; }
+  .lv-card .cl-row > .lv-check { display: none; }
+  .lv-card .cl-row > .cl-cell:first-of-type, .lv-card .cl-row > .lv-check + .cl-cell { grid-column: 1 / -1; }
+  .lv-card .cl-row > .cl-cell:not(:first-of-type)::before { content: attr(data-label); display: block; margin-bottom: 3px; font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--lv-muted); }
+  .lv-card .cl-row > .lv-check + .cl-cell::before { content: none; }
+  .lv-card .cl-cell.r { justify-self: start; text-align: left; }
+  .lv-card .cl-row .animal-actions { grid-column: 1 / -1; justify-content: flex-end; min-width: 0 !important; position: static !important; }
+  .lv-tabs { padding: 8px 10px 0; }
+  .lv-tab { padding: 0 10px; }
+}
+/* painel estreito (mesmo com tela grande): também vira cartão */
+
+  .lv-card.lv-narrow .animals-table { min-width: 0 !important; }
+  .lv-card.lv-narrow .animals-table-head { display: none !important; }
+  .app-main .lv-card.lv-narrow .cl-row.animals-table-row, .lv-card.lv-narrow .cl-row.animals-table-row { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 12px 16px !important; padding: 16px 18px !important; }
+  .lv-card.lv-narrow .cl-row > .lv-check { display: none; }
+  .lv-card.lv-narrow .cl-row > .cl-cell:first-of-type, .lv-card.lv-narrow .cl-row > .lv-check + .cl-cell { grid-column: 1 / -1; }
+  .lv-card.lv-narrow .cl-row > .cl-cell:not(:first-of-type)::before { content: attr(data-label); display: block; margin-bottom: 3px; font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--lv-muted); }
+  .lv-card.lv-narrow .cl-row > .lv-check + .cl-cell::before { content: none; }
+  .lv-card.lv-narrow .cl-cell.r { justify-self: start; text-align: left; }
+  .lv-card.lv-narrow .cl-row .animal-actions { grid-column: 1 / -1; justify-content: flex-end; min-width: 0 !important; position: static !important; }
+  .lv-narrow .lv-tabs { padding: 8px 10px 0; }
+  .lv-narrow .lv-tab { padding: 0 10px; }
+
+@media (max-width: 560px) {
+  .app-main .lv-card .cl-row.animals-table-row, .lv-card .cl-row.animals-table-row { grid-template-columns: minmax(0, 1fr) !important; }
+  .animals-page .animals-search, .tutors-module .tutors-actions .tutors-search-field { max-width: none; flex-basis: 100%; }
+  .lv-bulk { margin: 10px 10px 0; }
+  .animals-page .animals-table-footer { grid-template-columns: 1fr !important; justify-items: center; }
+  .animals-page .animals-table-footer > label { justify-self: center; }
+}
+.app-main .lv-card .animal-actions, .lv-card .animal-actions { min-width: 0 !important; }
+.app-main .lv-card .cl-row, .lv-card .cl-row { gap: 14px !important; padding-left: 18px !important; padding-right: 18px !important; }
+.app-main .lv-card .animals-table-row .animal-actions, .lv-card .animals-table-row .animal-actions { position: static !important; background: transparent !important; padding: 0 !important; }
+.app-main .lv-card .animal-actions .vx-ra > button, .app-main .lv-card .animal-actions .vx-ra > span > button { width: 36px !important; min-width: 36px !important; height: 36px !important; min-height: 36px !important; }
+.lv-card .animal-actions .vx-ra { gap: 5px !important; }
+.lv-card .animal-actions { align-self: center; align-items: center; }
+.animals-page:not(.cl-page) .animals-table-head strong:last-child { text-align: right; }
+.app-main .animals-page:not(.cl-page) .animal-actions .vx-ra > button, .app-main .animals-page:not(.cl-page) .animal-actions .vx-ra > span > button,
+.app-main .tutors-module .tutor-row .vx-ra > button, .app-main .tutors-module .tutor-row .vx-ra > span > button { width: 34px !important; min-width: 34px !important; height: 34px !important; min-height: 34px !important; }
+.app-main .animals-page:not(.cl-page) .animal-actions .vx-ra, .app-main .tutors-module .tutor-row .vx-ra { gap: 4px !important; }
+.tutors-module .tutors-actions .tutors-filter { flex: 0 0 auto; width: auto; min-width: 170px; }
+.tutors-module .tutors-actions .tf-primary { margin-left: auto; }
+/* Internações: nova baia */
+.vx-baia-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 6px; }
+.vx-baia-form label { display: flex; flex-direction: column; gap: 6px; min-width: 0; font-size: 13px; font-weight: 600; color: var(--vx-ink2, #3a4356); }
+.vx-baia-form label.full { grid-column: 1 / -1; }
+.vx-baia-form .vx-in { height: 44px; width: 100%; box-sizing: border-box; }
+.vx-baia-err { grid-column: 1 / -1; margin: 0; font-size: 13px; font-weight: 600; color: #c43b3b; }
+.vx-baia-list { margin-top: 16px; display: flex; flex-direction: column; gap: 6px; }
+.vx-baia-list > div { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 6px 6px 6px 12px; border: 1px solid var(--vx-line, #e3e7ed); border-radius: 12px; font-size: 13px; }
+.vx-baia-list b { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 12px; }
+.vx-baia-list em { font-style: normal; font-size: 12px; color: var(--vx-muted, #5d6675); }
+.vx-bed-new { align-self: flex-start; padding: 1px 7px; border-radius: 6px; background: rgba(244,124,32,.12); color: #b84f06; font-size: 11px; font-weight: 700; }
+@media (max-width: 560px) { .vx-baia-form { grid-template-columns: 1fr; } }
+.tf-tutor-busca { padding-top: 10px; } .tf-tutor-busca .vx-pick-list { max-height: 220px; overflow-y: auto; }
+/* listas dentro de páginas próprias (Financeiro, Vacinas…) */
+.vx-page .lv-card { position: relative; z-index: 1; margin-top: 18px; background: var(--lv-card); border: 1px solid var(--lv-line); box-shadow: 0 16px 45px rgba(36,31,26,.07); overflow: hidden; color: var(--lv-ink); font-family: "Rubik", "Inter", sans-serif; }
+.vx-page .lv-card .animals-table-head { display: grid; align-items: center; gap: 14px; text-transform: uppercase; }
+.vx-page .lv-card .animals-table-row { display: grid; align-items: center; }
+.vx-page .lv-card .animals-toolbar { display: flex; align-items: center; }
+.vx-page .lv-card .animals-search { display: flex; align-items: center; gap: 9px; padding: 0 14px; border: 1px solid transparent; flex: 1 1 280px; max-width: 440px; height: 46px; border-radius: 14px; background: var(--lv-soft); color: var(--lv-muted); }
+.vx-page .lv-card .animals-search input { width: 100%; border: 0; outline: 0; background: transparent; font: inherit; font-size: 14px; color: var(--lv-ink); }
+.vx-page .lv-card .animals-search svg { width: 17px; flex: none; }
+.vx-page .lv-card .animals-select { height: 46px; padding: 0 12px; display: flex; align-items: center; gap: 7px; border: 1px solid var(--lv-line); border-radius: 14px; background: var(--lv-card); color: var(--lv-muted); }
+.vx-page .lv-card .animals-select select { appearance: none; border: 0; outline: 0; background: transparent; font: inherit; font-size: 14px; font-weight: 500; color: var(--lv-ink); cursor: pointer; }
+.vx-page .lv-card .animals-select svg { width: 15px; flex: none; }
+.vx-page .lv-card .animals-table-footer { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 14px; min-height: 68px; padding: 12px 20px; font-size: 13px; color: var(--lv-muted); }
+.vx-page .lv-card .animals-pagination { display: flex; align-items: center; justify-content: center; gap: 4px; }
+.vx-page .lv-card .animals-pagination button { min-width: 36px; height: 36px; display: grid; place-items: center; border: 0; border-radius: 10px; background: transparent; color: var(--lv-muted); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.vx-page .lv-card .animals-pagination button.active { color: var(--lv-cta-ink); background: var(--lv-cta); }
+.vx-page .lv-card .animals-pagination button:disabled { opacity: .3; cursor: default; }
+.vx-page .lv-card .animals-pagination svg { width: 15px; }
+.vx-page .lv-card .animals-table-footer > label { justify-self: end; min-width: 130px; height: 38px; padding: 0 10px; display: flex; align-items: center; border: 1px solid var(--lv-line); border-radius: 11px; }
+.vx-page .lv-card .animals-table-footer select { flex: 1; appearance: none; border: 0; outline: 0; background: transparent; font: inherit; font-size: 13px; color: var(--lv-ink); }
+.vx-page .lv-card .animals-table-footer label svg { width: 13px; }
+.vx-page .lv-card .animals-empty { min-height: 240px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; color: var(--lv-muted); }
+.vx-page .lv-card .animals-empty > svg { width: 30px; height: 30px; color: var(--lv-brand); }
+.vx-page .lv-card .animals-empty strong { font-size: 16px; color: var(--lv-ink); }
+.vx-page .lv-card .animal-identity { min-width: 0; display: flex; align-items: center; gap: 12px; }
+.vx-page .lv-card .animal-identity > span { min-width: 0; }
+.vx-page .lv-card .animal-identity strong, .vx-page .lv-card .animal-identity small, .vx-page .lv-card .animal-identity em { display: block; }
+.vx-page .lv-card .animal-identity strong { font-size: 15px; font-weight: 600; color: var(--lv-ink); overflow: hidden; text-overflow: ellipsis; }
+.vx-page .lv-card .animal-identity small { margin-top: 2px; font-size: 13px; color: var(--lv-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vx-page .lv-card .animal-identity em { width: fit-content; margin-top: 4px; padding: 2px 8px; border-radius: 6px; font-size: 12px; font-style: normal; font-weight: 600; color: var(--lv-brand-ink); background: rgba(244,124,32,.1); }
+.vx-page .lv-card .animal-placeholder { width: 46px; height: 46px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 50%; border: 1px solid rgba(244,124,32,.16); color: var(--lv-brand-ink); background: rgba(244,124,32,.1); }
+.vx-page .lv-card .animal-placeholder svg { width: 20px; }
+.vx-page .lv-card .animal-status { width: fit-content; height: 30px; padding: 0 12px; display: inline-flex; align-items: center; gap: 7px; border-radius: 15px; font-size: 13px; font-weight: 600; white-space: nowrap; color: var(--lv-green); background: rgba(47,168,79,.1); }
+.vx-page .lv-card .animal-status i { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.vx-page .lv-card .animal-status.status-em-tratamento { color: var(--lv-brand-ink); background: rgba(244,124,32,.11); }
+.vx-page .lv-card .animal-status.cl-red { color: var(--lv-red); background: rgba(219,75,75,.11); }
+.vx-page .lv-card .animal-status.cl-blue { color: var(--lv-blue); background: rgba(61,95,214,.1); }
+.vx-page .lv-card .animal-status.cl-violet { color: var(--lv-violet); background: rgba(112,70,201,.1); }
+.vx-page .lv-card .animal-status.status-inativo { color: var(--lv-muted); background: rgba(129,131,139,.12); }
+.vx-page .lv-card .animals-table-head { min-height: 46px; padding: 0 18px; background: var(--lv-soft); border-bottom: 1px solid var(--lv-line); font-size: 12px; font-weight: 600; letter-spacing: .05em; color: var(--lv-muted); }
+.vx-page .lv-card .animals-table-row { min-height: 80px; padding: 12px 18px; border-bottom: 1px solid var(--lv-line); }
+.vx-page .lv-card .animals-table-row:hover { background: rgba(244,124,32,.045); box-shadow: inset 3px 0 var(--lv-brand); }
+.vx-page .lv-card .animals-table-row .cl-duo strong { font-size: 14px; font-weight: 500; color: var(--lv-ink); }
+.vx-page .lv-card .animals-table-row .cl-duo small { font-size: 13px; color: var(--lv-muted); }
+.vx-page .lv-card .animal-actions { display: flex; justify-content: flex-end; }
+.vx-page .lv-card .animal-actions .vx-ra > button, .vx-page .lv-card .animal-actions .vx-ra > span > button { width: 36px; min-width: 36px; height: 36px; min-height: 36px; padding: 0; display: grid; place-items: center; border: 1px solid var(--lv-line); border-radius: 50%; background: var(--lv-soft); color: var(--lv-muted); cursor: pointer; }
+.vx-page .lv-card .animal-actions .vx-ra > button:first-child { color: var(--lv-brand-ink); border-color: rgba(244,124,32,.35); background: rgba(244,124,32,.08); }
+.vx-page .lv-card .animal-actions .vx-ra > button:hover:not(:disabled) { color: var(--lv-cta-ink); background: var(--lv-cta); border-color: var(--lv-cta); }
+.vx-page .lv-card .animal-actions .vx-ra > button.danger:hover:not(:disabled) { color: #fff; background: var(--lv-red); border-color: var(--lv-red); }
+.vx-page .lv-card .animal-actions .vx-ra svg { width: 16px; height: 16px; }
+.fn-lista .fn-pos, .fn-lista .cl-money.fn-pos { color: var(--lv-green); }
+.fn-lista .fn-neg, .fn-lista .cl-money.fn-neg { color: var(--lv-red); }
+.vx-page .lv-card .cl-money { font-weight: 700; font-variant-numeric: tabular-nums; font-size: 14px; }
+@media (max-width: 560px) { .vx-page .lv-card .animals-table-footer { grid-template-columns: 1fr; justify-items: center; } .vx-page .lv-card .animals-table-footer > label { justify-self: center; } }
+.vf-late-txt { color: var(--lv-red); font-weight: 600; }
+.pr-page > .cl-page { margin: -24px -30px -40px; }
+/* lista padrão no celular: um rótulo por campo (sem os rótulos antigos) e pílula com fundo */
+.lv-card .cl-cell .animal-status::before, .lv-card .cl-cell .animal-owner::before, .lv-card .animal-actions::before { content: none !important; display: none !important; }
+.lv-card .cl-cell .animal-status { display: inline-flex !important; flex-direction: row !important; align-items: center !important; gap: 7px !important; }
+.lv-card .cl-cell .animal-owner { display: block !important; }
+.lv-card .animal-actions { display: flex !important; flex-direction: row !important; align-items: center !important; justify-content: flex-end !important; }
+.animals-page .animal-status { background: rgba(47,168,79,.1); }
+.animals-page .animal-status.status-em-tratamento { background: rgba(244,124,32,.11); }
+.animals-page .animal-status.cl-red { background: rgba(219,75,75,.11); }
+.animals-page .animal-status.cl-blue { background: rgba(61,95,214,.1); }
+.animals-page .animal-status.cl-violet { background: rgba(112,70,201,.1); }
+.animals-page .animal-status.status-inativo { background: rgba(129,131,139,.12); }
+/* cabeçalho "Ações" de Animais sem faixa por cima */
+.animals-page .animals-table-head > :last-child { background: transparent !important; }
+.lv-card .cl-cell .animal-status:not(.status-em-tratamento):not(.cl-red):not(.cl-blue):not(.cl-violet):not(.status-inativo) { background: rgba(47,168,79,.1) !important; }
+.lv-card .cl-cell .animal-status.status-em-tratamento { background: rgba(244,124,32,.11) !important; }
+.lv-card .cl-cell .animal-status.cl-red { background: rgba(219,75,75,.11) !important; }
+.lv-card .cl-cell .animal-status.cl-blue { background: rgba(61,95,214,.1) !important; }
+.lv-card .cl-cell .animal-status.status-inativo { background: rgba(129,131,139,.12) !important; }
+.lv-card .cl-cell .animal-status { padding: 0 12px !important; height: 30px !important; }
+@media (max-width: 1100px) {
+  .animals-page:not(.cl-page) .animals-table-row .animal-status, .tutors-module .tutor-row .tutor-status { height: auto !important; padding: 0 !important; background: transparent !important; display: flex !important; flex-direction: column !important; align-items: flex-start !important; gap: 4px !important; }
+}
+.lv-card .cl-cell .animal-status { width: fit-content !important; }
+
+/* =====================================================================
+   CADASTROS · FICHA LATERAL (aprovado em 09/11/2026)
+   Lista à esquerda, ficha do registro escolhido à direita — mesmo modelo de Usuários e acessos.
+   ===================================================================== */
+.cd-grid{display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start;min-width:0}
+.cd-grid > .cd-list{flex:999 1 520px;min-width:0;margin:0}
+.cd-side-wrap{flex:1 1 380px;min-width:0;max-width:100%;scroll-margin-top:80px}
+@media (min-width:1101px){.cd-side-wrap{position:sticky;top:16px;max-width:460px}}
+.cd-side{display:flex;flex-direction:column;gap:16px;min-width:0}
+.cd-pane{background:var(--lv-card);border:1px solid var(--lv-line);border-radius:24px;box-shadow:0 16px 45px rgba(36,31,26,.08);overflow:hidden;color:var(--lv-ink)}
+.cd-hero{padding:20px 20px 16px;display:flex;gap:16px;align-items:center;border-bottom:1px solid var(--lv-line);background:linear-gradient(120deg,rgba(244,124,32,.09),rgba(0,169,157,.06))}
+.cd-big{width:64px;height:64px;border-radius:20px;display:grid;place-items:center;font-size:21px;font-weight:700;color:#fff;flex:none;font-style:normal;object-fit:cover}
+.cd-hero-t{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+.cd-hero-t > strong{font-size:20px;line-height:1.2;overflow-wrap:anywhere}
+.cd-hero-t > span:not(.lv-pill){font-size:13px;color:var(--lv-muted)}
+.cd-pane .lv-pill{align-self:flex-start;display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;border-radius:13px;font-size:12.5px;font-weight:600;background:rgba(31,122,63,.1);color:var(--lv-green)}
+.cd-pane .lv-pill i{width:7px;height:7px;border-radius:50%;background:currentColor}
+.cd-pane .lv-pill.orange{background:rgba(244,124,32,.13);color:var(--lv-brand-ink)}
+.cd-pane .lv-pill.red{background:rgba(196,59,59,.11);color:var(--lv-red)}
+.cd-pane .lv-pill.blue{background:rgba(61,95,214,.11);color:var(--lv-blue)}
+.cd-pane .lv-pill.gray{background:rgba(120,126,140,.14);color:var(--lv-muted)}
+.cd-acts{padding:12px 20px;display:flex;gap:8px;flex-wrap:wrap;border-bottom:1px solid var(--lv-line)}
+.cd-acts button{min-height:40px;padding:0 13px;display:inline-flex;align-items:center;gap:7px;border-radius:12px;border:1px solid var(--lv-line);background:var(--lv-soft);font:600 13px inherit;font-family:inherit;color:var(--lv-ink);cursor:pointer}
+.cd-acts button:hover{border-color:var(--lv-brand)}
+.cd-acts button.main{color:var(--lv-cta-ink);background:var(--lv-cta);border-color:var(--lv-cta)}
+.cd-acts button.danger{color:var(--lv-red);border-color:rgba(196,59,59,.3);background:rgba(196,59,59,.06)}
+.cd-acts svg{width:15px;height:15px}
+.cd-tabs{padding:6px 12px 0;overflow-x:auto;scrollbar-width:none}
+.cd-dl{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 18px;padding:18px 20px}
+.cd-dl div{display:flex;flex-direction:column;gap:3px;min-width:0}
+.cd-dl div.full{grid-column:1 / -1}
+.cd-dl small{font-size:11.5px;font-weight:600;color:var(--lv-muted);text-transform:uppercase;letter-spacing:.04em}
+.cd-dl b{font-size:14px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cd-dl b.wrap,.cd-dl b .vx-chip{white-space:normal}
+.cd-grp{padding:11px 20px 6px;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--lv-brand-ink);border-top:1px solid var(--lv-line);background:var(--lv-soft)}
+.cd-li{width:100%;display:grid;grid-template-columns:92px minmax(0,1fr) auto;gap:4px 12px;padding:10px 20px;border:0;border-top:1px solid var(--lv-line);background:none;font:13px inherit;font-family:inherit;color:var(--lv-ink);text-align:left;align-items:center;cursor:pointer}
+.cd-li.static{cursor:default;grid-template-columns:110px minmax(0,1fr)}
+.cd-li:not(.static):hover{background:var(--lv-soft)}
+.cd-li time{color:var(--lv-muted);font-variant-numeric:tabular-nums;font-size:12.5px}
+.cd-li b{font-weight:600}
+.cd-li svg{width:15px;height:15px;color:var(--lv-muted)}
+.cd-empty{margin:0;padding:18px 20px;font-size:13.5px;color:var(--lv-muted)}
+.cd-extra{padding:4px 0 8px}
+.app-main .lv-card .cl-row.lv-cur,.lv-card .animals-table-row.lv-cur{background:rgba(244,124,32,.08)!important;box-shadow:inset 3px 0 0 var(--lv-brand)}
+/* janela de excluir / desativar */
+.cd-modal{display:flex;align-items:center;justify-content:center;padding:20px}
+.cd-dialog{width:480px;max-width:100%;background:var(--lv-card,#fff);color:var(--lv-ink,#1d2333);border-radius:22px;padding:22px;display:flex;flex-direction:column;gap:12px;box-shadow:0 30px 80px rgba(0,0,0,.3)}
+.cd-dialog-h{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.cd-dialog-h strong{font-size:19px}
+.cd-dialog p{margin:0;font-size:14px;color:var(--lv-muted,#5f626c)}
+.cd-opt{display:flex;gap:12px;align-items:flex-start;padding:13px;border:1px solid var(--lv-line,#e9e4dc);border-radius:14px;cursor:pointer}
+.cd-opt.on{border-color:var(--lv-brand,#f47c20);background:rgba(244,124,32,.06)}
+.cd-opt.off{opacity:.55;cursor:not-allowed}
+.cd-opt input{margin-top:3px;accent-color:#bf5508;width:18px;height:18px}
+.cd-opt span{display:flex;flex-direction:column;gap:2px}
+.cd-opt small{font-size:12.5px;color:var(--lv-muted,#5f626c)}
+.cd-dialog-f{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+@media (max-width:1100px){.cd-side-wrap{flex-basis:100%}}
+@media (max-width:640px){.cd-dl{grid-template-columns:minmax(0,1fr)}.cd-hero{padding:16px}.cd-acts{padding:12px 16px}.cd-acts button{flex:1 1 auto;justify-content:center}}
+.cv-in-ficha{padding:14px 20px;display:flex;flex-direction:column;gap:14px}
+.cd-list .animals-table,.cd-list .animals-table-scroll{min-width:0!important;width:100%!important}
+/* Animais e Tutores com a ficha ao lado: só quem é, o vínculo e a situação */
+.app-main .cd-animais .animals-table-head,.app-main .cd-animais .animals-table-row{grid-template-columns:minmax(190px,1.5fr) minmax(130px,1fr) 136px!important;--lv-cols:minmax(190px,1.5fr) minmax(130px,1fr) 136px}
+.cd-animais .animals-table-head > :nth-child(3),.cd-animais .animals-table-head > :nth-child(5),.cd-animais .animals-table-head > :nth-child(6),
+.cd-animais .animals-table-row > :nth-child(3),.cd-animais .animals-table-row > :nth-child(5),.cd-animais .animals-table-row > :nth-child(6){display:none!important}
+.cd-animais .animals-table-head > strong:nth-child(4){text-align:left}
+.app-main .cd-tutores .tutors-list-head,.app-main .cd-tutores .tutor-row{grid-template-columns:minmax(190px,1.5fr) minmax(120px,1fr) 104px!important}
+.cd-tutores .tutors-list-head > :nth-child(3),.cd-tutores .tutors-list-head > :nth-child(5),.cd-tutores .tutor-row > :nth-child(3),.cd-tutores .tutor-row > :nth-child(5){display:none!important}
+.cd-tutores.tutors-main{display:flex!important;flex-wrap:wrap;gap:20px;align-items:flex-start}
+.cd-tutores > .cd-list,.cd-animais > .cd-list{min-width:0}
+.cd-tutores .tutor-row.lv-cur{background:rgba(244,124,32,.08)!important;box-shadow:inset 3px 0 0 var(--lv-brand)}
+.cd-fluxo{padding:6px 10px 14px;max-height:520px;overflow:auto}.cd-fluxo .vx-flow{padding:12px 6px!important}
+.cd-acts button:disabled{opacity:.5;cursor:not-allowed}
+/* ===== Usuários e acessos · ficha e gaveta (09/11/2026) ===== */
+.up-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 20px;font-size:13px;color:var(--lv-muted)}
+.up-head b{color:var(--lv-ink)}
+.up-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:10px;padding:8px 20px;border-top:1px solid var(--lv-line)}
+.up-row > span{font-size:14px;font-weight:500}
+.up-seg{display:inline-flex;padding:3px;gap:2px;border-radius:12px;background:var(--lv-soft);border:1px solid var(--lv-line)}
+.up-seg button{min-height:32px;min-width:52px;padding:0 8px;border:0;border-radius:9px;background:none;font:600 12px inherit;font-family:inherit;color:var(--lv-muted);cursor:pointer}
+.up-seg button.on0{background:var(--lv-card);color:var(--lv-ink);box-shadow:0 1px 4px rgba(0,0,0,.12)}
+.up-seg button.on1{background:#e2ecff;color:#2457c5}
+.up-seg button.on2{background:#ffe7d2;color:#9a4206}
+.up-seg button.on3{background:#d9f3e3;color:#0b6152}
+[data-theme="dark"] .up-seg button.on1{background:#22305e;color:#a9bcff}
+[data-theme="dark"] .up-seg button.on2{background:#4a2a12;color:#ffb37a}
+[data-theme="dark"] .up-seg button.on3{background:#123d33;color:#7fe0c4}
+.up-foot{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 20px;border-top:1px solid var(--lv-line)}
+.up-foot small{flex:1 1 220px;font-size:12px;color:var(--lv-muted)}
+@media (max-width:520px){.up-row{grid-template-columns:minmax(0,1fr)}.up-seg{width:100%}.up-seg button{flex:1;min-width:0}}
+.eq-temp{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;padding:14px;border-radius:14px;background:var(--lv-soft);font-size:14px}
+.eq-pick{display:flex;flex-direction:column;gap:6px;max-height:340px;overflow:auto}
+.eq-pick button{display:flex;gap:10px;align-items:center;padding:8px 10px;border:1px solid var(--lv-line);border-radius:12px;background:var(--lv-card);color:var(--lv-ink);font:inherit;text-align:left;cursor:pointer}
+.eq-pick button:hover{border-color:var(--lv-brand)}
+.eq-pick i{width:34px;height:34px;border-radius:11px;color:#fff;display:grid;place-items:center;font-style:normal;font-weight:700;font-size:12px;flex:none}
+.eq-pick span{display:flex;flex-direction:column}.eq-pick small{color:var(--lv-muted);font-size:12px}
+.eq-layer{display:flex;justify-content:flex-end}
+.eq-drawer{width:640px;max-width:100%;height:100%;background:var(--lv-card);color:var(--lv-ink);display:flex;flex-direction:column;box-shadow:-30px 0 80px rgba(0,0,0,.25)}
+.eq-dh{padding:20px 24px 14px;border-bottom:1px solid var(--lv-line);display:flex;justify-content:space-between;gap:12px}
+.eq-dh small{font-size:13px;font-weight:600;color:var(--lv-brand-ink)}
+.eq-dh h2{margin:4px 0 2px;font-size:25px;letter-spacing:-.02em}
+.eq-dh p{margin:0;font-size:13.5px;color:var(--lv-muted)}
+.eq-db{flex:1;overflow:auto;padding:4px 24px 24px}
+.eq-db h3{margin:18px 0 8px;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--lv-brand-ink)}
+.eq-g{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px 14px}
+.eq-g > *{grid-column:span 6;display:flex;flex-direction:column;gap:6px;min-width:0}
+.eq-g > .s3{grid-column:span 3}
+@media (max-width:560px){.eq-g > .s3{grid-column:span 6}}
+.eq-g span{font-size:13px;font-weight:600;color:var(--lv-muted)}
+.eq-g input:not([type=checkbox]),.eq-g select{height:44px;padding:0 12px;border:1px solid var(--lv-line);border-radius:12px;background:var(--lv-card);color:var(--lv-ink);font:15px inherit;font-family:inherit}
+.eq-g input.bad{border-color:var(--lv-red)}
+.eq-g small{font-size:12px;color:var(--lv-muted)}.eq-g small.bad{color:var(--lv-red)}
+.eq-checks label,.eq-inline{display:flex;gap:10px;align-items:center;font-size:14px;padding:9px 12px;border:1px solid var(--lv-line);border-radius:12px;font-weight:500;color:var(--lv-ink)}
+.eq-checks input,.eq-inline input{width:18px;height:18px;accent-color:#bf5508;margin:0}
+.eq-roles2{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:12px 0}
+@media (max-width:560px){.eq-roles2{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.eq-roles2 button{padding:11px;border:1px solid var(--lv-line);border-radius:14px;background:var(--lv-card);color:var(--lv-ink);display:flex;flex-direction:column;gap:3px;text-align:left;font:inherit;cursor:pointer}
+.eq-roles2 button.on{border:2px solid var(--c);padding:10px;background:color-mix(in srgb,var(--c) 7%,transparent)}
+.eq-roles2 b{font-size:14px}.eq-roles2 small{font-size:12px;color:var(--lv-muted);line-height:1.35}
+.eq-resumo{padding:14px;border:1px solid var(--lv-line);border-radius:14px;display:flex;flex-direction:column;gap:6px;font-size:13.5px}
+.eq-resumo em{font-style:normal;font-size:12.5px;padding:5px 9px;border-radius:9px}
+.eq-resumo .t3{background:#d9f3e3;color:#0b6152}.eq-resumo .t2{background:#ffe7d2;color:#9a4206}.eq-resumo .t1{background:#e2ecff;color:#2457c5}.eq-resumo .t0{background:var(--lv-soft);color:var(--lv-muted)}
+.eq-resumo small{color:var(--lv-muted);font-size:12px}
+.eq-note{font-size:13px;color:var(--lv-muted);margin:14px 0 0}
+.eq-df{padding:14px 24px;border-top:1px solid var(--lv-line);display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap}
+.eq-df-b{display:flex;gap:8px;margin-left:auto}
+.eq-df .eq-err{display:flex;flex-direction:column;gap:2px;font-size:13px;font-weight:600;color:var(--lv-red);flex:1 1 220px}
+.up-row{grid-template-columns:minmax(0,1fr)!important;gap:6px!important;padding:10px 20px!important}
+.up-seg{display:flex!important;width:100%}
+.up-seg button{flex:1;min-width:0!important}
+
+/* ===== Correções de tela (09/11/2026) ===== */
+/* 1 · Animais e Tutores no celular: números abaixo do banner, em 2 colunas, sem cobrir nada */
+@media (max-width: 1100px) {
+  .animals-hero, .tutors-hero { margin-bottom: 0 !important; overflow: visible !important; }
+  .animals-hero .animals-glass-metrics, .tutors-hero .tutor-metrics { position: static !important; transform: none !important; display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 10px !important; margin: 12px 0 0 !important; width: auto !important; left: auto !important; right: auto !important; bottom: auto !important; }
+  .animals-hero .animals-glass-metrics > *, .tutors-hero .tutor-metrics > * { min-width: 0 !important; }
+  .animals-hero, .tutors-hero { height: auto !important; }
+}
+/* 2 · valores em R$ dos cartões nunca cortam: diminuem até caber */
+.cl-metrics strong, .animals-glass-metrics strong, .tutor-metrics strong { font-size: clamp(17px, 4.3vw, 30px); overflow-wrap: normal; word-break: keep-all; white-space: normal !important; text-overflow: clip !important; overflow: visible !important; }
+@media (max-width: 520px) { .cl-metrics article > i, .cl-metrics article button > i { width: 34px !important; height: 34px !important; } .cl-metrics article, .cl-metrics article button { gap: 8px !important; padding-left: 10px !important; padding-right: 10px !important; } }
+.cl-metrics small { white-space: normal !important; }
+/* 3 · Painel clássico no celular sem rolagem para o lado */
+@media (max-width: 460px) { .dash-metrics { grid-template-columns: minmax(0, 1fr) !important; } .dash-metric-card { min-width: 0 !important; } }
+/* 4 · Comunicação no tema escuro */
+[data-theme="dark"] .wa-config, [data-theme="dark"] .wa-auto, [data-theme="dark"] .rp-card { background: var(--lv-card); border-color: var(--lv-line); }
+[data-theme="dark"] .wa-config strong, [data-theme="dark"] .wa-auto header strong, [data-theme="dark"] .cx-h2, [data-theme="dark"] .rp-txt strong { color: var(--lv-ink); }
+[data-theme="dark"] .wa-config span, [data-theme="dark"] .wa-auto header span, [data-theme="dark"] .wa-auto footer, [data-theme="dark"] .wa-switch, [data-theme="dark"] .rp-txt span { color: var(--lv-muted); }
+[data-theme="dark"] .wa-auto p { background: #10261b; color: #d6f0e0; }
+/* 6 · abas que passam da tela mostram que dá para arrastar */
+@media (max-width: 760px) { .lv-tabs { -webkit-mask-image: linear-gradient(90deg, #000 85%, transparent); mask-image: linear-gradient(90deg, #000 85%, transparent); padding-right: 28px; } }
+@media (max-width: 760px) {
+  .cl-metrics article, .animals-glass-metrics > *, .tutor-metrics > * { container-type: inline-size; }
+  .cl-metrics strong, .animals-glass-metrics strong, .tutor-metrics strong { font-size: clamp(14px, 9.5cqw, 28px) !important; white-space: nowrap !important; }
+}

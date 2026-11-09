@@ -1,10 +1,10 @@
 import { useMemo, useState } from "react"
 import { useNavigate } from "react-router"
-import { Activity, Check, LogOut, Plus, X } from "lucide-react"
+import { Activity, BedDouble, Check, LogOut, Plus, Trash2, X } from "lucide-react"
 import { useVetFlow, type Item } from "../../store"
-import { activeAdmission, bedAssignments, bedLayout } from "../forms"
+import { activeAdmission, baiasExtras, bedAssignments, getBedLayout, salvarBaiasExtras, type BaiaExtra } from "../forms"
 import { usePageForms } from "../hooks"
-import { daysBetween, itemDate, Page, StatusPill, todayISO } from "../ui"
+import { daysBetween, itemDate, Modal, Page, StatusPill, todayISO } from "../ui"
 
 const sev = {
   Crítico: { c: "#b4322a", halo: "rgba(180,50,42,.18)", bg: "#fdf0ee" },
@@ -24,12 +24,53 @@ export default function Internacoes() {
   const [vErr, setVErr] = useState("")
   const navigate = useNavigate()
   const forms = usePageForms("internacoes", (saved) => setSelectedId(saved.id))
-  const { map, queue } = useMemo(() => bedAssignments(data.internacoes, data.animais), [data.internacoes, data.animais])
+  /* baias criadas pela clínica */
+  const [layoutVer, setLayoutVer] = useState(0)
+  const layout = useMemo(() => getBedLayout(), [layoutVer])
+  const extras = useMemo(() => baiasExtras(), [layoutVer])
+  const [baiaOpen, setBaiaOpen] = useState(false)
+  const [baia, setBaia] = useState({ room: "Canil", novaAla: "", bed: "", porte: "Médio", obs: "" })
+  const [baiaErr, setBaiaErr] = useState("")
+  const prefixo = (room: string) => (room.trim()[0] || "B").toUpperCase()
+  const sugerirCodigo = (room: string) => {
+    const r = layout.find((x) => x.room.toLowerCase() === room.trim().toLowerCase())
+    const all = layout.flatMap((x) => x.beds)
+    const p = r?.beds[0]?.split("-")[0] || prefixo(room)
+    for (let i = (r?.beds.length || 0) + 1; i < 999; i++) {
+      const code = `${p}-${String(i).padStart(2, "0")}`
+      if (!all.includes(code)) return code
+    }
+    return `${p}-${Date.now() % 1000}`
+  }
+  const abrirNovaBaia = () => {
+    setBaia({ room: "Canil", novaAla: "", bed: sugerirCodigo("Canil"), porte: "Médio", obs: "" })
+    setBaiaErr("")
+    setBaiaOpen(true)
+  }
+  const salvarBaia = () => {
+    const room = (baia.room === "__nova" ? baia.novaAla : baia.room).trim()
+    const bed = baia.bed.trim().toUpperCase()
+    if (!room) return setBaiaErr("Dê um nome para a nova ala (ex.: Maternidade).")
+    if (!bed) return setBaiaErr("Informe o código da baia (ex.: C-07).")
+    if (layout.some((r) => r.beds.includes(bed))) return setBaiaErr(`Já existe uma baia ${bed}. Escolha outro código.`)
+    const nova: BaiaExtra = { room, bed, porte: baia.porte, obs: baia.obs.trim() || undefined }
+    salvarBaiasExtras([...extras, nova])
+    setLayoutVer((v) => v + 1)
+    setBaiaOpen(false)
+    forms.toast(`Baia ${bed} criada na ala ${room}.`)
+  }
+  const removerBaia = (bed: string) => {
+    if (map.has(bed)) return forms.toast(`A baia ${bed} está ocupada. Dê alta ou mova o paciente antes de remover.`)
+    salvarBaiasExtras(extras.filter((b) => b.bed !== bed))
+    setLayoutVer((v) => v + 1)
+    forms.toast(`Baia ${bed} removida.`)
+  }
+  const { map, queue } = useMemo(() => bedAssignments(data.internacoes, data.animais), [data.internacoes, data.animais, layoutVer])
   const occupiedBeds = [...map.entries()]
   const [selectedId, setSelectedId] = useState(() => occupiedBeds.find(([, item]) => severity(item) === "Crítico")?.[1].id || occupiedBeds[0]?.[1].id || "")
   const selected = data.internacoes.find((item) => item.id === selectedId)
   const selectedBed = occupiedBeds.find(([, item]) => item.id === selectedId)?.[0]
-  const freeBeds = bedLayout.flatMap((room) => room.beds.filter((bed) => !map.has(bed)))
+  const freeBeds = layout.flatMap((room) => room.beds.filter((bed) => !map.has(bed)))
   const animal = data.animais.find((item) => item.id === selected?.animalId)
   /* só mostra o que foi prescrito de verdade (nada inventado) */
   const meds: Med[] = selected?.extra?.prescricao?.filter((row: Med) => row.item) || []
@@ -99,6 +140,9 @@ export default function Internacoes() {
           {(Object.keys(sev) as (keyof typeof sev)[]).map((key) => (
             <span key={key} className="vx-chip"><span className="vx-dot" style={{ background: sev[key].c }} />{key}</span>
           ))}
+          <button className="vx-btn vx-btn-g" onClick={abrirNovaBaia}>
+            <BedDouble /> Nova baia
+          </button>
           <button className="vx-btn vx-btn-p" onClick={() => forms.open()}>
             <Plus /> Internar
           </button>
@@ -108,10 +152,10 @@ export default function Internacoes() {
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 320px", gap: 22, alignItems: "start" }} className="vx-int-grid">
         <div>
           <div className="vx-glass vx-plan" style={{ background: "rgba(255,255,255,.42)" }}>
-            {bedLayout.map((room, index) => (
+            {layout.map((room, index) => (
               <div key={room.room} className="vx-room-plan" style={{ borderRadius: ["18px 0 0 0", "0 18px 0 0", "0 0 0 18px", "0 0 18px 0"][index] }}>
                 <span className="nm">{room.room.toUpperCase()}</span>
-                <div className="vx-beds" style={{ gridTemplateColumns: `repeat(${roomCols[room.room]}, minmax(0,1fr))` }}>
+                <div className="vx-beds" style={{ gridTemplateColumns: `repeat(${roomCols[room.room] || 2}, minmax(0,1fr))` }}>
                   {room.beds.map((bed) => {
                     const item = map.get(bed)
                     if (!item)
@@ -119,6 +163,7 @@ export default function Internacoes() {
                         <button key={bed} className="vx-bed free" onClick={() => forms.open("internacoes", undefined, { box: bed, tipo: room.room === "UTI" ? "UTI" : room.room === "Isolamento" ? "Isolamento" : "Clínica" })} aria-label={`Baia ${bed} livre, internar aqui`}>
                           <b style={{ fontSize: 12 }}>{bed}</b>
                           <span style={{ fontSize: 12 }}>livre · internar</span>
+                          {extras.some((b) => b.bed === bed) && <span className="vx-bed-new">nova</span>}
                         </button>
                       )
                     const level = sev[severity(item)]
@@ -265,6 +310,63 @@ export default function Internacoes() {
             <div className="vx-row" style={{ justifyContent: "flex-end", gap: 8, marginTop: 16 }}><button className="vx-btn vx-btn-g" onClick={() => setAltaOpen(false)}>Voltar</button><button className="vx-btn vx-btn-d" onClick={discharge}><LogOut /> Confirmar alta</button></div>
           </div>
         </div>
+      )}
+      {baiaOpen && (
+        <Modal
+          title="Nova baia"
+          text="A baia aparece no mapa na hora e já pode receber um paciente. Pacientes da fila de espera ocupam a baia nova automaticamente."
+          onClose={() => setBaiaOpen(false)}
+          actions={
+            <>
+              <button className="vx-btn vx-btn-g" onClick={() => setBaiaOpen(false)}>Cancelar</button>
+              <button className="vx-btn vx-btn-p" onClick={salvarBaia}><Check /> Criar baia</button>
+            </>
+          }
+        >
+          <div className="vx-baia-form">
+            <label>
+              <span>Ala</span>
+              <select className="vx-in" value={baia.room} onChange={(e) => setBaia({ ...baia, room: e.target.value, bed: e.target.value === "__nova" ? (baia.novaAla ? sugerirCodigo(baia.novaAla) : "") : sugerirCodigo(e.target.value) })}>
+                {layout.map((r) => <option key={r.room} value={r.room}>{r.room} · {r.beds.length} baias</option>)}
+                <option value="__nova">+ Nova ala…</option>
+              </select>
+            </label>
+            {baia.room === "__nova" && (
+              <label>
+                <span>Nome da nova ala</span>
+                <input className="vx-in" autoFocus value={baia.novaAla} placeholder="Ex.: Maternidade, Exóticos" onChange={(e) => setBaia({ ...baia, novaAla: e.target.value, bed: sugerirCodigo(e.target.value) })} />
+              </label>
+            )}
+            <label>
+              <span>Código da baia</span>
+              <input className="vx-in" value={baia.bed} placeholder="Ex.: C-07" onChange={(e) => setBaia({ ...baia, bed: e.target.value.toUpperCase() })} />
+            </label>
+            <label>
+              <span>Porte</span>
+              <select className="vx-in" value={baia.porte} onChange={(e) => setBaia({ ...baia, porte: e.target.value })}>
+                {["Pequeno", "Médio", "Grande", "Gigante", "Gaiola / exóticos"].map((o) => <option key={o}>{o}</option>)}
+              </select>
+            </label>
+            <label className="full">
+              <span>Observação</span>
+              <input className="vx-in" value={baia.obs} placeholder="Ex.: com oxigênio, perto do posto de enfermagem" onChange={(e) => setBaia({ ...baia, obs: e.target.value })} />
+            </label>
+            {baiaErr && <p className="vx-baia-err" role="alert">{baiaErr}</p>}
+          </div>
+          {extras.length > 0 && (
+            <div className="vx-baia-list">
+              <span className="vx-lbl">Baias criadas pela clínica</span>
+              {extras.map((b) => (
+                <div key={b.bed}>
+                  <b>{b.bed}</b>
+                  <span>{b.room}{b.porte ? ` · ${b.porte}` : ""}{b.obs ? ` · ${b.obs}` : ""}</span>
+                  <em>{map.has(b.bed) ? "ocupada" : "livre"}</em>
+                  <button type="button" className="vx-icon-btn" aria-label={`Remover baia ${b.bed}`} title={map.has(b.bed) ? "Ocupada: não pode remover" : "Remover baia"} disabled={map.has(b.bed)} onClick={() => removerBaia(b.bed)}><Trash2 /></button>
+                </div>
+              ))}
+            </div>
+          )}
+        </Modal>
       )}
       {forms.node}
     </Page>

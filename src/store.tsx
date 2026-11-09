@@ -1791,7 +1791,9 @@ function applyChanges(
   changes: DataChange[],
 ): Record<string, UnitData> {
   return changes.reduce((current, change) => {
-    const records = current[change.unitId][change.module]
+    const unit = current[change.unitId]
+    const records = unit?.[change.module]
+    if (!Array.isArray(records)) return current
     const nextRecords =
       change.operation === "add" && change.item
         ? [change.item, ...records]
@@ -1836,6 +1838,8 @@ type StoreValue = {
   user: StaffUser | null
   staff: StaffUser[]
   saveStaff: (user: StaffUser) => void
+  /** Apaga o login (só quem nunca registrou nada). */
+  removeStaff: (id: string) => void
   /** Propaga o novo nome do profissional para agenda, consultas, prontuários etc. e para o usuário ligado a ele. */
   renameProfessional: (id: string, oldName: string, newName: string) => void
   clinic: Clinic | ""
@@ -1855,7 +1859,7 @@ export type AuditEntry = { em: string; quem: string; acao: "criou" | "editou" | 
 export const TERMS_VERSION = "2026-10-30"
 
 export type Role = "Administrador" | "Vendedor" | "Caixa" | "Estoque" | "Veterinário" | "Entregador"
-export type StaffUser = { id: string; name: string; displayName: string; username: string; email: string; cpf: string; passwordHash: string; salt: string; mustChange?: boolean; password?: string; role: Role; crmv?: string; code?: string; active: boolean; perms?: Record<string, string>; log?: { quando: string; quem: string; acao: string }[] }
+export type StaffUser = { id: string; name: string; displayName: string; username: string; email: string; cpf: string; passwordHash: string; salt: string; mustChange?: boolean; password?: string; role: Role; crmv?: string; code?: string; active: boolean; perms?: Record<string, string>; log?: { quando: string; quem: string; acao: string }[]; phone?: string; birth?: string; unidades?: string[]; horario?: string; twofa?: boolean; especialidade?: string; comissao?: string; createdAt?: string; invitePending?: boolean }
 export const STAFF: StaffUser[] = [
   { id: "u-admin", name: "Rafael Souza", displayName: "Dr. Rafael", username: "admin", email: "admin@vetflow.com", cpf: "482.315.770-10", passwordHash: "011d01d8447102c0c2e6b444725b68f425a88d08a84cec74ff773b02c76cf149", salt: "c64f4ef740b62274ff8cc66c", mustChange: false, role: "Administrador", crmv: "CRMV-RO 2.841", code: "001", active: true },
   { id: "u-vend", name: "Felipe Brum", displayName: "Felipe Brum", username: "vendedor", email: "vendedor@vetflow.com", cpf: "041.115.882-02", passwordHash: "899528001dd08d0a855e6a6b8a74f8ae5c4422bb11aa1f7c49f6fda8fbdaf1de", salt: "48c7e81a6031d6f1e205d095", mustChange: true, role: "Vendedor", code: "026", active: true },
@@ -1877,8 +1881,47 @@ export const ROLE_ACCESS: Record<Role, string[]> = {
   Entregador: ["entregas", "perfil", "configuracoes", "ajuda"],
 }
 export const ROLE_HOME: Record<Role, string> = { Administrador: "/", Vendedor: "/vendas", Caixa: "/caixa", Estoque: "/estoque", "Veterinário": "/agendas", Entregador: "/entregas" }
-export function canAccess(role: Role | undefined, area: string) {
+/** Áreas da tela de permissões (cada uma abre um grupo de abas do menu). */
+export const ACCESS_AREAS: { area: string; grupo: string; slugs: string[] }[] = [
+  { area: "Animais e tutores", grupo: "Atendimento", slugs: ["animais", "tutores"] },
+  { area: "Agenda e consultas", grupo: "Atendimento", slugs: ["agendas", "consultas", "teleatendimentos"] },
+  { area: "Prontuários", grupo: "Atendimento", slugs: ["prontuarios"] },
+  { area: "Internações e cirurgias", grupo: "Atendimento", slugs: ["internacoes", "cirurgias", "procedimentos", "protocolos"] },
+  { area: "Vacinas e exames", grupo: "Atendimento", slugs: ["vacinas", "exames"] },
+  { area: "Prescrições", grupo: "Atendimento", slugs: ["prescricoes", "medicamentos"] },
+  { area: "Documentos", grupo: "Atendimento", slugs: ["documentos", "comunicacao", "publicacoes", "ocorrencias"] },
+  { area: "Vendas e balcão", grupo: "Vendas e caixa", slugs: ["vendas", "servicos"] },
+  { area: "Caixa", grupo: "Vendas e caixa", slugs: ["caixa"] },
+  { area: "Entregas", grupo: "Vendas e caixa", slugs: ["entregas"] },
+  { area: "Estoque", grupo: "Vendas e caixa", slugs: ["estoque"] },
+  { area: "Financeiro", grupo: "Gestão", slugs: ["financeiro", "convenios"] },
+  { area: "Relatórios", grupo: "Gestão", slugs: ["relatorios"] },
+  { area: "Usuários e sistema", grupo: "Gestão", slugs: ["usuarios", "usuarios-permissoes", "unidades", "profissionais"] },
+]
+export const ACCESS_LEVELS = ["Fechado", "Ver", "Editar", "Total"] as const
+const VER_SO: Partial<Record<Role, string[]>> = { "Veterinário": ["Estoque", "Relatórios"], Vendedor: ["Estoque"], Caixa: ["Estoque"] }
+/** Permissões padrão do perfil, tiradas das abas que o perfil já abre (salvar sem mexer não muda nada). */
+export function defaultPerms(role: Role): Record<string, string> {
+  const list = ROLE_ACCESS[role]
+  return Object.fromEntries(ACCESS_AREAS.map(({ area, slugs }) => {
+    if (list.includes("*")) return [area, "Total"]
+    if (!slugs.some((s) => list.includes(s))) return [area, "Fechado"]
+    if (role === "Estoque" && area === "Estoque") return [area, "Total"]
+    if (role === "Caixa" && area === "Caixa") return [area, "Total"]
+    return [area, VER_SO[role]?.includes(area) ? "Ver" : "Editar"]
+  }))
+}
+/** Nível de acesso de um usuário numa aba (permissões próprias valem sobre o padrão do perfil). */
+export function accessLevel(role: Role | undefined, area: string, perms?: Record<string, string>): string {
+  if (!role) return "Fechado"
+  const def = ACCESS_AREAS.find((a) => a.slugs.includes(area))
+  if (!def) return canAccess(role, area) ? "Total" : "Fechado"
+  const own = perms && ACCESS_LEVELS.includes(perms[def.area] as (typeof ACCESS_LEVELS)[number]) ? perms[def.area] : undefined
+  return own || defaultPerms(role)[def.area]
+}
+export function canAccess(role: Role | undefined, area: string, perms?: Record<string, string>) {
   if (!role) return false
+  if (perms && ACCESS_AREAS.some((a) => a.slugs.includes(area))) return accessLevel(role, area, perms) !== "Fechado"
   const list = ROLE_ACCESS[role]
   return list.includes("*") || list.includes(area)
 }
@@ -1890,7 +1933,51 @@ export const MINHA_UNIT: Unit = {
 const StoreContext = createContext<StoreValue | null>(null)
 const STORAGE_KEY = "vetflow-state-v4"
 /** Troque este valor a cada versão publicada no Figma Make (formato livre). */
-export const APP_VERSION = "2026-11-07-processos"
+export const APP_VERSION = "2026-11-09-cadastros"
+
+function normalizePersistedState(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null
+  const persisted = value as Record<string, any>
+  persisted.customUnits = Array.isArray(persisted.customUnits)
+    ? persisted.customUnits.filter((unit: unknown) =>
+        !!unit && typeof unit === "object" && typeof (unit as Unit).id === "string",
+      )
+    : []
+
+  const validModules = new Set(modules.map(([slug]) => slug))
+  const validUnits = new Set([
+    ...seedUnits.map((unit) => unit.id),
+    "minha",
+    ...persisted.customUnits.map((unit: Unit) => unit.id),
+  ])
+  persisted.changes = Array.isArray(persisted.changes)
+    ? persisted.changes.filter((change: unknown) => {
+        if (!change || typeof change !== "object") return false
+        const candidate = change as DataChange
+        return (
+          ["add", "update", "delete"].includes(candidate.operation) &&
+          validUnits.has(candidate.unitId) &&
+          validModules.has(candidate.module) &&
+          typeof candidate.id === "string" &&
+          (candidate.operation !== "add" || !!candidate.item)
+        )
+      })
+    : []
+
+  if (persisted.appVersion !== APP_VERSION) {
+    const custom = new Set(persisted.customUnits.map((unit: Unit) => unit.id))
+    persisted.changes = persisted.changes.filter(
+      (change: DataChange) => change.unitId === "minha" || custom.has(change.unitId),
+    )
+    persisted.appVersion = APP_VERSION
+  }
+  if (!persisted.unitUpdates || typeof persisted.unitUpdates !== "object" || Array.isArray(persisted.unitUpdates)) persisted.unitUpdates = {}
+  if (!Array.isArray(persisted.notifications)) delete persisted.notifications
+  if (!["light", "dark"].includes(persisted.theme)) delete persisted.theme
+  if (!validUnits.has(persisted.activeUnitId)) persisted.activeUnitId = "centro"
+  return persisted
+}
+
 const defaultProfile: UserProfile = {
   name: "Rafael Souza",
   displayName: "Dr. Rafael",
@@ -1940,7 +2027,7 @@ export function VetFlowProvider({ children }: { children: ReactNode }) {
         localStorage.getItem(STORAGE_KEY) ||
         localStorage.getItem("vetflow-state-v3") ||
         "null"
-      return JSON.parse(
+      return normalizePersistedState(JSON.parse(
         stored
           .replaceAll("Unidade Centro", "Unidade - Mirante da Serra")
           .replaceAll("Unidade Zona Sul", "Unidade - Nova União")
@@ -1948,7 +2035,7 @@ export function VetFlowProvider({ children }: { children: ReactNode }) {
           .replaceAll("Centro •", "Mirante da Serra •")
           .replaceAll("Zona Sul •", "Nova União •")
           .replaceAll("Norte 24h •", "Urupá •"),
-      )
+      ))
     } catch {
       return null
     }
@@ -2077,11 +2164,12 @@ export function VetFlowProvider({ children }: { children: ReactNode }) {
     const onStorage = (e: StorageEvent) => {
       try {
         if (e.key === STORAGE_KEY && e.newValue) {
-          const next = JSON.parse(e.newValue)
-          const nextChanges: DataChange[] = next?.changes || []
+          const next = normalizePersistedState(JSON.parse(e.newValue))
+          if (!next) return
+          const nextChanges: DataChange[] = next.changes
           if (JSON.stringify(nextChanges) === JSON.stringify(changesRef.current)) return
-          const custom = Object.fromEntries((next?.customUnits || []).map((u: Unit) => [u.id, emptyUnitData()]))
-          setCustomUnits(next?.customUnits || [])
+          const custom = Object.fromEntries(next.customUnits.map((u: Unit) => [u.id, emptyUnitData()]))
+          setCustomUnits(next.customUnits)
           setChanges(nextChanges)
           setAllData(applyChanges({ ...seed, ...custom, minha: emptyUnitData() }, nextChanges))
         }
@@ -2374,6 +2462,7 @@ export function VetFlowProvider({ children }: { children: ReactNode }) {
       user,
       staff,
       saveStaff: (u) => setStaff((cur) => (cur.some((x) => x.id === u.id) ? cur.map((x) => (x.id === u.id ? u : x)) : [...cur, u])),
+      removeStaff: (id) => setStaff((cur) => (id === user?.id ? cur : cur.filter((x) => x.id !== id))),
       renameProfessional: (id, oldName, newName) => {
         if (!newName || oldName === newName) return
         const norm = (t: string) => t.toLowerCase().replace(/^(dra?\.)\s*/, "").trim()

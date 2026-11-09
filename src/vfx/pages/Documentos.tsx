@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react"
 import { useNavigate } from "react-router"
-import { Archive, ArchiveRestore, ArrowLeft, CheckCircle2, Clock3, Edit3, FileSignature, FileText, FolderOpen, Inbox, Link2, ListChecks, MessageSquarePlus, PawPrint, Plus, Printer, Search, Send, TriangleAlert, UserRound } from "lucide-react"
+import { Archive, ArchiveRestore, ArrowLeft, CheckCircle2, Clock3, Edit3, FileSignature, FileText, FolderOpen, Inbox, Link2, ListChecks, MessageSquarePlus, PawPrint, Printer, Send, TriangleAlert, UserRound } from "lucide-react"
 import { normalize, useVetFlow, type Item } from "../../store"
 import { usePageForms } from "../hooks"
-import { addDays, colorFor, fmtDate, GovSign, initials, itemDate, Page, Pager, StatusPill, todayISO, usePaged } from "../ui"
+import { addDays, colorFor, fmtDate, GovSign, initials, itemDate, Page, StatusPill, todayISO } from "../ui"
+import { CadastroLista, Duo, Ident, Status } from "../CadastroLista"
 
 /*
  * Documentos como um sistema de controle de processos:
@@ -11,7 +12,7 @@ import { addDays, colorFor, fmtDate, GovSign, initials, itemDate, Page, Pager, S
  * prazo, etapa e andamentos. A lista é a "mesa de trabalho"; ao abrir o processo aparecem
  * os andamentos, os dados e o documento — e só ali dá para imprimir.
  */
-type Caixa = "entrada" | "assinados" | "arquivados" | "todos"
+type Caixa = "entrada" | "atrasados" | "assinados" | "arquivados" | "todos"
 type Andamento = { em: string; por: string; texto: string; tipo?: "abertura" | "envio" | "assinatura" | "arquivo" | "despacho" | "reenvio" }
 const ETAPAS = ["Aberto", "Aguardando assinatura", "Assinado", "Arquivado"] as const
 const etapaDe = (item: Item) => (/arquiv/i.test(item.status) ? 3 : /assinad/i.test(item.status) ? 2 : 1)
@@ -60,14 +61,13 @@ export default function Documentos() {
   const lista = useMemo(
     () =>
       data.documentos
-        .filter((d) => caixa === "todos" || (caixa === "entrada" ? etapaDe(d) === 1 : caixa === "assinados" ? etapaDe(d) === 2 : etapaDe(d) === 3))
+        .filter((d) => caixa === "todos" || (caixa === "entrada" ? etapaDe(d) === 1 : caixa === "atrasados" ? atrasado(d) : caixa === "assinados" ? etapaDe(d) === 2 : etapaDe(d) === 3))
         .filter((d) => tipo === "Todos" || d.name === tipo)
         .filter((d) => !query.trim() || normalize(`${numero(d)} ${d.name} ${d.animal || ""} ${d.owner || ""} ${d.professional || ""} ${gavetaDe(d)}`).includes(normalize(query)))
         .sort((a, b) => Number(atrasado(b)) - Number(atrasado(a)) || itemDate(b).localeCompare(itemDate(a))),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [data.documentos, caixa, tipo, query, numeros],
   )
-  const paged = usePaged(lista, 12, [caixa, tipo, query])
 
   const aberto = data.documentos.find((d) => d.id === abertoId)
   if (aberto)
@@ -86,92 +86,59 @@ export default function Documentos() {
       />
     )
 
-  const CAIXAS: [Caixa, string, typeof Inbox, number][] = [
-    ["entrada", "Em tramitação", Inbox, contagem.entrada],
-    ["assinados", "Assinados", CheckCircle2, contagem.assinados],
-    ["arquivados", "Arquivados", Archive, contagem.arquivados],
-    ["todos", "Todos os processos", FolderOpen, contagem.todos],
-  ]
   return (
-    <Page
-      className="pz-page"
-      bg="#eef0f4"
-      blobs={[["#c7d2fe", -80, -40, 460, 380], ["#fde2c7", "78%", 120, 420, 360]]}
-      crumb="Documentos"
+    <CadastroLista
+      crumb="Clínico / Documentos"
       title="Documentos"
-      actions={
+      sub="Cada documento é um processo ligado ao animal e ao tutor — abra para ver os andamentos e imprimir."
+      novo={{ label: "Abrir processo", onClick: () => forms.open("documentos") }}
+      kpis={[
+        { label: "Em tramitação", value: contagem.entrada, detail: "aguardando assinatura", icon: <Inbox />, tone: "blue", aba: "entrada" },
+        { label: "Prazo vencido", value: atrasados, detail: "passaram do prazo de assinatura", icon: <TriangleAlert />, tone: "red", aba: "atrasados" },
+        { label: "Assinados", value: contagem.assinados, detail: "prontos para arquivar", icon: <CheckCircle2 />, tone: "green", aba: "assinados" },
+        { label: "Arquivados", value: contagem.arquivados, detail: "guardados conforme a tabela", icon: <Archive />, tone: "aqua", aba: "arquivados" },
+      ]}
+      abas={[
+        { key: "entrada", label: "Em tramitação", count: contagem.entrada },
+        { key: "atrasados", label: "Prazo vencido", count: atrasados, tone: "red" },
+        { key: "assinados", label: "Assinados", count: contagem.assinados },
+        { key: "arquivados", label: "Arquivados", count: contagem.arquivados },
+        { key: "todos", label: "Todos", count: contagem.todos },
+      ]}
+      aba={caixa}
+      onAba={(k) => setCaixa((k || "entrada") as Caixa)}
+      query={query}
+      onQuery={setQuery}
+      placeholder="Nº do processo, paciente, tutor ou tipo"
+      filtros={[{ label: "Tipo", icon: <FolderOpen />, value: tipo, onChange: setTipo, options: [["Todos", "Todos os tipos"], ...tipos.map(([nome, n]) => [nome, `${nome} (${n})`] as [string, string])] }]}
+      rows={lista}
+      rowKey={(d) => d.id}
+      onRow={(d) => setAbertoId(d.id)}
+      noun="processos"
+      vazio="Nenhum processo nesta caixa"
+      perPageDefault={10}
+      exportar={{ nome: "processos", linha: (d) => ({ Processo: numero(d), Documento: d.name, Paciente: d.animal || "", Tutor: d.owner || "", Responsavel: d.professional || "", Prazo: fmtDate(prazoDe(d)), Etapa: ETAPAS[etapaDe(d)], Situacao: atrasado(d) ? "Prazo vencido" : d.status }) }}
+      emMassa={(itens, limpar) => (
         <>
-          <label className="vx-search pz-search">
-            <Search />
-            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Nº do processo, paciente, tutor ou tipo" aria-label="Buscar processo" />
-          </label>
-          <button className="vx-btn vx-btn-p" onClick={() => forms.open("documentos")}><Plus /> Abrir processo</button>
+          <button type="button" onClick={() => { itens.filter((d) => etapaDe(d) === 2).forEach((d) => updateItem("documentos", d.id, { status: "Arquivado", extra: { ...(d.extra || {}), andamentos: [...(d.extra?.andamentos || []), { em: new Date().toISOString(), por: user?.displayName || "Equipe", texto: "Arquivado em lote", tipo: "arquivo" }] } })); forms.toast("Processos assinados arquivados."); limpar() }}>
+            <Archive /> Arquivar assinados
+          </button>
+          <button type="button" onClick={() => { itens.filter((d) => etapaDe(d) === 1).forEach((d) => updateItem("documentos", d.id, { extra: { ...(d.extra || {}), andamentos: [...(d.extra?.andamentos || []), { em: new Date().toISOString(), por: user?.displayName || "Equipe", texto: "Link de assinatura reenviado ao tutor", tipo: "reenvio" }] } })); forms.toast("Links reenviados aos tutores."); limpar() }}>
+            <Send /> Reenviar links
+          </button>
         </>
-      }
+      )}
+      colunas={[
+        { label: "Processo", w: "minmax(250px,1.4fr)", cell: (d) => <Ident square title={d.name} sub={`${numero(d)} · aberto em ${fmtDate(itemDate(d))}`} icon={<FileText />} color={colorFor(d.name)} /> },
+        { label: "Interessados", w: "minmax(180px,1fr)", cell: (d) => (d.animalId ? <Duo title={<><PawPrint size={13} /> {d.animal}</>} sub={d.owner || "tutor não informado"} /> : <span className="pz-warn"><Link2 /> sem vínculo</span>) },
+        { label: "Responsável", w: "minmax(150px,.8fr)", cell: (d) => <Duo title={d.professional || "—"} sub={gavetaDe(d)} /> },
+        { label: "Prazo", w: "120px", cell: (d) => (etapaDe(d) === 1 ? <Duo title={fmtDate(prazoDe(d))} sub={atrasado(d) ? "vencido" : "para assinar"} /> : <Duo title="—" sub="concluído" />) },
+        { label: "Etapa", w: "150px", cell: (d) => { const etapa = etapaDe(d); return <div className="cl-duo"><span className="pz-steps" aria-label={`Etapa ${ETAPAS[etapa]}`}>{ETAPAS.map((e, i) => <i key={e} className={i < etapa ? "done" : i === etapa ? "on" : ""} title={e} />)}</span><small>{ETAPAS[etapa]}</small></div> } },
+        { label: "Situação", w: "150px", cell: (d) => (atrasado(d) ? <Status status="Prazo vencido" toneOverride="red" /> : <Status status={d.status} toneOverride={etapaDe(d) === 1 ? "blue" : undefined} />) },
+      ]}
     >
-      <div className="pz-kpis">
-        <div><small>Em tramitação</small><strong>{contagem.entrada}</strong><span>aguardando assinatura</span></div>
-        <div className={atrasados ? "late" : ""}><small>Prazo vencido</small><strong>{atrasados}</strong><span>passaram do prazo de assinatura</span></div>
-        <div><small>Assinados</small><strong>{contagem.assinados}</strong><span>prontos para arquivar</span></div>
-        <div><small>Arquivados</small><strong>{contagem.arquivados}</strong><span>guardados conforme a tabela</span></div>
-      </div>
-
-      <div className="pz-grid">
-        <aside className="pz-rail">
-          <span className="pz-rail-lbl">Caixas</span>
-          {CAIXAS.map(([k, label, Icon, n]) => (
-            <button key={k} className={`pz-rail-item ${caixa === k ? "on" : ""}`} onClick={() => setCaixa(k)}>
-              <Icon /> <span>{label}</span> <b>{n}</b>
-            </button>
-          ))}
-          <span className="pz-rail-lbl">Tipo de documento</span>
-          <button className={`pz-rail-item sm ${tipo === "Todos" ? "on" : ""}`} onClick={() => setTipo("Todos")}><span>Todos os tipos</span></button>
-          {tipos.map(([nome, n]) => (
-            <button key={nome} className={`pz-rail-item sm ${tipo === nome ? "on" : ""}`} onClick={() => setTipo(nome)}>
-              <i style={{ background: colorFor(nome) }} /> <span>{nome}</span> <b>{n}</b>
-            </button>
-          ))}
-        </aside>
-
-        <section className="pz-desk">
-          <header className="pz-desk-head">
-            <div>
-              <strong>{CAIXAS.find(([k]) => k === caixa)?.[1]}{tipo !== "Todos" ? ` · ${tipo}` : ""}</strong>
-              <small>{lista.length} processo{lista.length === 1 ? "" : "s"} · clique para abrir os andamentos e o documento</small>
-            </div>
-          </header>
-          <div className="pz-table">
-            <div className="pz-tr pz-th"><span>Processo</span><span>Interessados</span><span>Responsável</span><span>Prazo</span><span>Etapa</span><span>Situação</span></div>
-            {paged.visible.map((d) => {
-              const etapa = etapaDe(d)
-              return (
-                <button key={d.id} className={`pz-tr ${atrasado(d) ? "late" : ""}`} onClick={() => setAbertoId(d.id)}>
-                  <span className="pz-proc">
-                    <i style={{ background: colorFor(d.name) }}><FileText /></i>
-                    <span><b>{numero(d)}</b><strong>{d.name}</strong><small>aberto em {fmtDate(itemDate(d))} · {gavetaDe(d)}</small></span>
-                  </span>
-                  <span className="pz-cell" data-label="Interessados">
-                    {d.animalId ? <><strong><PawPrint /> {d.animal}</strong><small><UserRound /> {d.owner || "tutor não informado"}</small></> : <span className="pz-warn"><Link2 /> sem vínculo</span>}
-                  </span>
-                  <span className="pz-cell" data-label="Responsável"><strong>{d.professional || "—"}</strong></span>
-                  <span className="pz-cell" data-label="Prazo">
-                    {etapa === 1 ? <><strong className={atrasado(d) ? "late" : ""}>{fmtDate(prazoDe(d))}</strong><small className={atrasado(d) ? "late" : ""}>{atrasado(d) ? "vencido" : "para assinar"}</small></> : <small>concluído</small>}
-                  </span>
-                  <span className="pz-cell" data-label="Etapa">
-                    <span className="pz-steps" aria-label={`Etapa ${ETAPAS[etapa]}`}>{ETAPAS.map((e, i) => <i key={e} className={i < etapa ? "done" : i === etapa ? "on" : ""} title={e} />)}</span>
-                    <small>{ETAPAS[etapa]}</small>
-                  </span>
-                  <span className="pz-cell" data-label="Situação">{atrasado(d) ? <span className="pz-pill late"><TriangleAlert /> Prazo vencido</span> : <StatusPill status={d.status} />}</span>
-                </button>
-              )
-            })}
-            {!lista.length && <div className="vx-empty">Nenhum processo nesta caixa.</div>}
-          </div>
-          {paged.pages > 1 && <div className="pz-foot"><Pager page={paged.page} pages={paged.pages} onPage={paged.setPage} /></div>}
-        </section>
-      </div>
       {forms.node}
-    </Page>
+    </CadastroLista>
   )
 }
 

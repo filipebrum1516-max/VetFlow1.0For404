@@ -1,9 +1,11 @@
 import { Fragment, useMemo, useState } from "react"
 import { useNavigate } from "react-router"
-import { BadgeCheck, Edit3, Play, Plus } from "lucide-react"
+import { BadgeCheck, Edit3, Play } from "lucide-react"
 import { normalize, useVetFlow, type Item } from "../../store"
 import { usePageForms } from "../hooks"
-import { colorFor, fmtDate, matches, Modal, Page, SearchBox, StatusPill, todayISO } from "../ui"
+import { colorFor, fmtDate, matches, Modal, SearchBox, todayISO } from "../ui"
+import { CadastroLista, Duo, Ident, Status, initialsOf } from "../CadastroLista"
+import { FichaCadastro } from "../Ficha"
 
 type Step = { tipo: string; titulo: string; detalhe?: string; tempo?: string }
 const templates: [RegExp, Step[]][] = [
@@ -23,10 +25,8 @@ export default function Protocolos() {
   const [petQuery, setPetQuery] = useState("")
   const list = useMemo(() => data.protocolos.filter((item) => matches(item, query)), [data.protocolos, query])
   const [selectedId, setSelectedId] = useState(() => new URLSearchParams(window.location.search).get("id") || "")
-  const selected = list.find((item) => item.id === selectedId) || list[0]
-  const steps = selected ? stepsFor(selected) : []
+  const selected = data.protocolos.find((item) => item.id === selectedId) || list[0]
   const uses: { animal: string; animalId: string; em: string; por: string; cirurgiaId?: string; origem?: string }[] = selected?.extra?.aplicacoes || []
-  const cirurgias = selected ? data.cirurgias.filter((c) => c.extra?.protocoloId === selected.id || c.extra?.protocoloPosId === selected.id) : []
   const pets = petQuery.trim() ? data.animais.filter((item) => normalize(`${item.name} ${item.owner}`).includes(normalize(petQuery))).slice(0, 6) : data.animais.slice(0, 6)
 
   const apply = (pet: Item) => {
@@ -38,46 +38,15 @@ export default function Protocolos() {
     forms.toast(`${selected.name} aplicado em ${pet.name}. Prescrição criada.`)
   }
 
-  return (
-    <Page
-      bg="#f2effb"
-      blobs={[["#d6c8ff", "30%", 220, 560, 500], ["#ffc9a8", -100, -40, 360, 360], ["#a7e3d8", "88%", "70%", 320, 320]]}
-      crumb="Protocolos"
-      title="Protocolos"
-      sub="Protocolos clínicos em etapas. Para aplicar a um paciente, abra o protocolo e siga as etapas durante a consulta ou internação."
-      actions={
-        <>
-          <SearchBox value={query} onChange={setQuery} placeholder="Buscar protocolo" />
-          <button className="vx-btn vx-btn-p" onClick={() => forms.open()}>
-            <Plus /> Novo protocolo
-          </button>
-        </>
-      }
-    >
-      <div style={{ display: "grid", gridTemplateColumns: "250px minmax(0,1fr) 260px", gap: 22, alignItems: "start" }} className="vx-proto-grid">
-        <div className="vx-proto-list" style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 640, overflowY: "auto", paddingRight: 4 }}>
-          {list.map((item) => {
-            const on = item.id === selected?.id
-            return (
-              <button key={item.id} className="vx-book-tab" style={{ flex: "none", minHeight: 58, background: on ? "var(--vx-card)" : "var(--vx-glass)", boxShadow: on ? "0 14px 26px -14px rgba(60,40,120,.45)" : "none", marginLeft: on ? 0 : 14 }} onClick={() => setSelectedId(item.id)}>
-                <span style={{ width: 10, background: item.extra?.cor || colorFor(item.name) }} />
-                <span style={{ padding: "10px 14px", flex: 1, minWidth: 0 }}>
-                  <strong style={{ display: "block", fontSize: 14, lineHeight: 1.25, whiteSpace: "normal" }}>{item.name}</strong>
-                  <small style={{ fontSize: 11, color: "var(--vx-muted)" }}>{stepsFor(item).length} etapas · {item.status}</small>
-                </span>
-              </button>
-            )
-          })}
-          {!list.length && <div className="vx-glass vx-empty">Nenhum protocolo.</div>}
-        </div>
-
-        <div className="vx-glass" style={{ borderRadius: 28, background: "rgba(255,255,255,.4)", backgroundImage: "radial-gradient(rgba(26,34,51,.12) 1px, transparent 1.2px)", backgroundSize: "20px 20px", minHeight: 560 }}>
-          {selected && (
-            <>
-              <div className="vx-lbl" style={{ padding: "16px 20px 0" }}>{selected.name} · {selected.extra?.versao || "v1"}</div>
+  const [sit, setSit] = useState("Todos")
+  const usosDe = (item: Item) => (item.extra?.aplicacoes || []).length as number
+  const sitDe = (item: Item, k: string) => k === "Todos" || (k === "Em uso" ? usosDe(item) > 0 : k === "Em revisão" ? /revis/i.test(item.status) : k === "Arquivados" ? /arquiv|inativ/i.test(item.status) : /aprov|ativ/i.test(item.status) && !/inativ/i.test(item.status))
+  const rows = list.filter((item) => sitDe(item, sit))
+  const fluxoDe = (sel: Item) => (
+    <div className="cd-fluxo">
               <div className="vx-flow">
-                <div className="vx-flow-node" style={{ background: "#1a2233", color: "#fff", borderRadius: 22, fontWeight: 800 }}>Início · {selected.extra?.criterios ? "critérios atendidos" : "paciente elegível"}</div>
-                {steps.map((step, index) => (
+                <div className="vx-flow-node" style={{ background: "#1a2233", color: "#fff", borderRadius: 22, fontWeight: 800 }}>Início · {sel.extra?.criterios ? "critérios atendidos" : "paciente elegível"}</div>
+                {stepsFor(sel).map((step, index) => (
                   <Fragment key={index}>
                     <div className="vx-flow-line" />
                     {step.tipo === "Decisão" ? (
@@ -103,52 +72,74 @@ export default function Protocolos() {
                   </Fragment>
                 ))}
               </div>
-            </>
-          )}
-        </div>
-
-        {selected && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <div className="vx-glass" style={{ padding: 18 }}>
-              <div className="vx-lbl">Em uso</div>
-              {uses.length ? uses.slice(0, 4).map((use, index) => (
-                <button key={index} className="vx-up" onClick={() => navigate(use.cirurgiaId ? "/cirurgias?aba=todas" : `/animais?animal=${encodeURIComponent(use.animal)}`)}>
-                  <span style={{ flex: 1 }}><strong style={{ fontSize: 14 }}>{use.animal}</strong><small>{use.origem ? `${use.origem} · ` : ""}aplicado {fmtDate(use.em)}</small></span>
-                </button>
-              )) : <div className="vx-hint" style={{ marginTop: 8 }}>Nenhum paciente usando agora.</div>}
-            </div>
-            {cirurgias.length > 0 && (
-              <div className="vx-glass" style={{ padding: 18 }}>
-                <div className="vx-lbl">Cirurgias com este protocolo · {cirurgias.length}</div>
-                {cirurgias.slice(0, 4).map((c) => (
-                  <button key={c.id} className="vx-up" onClick={() => navigate("/cirurgias?aba=todas")}>
-                    <span style={{ flex: 1 }}><strong style={{ fontSize: 14 }}>{c.animal} · {c.name}</strong><small>{fmtDate(c.date)} · {c.status}</small></span>
-                  </button>
-                ))}
-              </div>
-            )}
-            <div className="vx-glass" style={{ padding: 18, display: "flex", flexDirection: "column", gap: 8 }}>
-              <div className="vx-lbl">Revisão</div>
-              <StatusPill status={selected.status} />
-              <div style={{ fontSize: 13 }}>Responsável: <b>{selected.extra?.aprovador || selected.professional || "—"}</b></div>
-              <div style={{ fontSize: 13 }}>Atualizado em {fmtDate(selected.date)}</div>
-              {selected.status !== "Aprovado" && (
-                <button className="vx-btn vx-btn-g vx-btn-sm" onClick={() => { updateItem("protocolos", selected.id, { status: "Aprovado" }); forms.toast("Protocolo aprovado e publicado para a equipe.") }}>
-                  <BadgeCheck /> Aprovar
-                </button>
-              )}
-            </div>
-            <button className="vx-btn vx-btn-p" onClick={() => setApplying(true)}>
-              <Play /> Aplicar a um paciente
-            </button>
-            <p className="vx-hint" style={{ margin: 0 }}>Como aplicar: clique no botão acima, escolha o paciente e confirme. O protocolo passa a constar no histórico do animal e gera a prescrição com as medicações das etapas.</p>
-            <div className="vx-row" style={{ gap: 8 }}>
-              <button className="vx-btn vx-btn-g" style={{ flex: 1 }} onClick={() => forms.open("protocolos", selected, selected.extra?.etapas ? undefined : { etapas: steps })}><Edit3 /> Editar</button>
-              <button className="vx-btn vx-btn-g" style={{ flex: 1 }} onClick={() => navigate(`/protocolos/${selected.id}`)}>Ficha</button>
-            </div>
-          </div>
-        )}
-      </div>
+    </div>
+  )
+  return (
+    <CadastroLista
+      crumb="Protocolos"
+      title="Protocolos"
+      sub="Protocolos clínicos em etapas. Escolha um na lista para ver as etapas, quem está usando e aplicar a um paciente."
+      kpis={[
+        { label: "Protocolos", value: data.protocolos.length, detail: "no caderno da clínica", icon: <BadgeCheck />, tone: "orange" },
+        { label: "Aprovados", value: data.protocolos.filter((p) => sitDe(p, "Aprovados")).length, detail: "liberados para a equipe", icon: <BadgeCheck />, tone: "green", aba: "Aprovados" },
+        { label: "Em uso", value: data.protocolos.filter((p) => usosDe(p) > 0).length, detail: `${data.protocolos.reduce((n, p) => n + usosDe(p), 0)} aplicações`, icon: <Play />, tone: "aqua", aba: "Em uso" },
+        { label: "Em revisão", value: data.protocolos.filter((p) => /revis/i.test(p.status)).length, detail: "aguardando aprovação", icon: <Edit3 />, tone: "gray", aba: "Em revisão" },
+      ]}
+      query={query}
+      onQuery={setQuery}
+      placeholder="Buscar protocolo..."
+      abas={["Todos", "Aprovados", "Em uso", "Em revisão", "Arquivados"].map((key) => ({ key, label: key, count: list.filter((i) => sitDe(i, key)).length }))}
+      aba={sit}
+      onAba={setSit}
+      novo={{ label: "Novo protocolo", onClick: () => forms.open() }}
+      exportar={{ nome: "protocolos", linha: (item) => ({ Protocolo: item.name, Etapas: stepsFor(item).length, Aplicacoes: usosDe(item), Situacao: item.status, Atualizado: fmtDate(item.date) }) }}
+      rows={rows}
+      rowKey={(item) => item.id}
+      noun="protocolos"
+      vazio="Nenhum protocolo encontrado"
+      colunas={[
+        { label: "Protocolo", w: "minmax(240px,1.5fr)", cell: (item) => <Ident title={item.name} sub={`${stepsFor(item).length} etapas · ${item.extra?.versao || "v1"}`} initials={initialsOf(item.name)} color={item.extra?.cor || colorFor(item.name)} /> },
+        { label: "Em uso", w: "120px", cell: (item) => <Duo title={`${usosDe(item)}`} sub="pacientes" /> },
+        { label: "Atualizado", w: "120px", ficha: false, cell: (item) => <Duo title={fmtDate(item.date)} sub={item.extra?.aprovador || item.professional || ""} /> },
+        { label: "Situação", w: "130px", cell: (item) => <Status status={item.status} /> },
+      ]}
+      ficha={(item) => {
+        const st = stepsFor(item)
+        const us: typeof uses = item.extra?.aplicacoes || []
+        const cir = data.cirurgias.filter((c) => c.extra?.protocoloId === item.id || c.extra?.protocoloPosId === item.id)
+        return (
+          <FichaCadastro
+            slug="protocolos"
+            item={item}
+            sub={`${st.length} etapas · ${item.extra?.versao || "v1"} · responsável ${item.extra?.aprovador || item.professional || "—"}`}
+            acoes={[
+              { label: "Aplicar a um paciente", icon: <Play />, main: true, onClick: () => { setSelectedId(item.id); setApplying(true) } },
+              ...(/aprov/i.test(item.status) ? [] : [{ label: "Aprovar", icon: <BadgeCheck />, onClick: () => { updateItem("protocolos", item.id, { status: "Aprovado" }); forms.toast("Protocolo aprovado e publicado para a equipe.") } }]),
+            ]}
+            abasExtras={[
+              { label: "Etapas", content: fluxoDe(item) },
+              { label: "Em uso", content: (
+                <div>
+                  {us.slice(0, 8).map((use, index) => (
+                    <button key={index} type="button" className="cd-li" onClick={() => navigate(use.cirurgiaId ? "/cirurgias?aba=todas" : `/animais?animal=${encodeURIComponent(use.animal)}`)}>
+                      <time>{fmtDate(use.em)}</time><span><b>{use.animal}</b>{use.origem ? ` · ${use.origem}` : ""} · por {use.por}</span>
+                    </button>
+                  ))}
+                  {cir.slice(0, 4).map((c) => (
+                    <button key={c.id} type="button" className="cd-li" onClick={() => navigate(`/cirurgias/${c.id}`)}>
+                      <time>{fmtDate(c.date)}</time><span><b>{c.animal} · {c.name}</b> · {c.status}</span>
+                    </button>
+                  ))}
+                  {!us.length && !cir.length && <p className="cd-empty">Nenhum paciente usando agora.</p>}
+                </div>
+              ) },
+            ]}
+            onEdit={() => forms.open("protocolos", item, item.extra?.etapas ? undefined : { etapas: st })}
+            onToast={forms.toast}
+          />
+        )
+      }}
+    >
       {applying && selected && (
         <Modal title={`Aplicar ${selected.name}`} text="Escolha o paciente. O protocolo entra em uso e gera a prescrição." onClose={() => setApplying(false)} actions={<button className="vx-btn vx-btn-g" onClick={() => setApplying(false)}>Cancelar</button>}>
           <SearchBox value={petQuery} onChange={setPetQuery} placeholder="Buscar paciente" style={{ minWidth: 0 }} />
@@ -161,8 +152,7 @@ export default function Protocolos() {
           </div>
         </Modal>
       )}
-      <style>{`@media (max-width: 1150px){ .vx-proto-grid{ grid-template-columns: 1fr !important; } .vx-proto-list{ flex-direction: row !important; overflow-x: auto !important; overflow-y: hidden !important; max-height: none !important; padding-bottom: 6px; scroll-snap-type: x mandatory } .vx-proto-list .vx-book-tab{ min-width: 220px; max-width: 240px; margin-left: 0 !important; scroll-snap-align: start; flex: none } } @media (max-width: 640px){ .vx-flow{ padding: 20px 10px !important } .vx-flow-node{ min-width: 0 !important; width: 100% } }`}</style>
       {forms.node}
-    </Page>
+    </CadastroLista>
   )
 }
