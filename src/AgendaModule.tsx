@@ -501,21 +501,26 @@ export default function AgendaModule() {
 
   return (
     <div className="vf-agenda-page">
-      <div className="vf-agenda-heading">
+      <header className="cl-head ag-head">
         <div>
-          <span>HOJE · AGENDA</span>
+          <div className="cl-crumb"><b>VetFlow</b> / Hoje / Agenda</div>
           <h1>Agenda</h1>
-          <p>Organize os atendimentos da equipe em tempo real.</p>
+          <p className="cl-sub">Organize os atendimentos da equipe em tempo real.</p>
         </div>
-        <button className="vf-new-appointment" onClick={() => openNew()}>
-          <Plus size={17} /> Novo agendamento
-        </button>
-      </div>
-      <section className="vf-agenda-toolbar">
-        <div className="vf-view-tabs">
+        <div className="cl-head-actions">
+          <button type="button" className="new-animal-button lv-cta" onClick={() => openNew()}>
+            <Plus size={17} /> Novo agendamento
+          </button>
+        </div>
+      </header>
+      <section className="vf-agenda-toolbar ag-toolbar">
+        <div className="cl-modo" role="tablist" aria-label="Visualização">
           {["Dia", "Semana", "Mês"].map((name) => (
             <button
-              className={view === name ? "active" : ""}
+              type="button"
+              role="tab"
+              aria-selected={view === name}
+              className={view === name ? "on" : ""}
               onClick={() => setView(name)}
               key={name}
             >
@@ -524,7 +529,7 @@ export default function AgendaModule() {
           ))}
         </div>
         <div className="vf-date-navigation">
-          <button onClick={() => setCursor(addDays(cursor, view === "Dia" ? -1 : view === "Semana" ? -7 : -30))}>
+          <button type="button" aria-label="Anterior" onClick={() => setCursor(addDays(cursor, view === "Dia" ? -1 : view === "Semana" ? -7 : -30))}>
             <ChevronLeft size={18} />
           </button>
           <label>
@@ -541,14 +546,15 @@ export default function AgendaModule() {
               {cursor.toLocaleDateString("pt-BR", { weekday: "long" })}
             </span>
           </label>
-          <button onClick={() => setCursor(addDays(cursor, view === "Dia" ? 1 : view === "Semana" ? 7 : 30))}>
+          <button type="button" aria-label="Próximo" onClick={() => setCursor(addDays(cursor, view === "Dia" ? 1 : view === "Semana" ? 7 : 30))}>
             <ChevronRight size={18} />
           </button>
           <select
+            aria-label="Veterinário"
             value={professionalFilter}
             onChange={(event) => setProfessionalFilter(event.target.value)}
           >
-            <option>Todos</option>
+            <option value="Todos">Todos os veterinários</option>
             {professionals.map((name) => (
               <option key={name}>{name}</option>
             ))}

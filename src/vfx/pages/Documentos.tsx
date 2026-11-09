@@ -5,6 +5,7 @@ import { normalize, useVetFlow, type Item } from "../../store"
 import { usePageForms } from "../hooks"
 import { addDays, colorFor, fmtDate, GovSign, initials, itemDate, Page, StatusPill, todayISO } from "../ui"
 import { CadastroLista, Duo, Ident, Status } from "../CadastroLista"
+import { FichaCadastro } from "../Ficha"
 
 /*
  * Documentos como um sistema de controle de processos:
@@ -27,7 +28,8 @@ const templates: Record<string, string> = {
 export default function Documentos() {
   const { data, activeUnit, updateItem, user } = useVetFlow()
   const navigate = useNavigate()
-  const forms = usePageForms("documentos", (saved, isNew) => isNew && setAbertoId(saved.id))
+  const forms = usePageForms("documentos", (saved) => setFichaId(saved.id))
+  const [fichaId, setFichaId] = useState("")
   const hoje = todayISO()
   const [caixa, setCaixa] = useState<Caixa>("entrada")
   const [tipo, setTipo] = useState("Todos")
@@ -113,21 +115,49 @@ export default function Documentos() {
       filtros={[{ label: "Tipo", icon: <FolderOpen />, value: tipo, onChange: setTipo, options: [["Todos", "Todos os tipos"], ...tipos.map(([nome, n]) => [nome, `${nome} (${n})`] as [string, string])] }]}
       rows={lista}
       rowKey={(d) => d.id}
-      onRow={(d) => setAbertoId(d.id)}
       noun="processos"
       vazio="Nenhum processo nesta caixa"
       perPageDefault={10}
       exportar={{ nome: "processos", linha: (d) => ({ Processo: numero(d), Documento: d.name, Paciente: d.animal || "", Tutor: d.owner || "", Responsavel: d.professional || "", Prazo: fmtDate(prazoDe(d)), Etapa: ETAPAS[etapaDe(d)], Situacao: atrasado(d) ? "Prazo vencido" : d.status }) }}
-      emMassa={(itens, limpar) => (
-        <>
-          <button type="button" onClick={() => { itens.filter((d) => etapaDe(d) === 2).forEach((d) => updateItem("documentos", d.id, { status: "Arquivado", extra: { ...(d.extra || {}), andamentos: [...(d.extra?.andamentos || []), { em: new Date().toISOString(), por: user?.displayName || "Equipe", texto: "Arquivado em lote", tipo: "arquivo" }] } })); forms.toast("Processos assinados arquivados."); limpar() }}>
-            <Archive /> Arquivar assinados
-          </button>
-          <button type="button" onClick={() => { itens.filter((d) => etapaDe(d) === 1).forEach((d) => updateItem("documentos", d.id, { extra: { ...(d.extra || {}), andamentos: [...(d.extra?.andamentos || []), { em: new Date().toISOString(), por: user?.displayName || "Equipe", texto: "Link de assinatura reenviado ao tutor", tipo: "reenvio" }] } })); forms.toast("Links reenviados aos tutores."); limpar() }}>
-            <Send /> Reenviar links
-          </button>
-        </>
-      )}
+      atual={fichaId}
+      onAtual={setFichaId}
+      ficha={(d) => {
+        const etapa = etapaDe(d)
+        const andar = (patch: Partial<Item>, texto: string, tipo: Andamento["tipo"], extraPatch: Record<string, unknown> = {}) => {
+          updateItem("documentos", d.id, { ...patch, extra: { ...(d.extra || {}), ...extraPatch, andamentos: [...(d.extra?.andamentos || []), { em: new Date().toISOString(), por: user?.displayName || "Equipe", texto, tipo }] } })
+          forms.toast(`${numero(d)}: ${texto.toLowerCase()}`)
+        }
+        return (
+          <FichaCadastro
+            slug="documentos"
+            item={d}
+            icone={<FileText size={28} />}
+            sub={`${numero(d)} · aberto em ${fmtDate(itemDate(d))}`}
+            status={atrasado(d) ? "Prazo vencido" : d.status}
+            statusTom={atrasado(d) ? "red" : etapa === 1 ? "blue" : etapa === 3 ? "gray" : ""}
+            semUso
+            acoes={[
+              { label: "Abrir processo", icon: <FolderOpen />, main: true, onClick: () => setAbertoId(d.id) },
+              ...(etapa === 1 ? [{ label: "Marcar assinado", icon: <CheckCircle2 />, onClick: () => andar({ status: "Assinado" }, "Marcado como assinado", "assinatura", { assinadoEm: new Date().toISOString(), assinadoPor: user?.displayName || "Equipe" }) }, { label: "Reenviar link", icon: <Send />, onClick: () => andar({}, "Link de assinatura reenviado ao tutor", "reenvio", { reenviadoEm: new Date().toISOString() }) }] : []),
+              ...(etapa === 2 ? [{ label: "Arquivar", icon: <Archive />, onClick: () => andar({ status: "Arquivado" }, "Arquivado", "arquivo", { arquivadoEm: new Date().toISOString(), arquivadoPor: user?.displayName || "Equipe" }) }] : []),
+              ...(etapa === 3 ? [{ label: "Desarquivar", icon: <ArchiveRestore />, onClick: () => andar({ status: d.extra?.assinadoEm ? "Assinado" : "Pendente" }, "Desarquivado", "arquivo") }] : []),
+            ]}
+            onEdit={() => forms.open("documentos", d)}
+            abrir={() => setAbertoId(d.id)}
+            onToast={forms.toast}
+            campos={[
+              ["Paciente", d.animal || "sem vínculo"],
+              ["Tutor", d.owner || "—"],
+              ["Responsável", d.professional || "—"],
+              ["Gaveta", gavetaDe(d)],
+              ["Prazo", etapa === 1 ? `${fmtDate(prazoDe(d))}${atrasado(d) ? " · vencido" : ""}` : "concluído"],
+              ["Etapa", ETAPAS[etapa]],
+              ["Como o tutor assina", String(d.extra?.metodo || "Link no WhatsApp + selfie")],
+              ["Guardar por", String(d.extra?.guarda || "5 anos")],
+            ]}
+          />
+        )
+      }}
       colunas={[
         { label: "Processo", w: "minmax(250px,1.4fr)", cell: (d) => <Ident square title={d.name} sub={`${numero(d)} · aberto em ${fmtDate(itemDate(d))}`} icon={<FileText />} color={colorFor(d.name)} /> },
         { label: "Interessados", w: "minmax(180px,1fr)", cell: (d) => (d.animalId ? <Duo title={<><PawPrint size={13} /> {d.animal}</>} sub={d.owner || "tutor não informado"} /> : <span className="pz-warn"><Link2 /> sem vínculo</span>) },

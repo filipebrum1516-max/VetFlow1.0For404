@@ -4,7 +4,7 @@ import { ArrowLeft, BookOpen, CalendarClock, CircleCheck, MessageCircle, Plus, P
 import { normalize, useVetFlow, type Item } from "../../store"
 import { usePageForms } from "../hooks"
 import { addDays, colorFor, daysBetween, fmtDate, initials, itemDate, Page, StatusPill, todayISO, useQueryParam } from "../ui"
-import RowActions, { RowButton } from "../RowActions"
+import { FichaDados, FichaLivre } from "../Ficha"
 import { CadastroLista, Duo, Ident, Status } from "../CadastroLista"
 
 /*
@@ -118,26 +118,48 @@ export default function Vacinas() {
       placeholder="Buscar animal, tutor ou vacina"
       rows={lista}
       rowKey={(r) => r.animal.id}
-      onRow={(r) => setAnimalId(r.animal.id)}
       noun="animais"
       vazio="Nenhum animal nesta aba"
       perPageDefault={10}
-      emMassa={(itens, limpar) => (
-        <button type="button" onClick={() => { lembrar(itens); limpar() }}><MessageCircle /> Lembrar tutores</button>
-      )}
       exportar={{ nome: "vacinas", linha: (r) => ({ Animal: r.animal.name, Tutor: r.animal.owner || "", UltimaAplicada: r.ultima ? `${r.ultima.name} ${fmtDate(itemDate(r.ultima))}` : "", ProximaDose: r.proxima ? `${r.proxima.item.name} ${fmtDate(r.proxima.when)}` : "", Situacao: r.situacao }) }}
+      ficha={(r) => {
+        const tutor = data.tutores.find((t) => t.id === r.animal.ownerId)
+        const aplicadas = r.doses.filter((d) => d.status === "Aplicada").sort((x, y) => itemDate(y).localeCompare(itemDate(x)))
+        const pendentes = r.doses.filter((d) => d.status !== "Aplicada").sort((x, y) => (x.dueDate || itemDate(x)).localeCompare(y.dueDate || itemDate(y)))
+        const linha = (d: Item, quandoIso: string, extra?: string) => (
+          <button key={d.id} type="button" className="cd-li" onClick={() => forms.open("vacinas", d)}>
+            <time>{fmtDate(quandoIso)}</time>
+            <span><b>{d.name.replace(/^Vacina\s+/i, "")}</b>{extra ? ` · ${extra}` : ""}</span>
+            <Syringe />
+          </button>
+        )
+        return (
+          <FichaLivre
+            titulo={r.animal.name}
+            sub={`${r.animal.subtitle?.split(" • ").slice(0, 2).join(" · ") || ""} · ${r.animal.owner || "sem tutor"}`}
+            status={r.situacao === "Atrasadas" ? `${r.atrasadas} atrasada${r.atrasadas > 1 ? "s" : ""}` : r.situacao}
+            tom={r.situacao === "Atrasadas" ? "red" : r.situacao === "A vencer" ? "orange" : ""}
+            avatar={initials(r.animal.name)}
+            cor={colorFor(r.animal.id)}
+            acoes={[
+              { label: "Registrar aplicação", icon: <Syringe />, main: true, onClick: () => forms.open("vacinas", undefined, { animalId: r.animal.id }) },
+              { label: "Abrir carteira", icon: <BookOpen />, onClick: () => setAnimalId(r.animal.id) },
+              ...(r.situacao !== "Em dia" ? [{ label: "Lembrar tutor", icon: <MessageCircle />, onClick: () => lembrar([r]) }] : []),
+            ]}
+            abas={[
+              { label: "Próximas", content: pendentes.length || r.proxima ? <div>{r.proxima && !pendentes.some((d) => d.id === r.proxima!.item.id) && linha(r.proxima.item, r.proxima.when, `reforço ${quando(r.proxima.when)}`)}{pendentes.map((d) => linha(d, d.dueDate || itemDate(d), quando(d.dueDate || itemDate(d))))}</div> : <p className="cd-empty">Nada programado.</p> },
+              { label: `Aplicadas · ${aplicadas.length}`, content: aplicadas.length ? <div>{aplicadas.slice(0, 12).map((d) => linha(d, itemDate(d), d.professional || ""))}</div> : <p className="cd-empty">Nenhuma dose aplicada.</p> },
+              { label: "Dados", content: <FichaDados campos={[["Tutor", r.animal.owner || "—"], ["Telefone", tutor?.phone || ""], ["Última aplicada", r.ultima ? `${r.ultima.name.replace(/^Vacina\s+/i, "")} · ${fmtDate(itemDate(r.ultima))}` : "nenhuma"], ["Próxima dose", r.proxima ? `${fmtDate(r.proxima.when)} · ${quando(r.proxima.when)}` : "—"]]} /> },
+            ]}
+          />
+        )
+      }}
       colunas={[
         { label: "Animal", w: "minmax(240px,1.4fr)", cell: (r) => <Ident title={r.animal.name} sub={`${r.animal.subtitle?.split(" • ").slice(0, 2).join(" · ")} · ${r.animal.owner || "sem tutor"}`} initials={initials(r.animal.name)} color={colorFor(r.animal.id)} /> },
         { label: "Última aplicada", w: "minmax(160px,1fr)", cell: (r) => (r.ultima ? <Duo title={r.ultima.name.replace(/^Vacina\s+/i, "")} sub={fmtDate(itemDate(r.ultima))} /> : <Duo title="—" sub="nenhuma aplicada" />) },
         { label: "Próxima dose", w: "minmax(180px,1fr)", cell: (r) => (r.proxima ? <Duo title={r.proxima.item.name.replace(/^Vacina\s+/i, "")} sub={<span className={r.proxima.when < hoje ? "vf-late-txt" : ""}>{fmtDate(r.proxima.when)} · {quando(r.proxima.when)}</span>} /> : <Duo title="—" sub="nada programado" />) },
         { label: "Situação", w: "150px", cell: (r) => <Status status={r.situacao === "Atrasadas" ? `${r.atrasadas} atrasada${r.atrasadas > 1 ? "s" : ""}` : r.situacao === "A vencer" ? "A vencer" : "Em dia"} toneOverride={r.situacao === "Atrasadas" ? "red" : r.situacao === "A vencer" ? "orange" : "green"} /> },
       ]}
-      acoesW="120px"
-      acoes={(r) => (
-        <RowActions name={r.animal.name} onView={() => setAnimalId(r.animal.id)}>
-          <RowButton title="Registrar aplicação" onClick={() => forms.open("vacinas", undefined, { animalId: r.animal.id })}><Syringe /></RowButton>
-        </RowActions>
-      )}
     >
       {forms.node}
     </CadastroLista>

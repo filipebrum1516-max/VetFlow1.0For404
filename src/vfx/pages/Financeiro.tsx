@@ -3,9 +3,9 @@ import { useNavigate } from "react-router"
 import { ArrowDownLeft, ArrowUpRight, CalendarClock, Check, Plus, Receipt, Wallet } from "lucide-react"
 import { normalize, useVetFlow, type Item } from "../../store"
 import { usePageForms } from "../hooks"
-import RowActions, { RowButton } from "../RowActions"
+import { FichaCadastro } from "../Ficha"
 import { addDays, brl, fmtDate, itemDate, Page, Seg, todayISO } from "../ui"
-import { Duo, Ident, ListaCard, Status } from "../CadastroLista"
+import { Duo, Ident, ListaFicha, Status } from "../CadastroLista"
 
 /*
  * Financeiro: saldo e resultado no topo, gráfico de entradas x saídas, contas que vencem
@@ -163,7 +163,7 @@ export default function Financeiro() {
         </div>
       </section>
 
-      <ListaCard
+      <ListaFicha
         className="fn-lista"
         label="Lançamentos"
         abas={ABAS.map(([key, label, count]) => ({ key, label, count, tone: key === "vencidos" ? ("red" as const) : undefined }))}
@@ -175,19 +175,10 @@ export default function Financeiro() {
         chips={faixa ? [{ label: `Período do gráfico: ${fmtDate(faixa.de)} a ${fmtDate(faixa.ate)}`, onClear: () => setFaixa(null) }] : []}
         rows={lista}
         rowKey={(item) => item.id}
-        onRow={(item) => navigate(`/financeiro/${item.id}`)}
         noun="lançamentos"
         vazio="Nenhum lançamento com esses filtros"
         perPageDefault={10}
         resumo={<>entradas <b className="fn-pos">{brl(sum(lista.filter(isIn)))}</b> · saídas <b className="fn-neg">{brl(sum(lista.filter((i) => !isIn(i))))}</b></>}
-        emMassa={(itens, limpar) => {
-          const abertos = itens.filter((i) => !quitado(i))
-          return abertos.length ? (
-            <button type="button" onClick={() => { abertos.forEach(quitar); limpar() }}>
-              <Check /> Dar baixa em {abertos.length}
-            </button>
-          ) : null
-        }}
         exportar={{ nome: "lancamentos", linha: (item) => ({ Data: fmtDate(itemDate(item)), Descricao: item.name.replace(" • Receita", ""), Paciente: item.animal || "", Tutor: item.owner || "", Tipo: isIn(item) ? "Entrada" : "Saída", Valor: item.amountValue || 0, Situacao: situacao(item)[1] }) }}
         colunas={[
           { label: "Lançamento", w: "minmax(250px,1.6fr)", cell: (item) => <Ident square title={item.name.replace(" • Receita", "")} sub={item.animal ? `${item.animal} · ${item.owner || ""}` : item.subtitle?.split(" • ")[0]} icon={isIn(item) ? <ArrowDownLeft /> : <ArrowUpRight />} color={isIn(item) ? "#1f7a3f" : "#c43b3b"} /> },
@@ -196,12 +187,34 @@ export default function Financeiro() {
           { label: "Valor", w: "130px", align: "right", cell: (item) => <span className={`cl-money ${isIn(item) ? "fn-pos" : "fn-neg"}`}>{isIn(item) ? "+ " : "− "}{brl(item.amountValue || 0)}</span> },
           { label: "Situação", w: "130px", cell: (item) => { const [cls, label] = situacao(item); return <Status status={label} toneOverride={cls === "ok" ? "green" : cls === "late" ? "red" : "orange"} /> } },
         ]}
-        acoesW="170px"
-        acoes={(item) => (
-          <RowActions name={item.name} onView={() => navigate(`/financeiro/${item.id}`)} onEdit={() => forms.open("financeiro", item)} onDelete={() => navigate(`/financeiro/${item.id}?excluir=1`)}>
-            {!quitado(item) && <RowButton title={isIn(item) ? "Marcar como recebido" : "Marcar como pago"} onClick={() => quitar(item)}><Check /></RowButton>}
-          </RowActions>
-        )}
+        ficha={(item) => {
+          const [cls, label] = situacao(item)
+          return (
+            <FichaCadastro
+              slug="financeiro"
+              item={item}
+              titulo={item.name.replace(" • Receita", "")}
+              icone={isIn(item) ? <ArrowDownLeft size={28} /> : <ArrowUpRight size={28} />}
+              sub={`${isIn(item) ? "Entrada" : "Saída"} · ${brl(item.amountValue || 0)} · ${fmtDate(itemDate(item))}`}
+              status={label}
+              statusTom={cls === "ok" ? "" : cls === "late" ? "red" : "orange"}
+              semUso
+              acoes={quitado(item) ? [] : [{ label: isIn(item) ? "Marcar recebido" : "Marcar pago", icon: <Check />, main: true, onClick: () => quitar(item) }]}
+              onEdit={() => forms.open("financeiro", item)}
+              onToast={forms.toast}
+              campos={[
+                ["Valor", brl(item.amountValue || 0)],
+                ["Tipo", isIn(item) ? "Entrada" : "Saída"],
+                ["Vencimento", fmtDate(itemDate(item))],
+                ["Forma", String(item.extra?.forma || "")],
+                ["Paciente", item.animal || ""],
+                ["Tutor", item.owner || ""],
+                ["Categoria", String(item.extra?.categoriaConta || "")],
+                ["Centro de custo", String(item.extra?.centro || "")],
+              ]}
+            />
+          )
+        }}
       />
       {forms.node}
     </Page>

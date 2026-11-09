@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { createPortal } from "react-dom"
 import { useNavigate } from "react-router"
-import { ArrowRight, BookOpen, Check, ChevronLeft, ChevronRight, ClipboardCheck, Clock3, HeartPulse, Lock, PawPrint, Plus, Scissors, ShieldAlert, Syringe, TriangleAlert, Undo2, UserRound, X } from "lucide-react"
+import { ArrowRight, BookOpen, Edit3, ExternalLink, Trash2, Check, ChevronLeft, ChevronRight, ClipboardCheck, Clock3, HeartPulse, Lock, PawPrint, Plus, Scissors, ShieldAlert, Syringe, TriangleAlert, Undo2, UserRound, X } from "lucide-react"
 import { useVetFlow, type Item } from "../../store"
 import { usePageForms } from "../hooks"
-import RowActions from "../RowActions"
+import { FichaLivre } from "../Ficha"
 import { addDays, Confirm, fmtDate, fmtLong, hash, itemDate, matches, Page, Pager, SearchBox, StatusPill, todayISO, usePaged } from "../ui"
 import { alergiasDoAnimal, condicoesDoAnimal, conflitosProtocolo, isAnestesico, isPosOp } from "../clinico"
 
@@ -26,7 +26,7 @@ const ETAPAS = [
 const CONCLUIDA = 4
 const PROCEDIMENTOS = ["Castração", "Ovariohisterectomia", "Orquiectomia", "Limpeza dentária", "Profilaxia dentária", "Retirada de nódulo", "Mastectomia", "Osteossíntese", "Enterotomia", "Cistotomia"]
 const ASA = ["I · saudável", "II · doença leve", "III · grave", "IV · risco de vida", "V · moribundo", "E · emergência"]
-const COLS = "96px 58px minmax(0,1.2fr) minmax(0,1fr) minmax(0,1.1fr) 104px 150px 132px 112px"
+const COLS = "86px minmax(0,1.2fr) minmax(0,1fr) 128px"
 
 const timeOf = (item: Item) => item.time || `${String(8 + (hash(item.id) % 9)).padStart(2, "0")}:00`
 const roomOf = (item: Item) => item.extra?.sala || (hash(item.id) % 2 ? "Sala 2" : "Sala 1")
@@ -428,7 +428,27 @@ export default function Cirurgias() {
   }
 
   const gateItem = gateId ? byId(gateId) : undefined
-  const aberta = abertaId ? byId(abertaId) : undefined
+  const listaAtual = aba === "hoje" ? doDia : paged.visible
+  const aberta = (abertaId && listaAtual.find((c) => c.id === abertaId)) || listaAtual[0]
+  const escolher = (id: string) => {
+    setAbertaId(id)
+    if (window.innerWidth < 1100) window.setTimeout(() => document.querySelector(".sg-grid .cd-side-wrap")?.scrollIntoView({ behavior: "smooth", block: "start" }), 40)
+  }
+  const painel = aberta ? (
+    <PainelCirurgia
+      key={aberta.id}
+      item={aberta}
+      animal={animalDe(aberta)}
+      protocolo={protoDe(aberta.extra?.protocoloId)}
+      protocoloPos={protoDe(aberta.extra?.protocoloPosId)}
+      risco={info(aberta)}
+      onNext={() => setGateId(aberta.id)}
+      onBack={() => setVoltarId(aberta.id)}
+      onEdit={() => forms.open("cirurgias", aberta)}
+      onDelete={() => navigate(`/cirurgias/${aberta.id}?excluir=1`)}
+      go={(path) => navigate(path)}
+    />
+  ) : null
   const voltarItem = voltarId ? byId(voltarId) : undefined
 
   return (
@@ -484,21 +504,25 @@ export default function Cirurgias() {
             </div>
           )}
 
-          <div className="sg-list">
-            {doDia.map((item) => (
-              <CartaoCirurgia
-                key={item.id}
-                item={item}
-                protocolo={protoDe(item.extra?.protocoloId)}
-                risco={info(item)}
-                onOpen={() => setAbertaId(item.id)}
-                onNext={() => setGateId(item.id)}
-                onBack={() => setVoltarId(item.id)}
-                onEdit={() => forms.open("cirurgias", item)}
-                onDelete={() => navigate(`/cirurgias/${item.id}?excluir=1`)}
-              />
-            ))}
-          </div>
+          {doDia.length > 0 && (
+            <div className="cd-grid sg-grid">
+              <div className="sg-list cd-list">
+                {doDia.map((item) => (
+                  <CartaoCirurgia
+                    key={item.id}
+                    item={item}
+                    atual={aberta?.id === item.id}
+                    protocolo={protoDe(item.extra?.protocoloId)}
+                    risco={info(item)}
+                    onOpen={() => escolher(item.id)}
+                    onNext={() => setGateId(item.id)}
+                    onBack={() => setVoltarId(item.id)}
+                  />
+                ))}
+              </div>
+              <div className="cd-side-wrap">{painel}</div>
+            </div>
+          )}
         </>
       ) : (
         <>
@@ -516,26 +540,20 @@ export default function Cirurgias() {
               {protocolosUsados.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </div>
+          <div className="cd-grid sg-grid">
+          <div className="cd-list">
           <div className="vx-table sg-table">
             <div className="vx-tr vx-th" style={{ gridTemplateColumns: COLS }}>
-              <span>Data</span><span>Hora</span><span>Paciente / tutor</span><span>Cirurgia</span><span>Protocolo anestésico</span><span>Risco</span><span>Pré-op · Anest. · Cir.</span><span>Situação</span><span className="r">Ações</span>
+              <span>Data</span><span>Paciente / tutor</span><span>Cirurgia</span><span>Situação</span>
             </div>
             {paged.visible.map((item) => {
               const r = info(item)
-              const p = protoDe(item.extra?.protocoloId)
               return (
-                <div key={item.id} className="vx-tr" style={{ gridTemplateColumns: COLS, cursor: "pointer" }} onClick={() => setAbertaId(item.id)}>
-                  <span className="vx-mono" data-label="Data">{fmtDate(itemDate(item))}</span>
-                  <span className="vx-mono" data-label="Hora">{timeOf(item)}</span>
-                  <span data-label="Paciente"><strong>{item.animal || "—"}</strong><small className="vx-muted" style={{ display: "block" }}>{item.owner || ""}</small></span>
+                <div key={item.id} className={`vx-tr sg-tr ${aberta?.id === item.id ? "cur" : ""}`} aria-current={aberta?.id === item.id ? "true" : undefined} style={{ gridTemplateColumns: COLS, cursor: "pointer" }} onClick={() => escolher(item.id)}>
+                  <span className="vx-mono" data-label="Data">{fmtDate(itemDate(item))}<small className="vx-muted" style={{ display: "block" }}>{timeOf(item)}</small></span>
+                  <span data-label="Paciente"><strong>{item.animal || "—"}</strong>{r.risco && <b className="sg-risk-tag" title={r.motivos.join("\n")}><ShieldAlert /> Risco</b>}<small className="vx-muted" style={{ display: "block" }}>{item.owner || ""}</small></span>
                   <span data-label="Cirurgia">{item.name}<small className="vx-muted" style={{ display: "block" }}>{roomOf(item)} · {item.professional || "—"}</small></span>
-                  <span data-label="Protocolo">{p ? p.name : <em className="sg-muted">não informado</em>}</span>
-                  <span data-label="Risco">{r.risco ? <b className="sg-risk-tag" title={r.motivos.join("\n")}><ShieldAlert /> Risco</b> : <span className="sg-muted">—</span>}</span>
-                  <span className="vx-mono" data-label="Durações">{[0, 1, 2].map((i) => fmtMin(duracao(item, i))).join(" · ")}</span>
                   <span data-label="Situação"><StatusPill status={item.status} /></span>
-                  <span className="r" data-label="Ações" onClick={(e) => e.stopPropagation()}>
-                    <RowActions name={`${item.name} de ${item.animal}`} onView={() => setAbertaId(item.id)} onEdit={() => forms.open("cirurgias", item)} onDelete={() => navigate(`/cirurgias/${item.id}?excluir=1`)} />
-                  </span>
                 </div>
               )
             })}
@@ -546,23 +564,12 @@ export default function Cirurgias() {
               <Pager page={paged.page} pages={paged.pages} onPage={paged.setPage} />
             </div>
           )}
+          </div>
+          <div className="cd-side-wrap">{painel}</div>
+          </div>
         </>
       )}
 
-      {aberta && (
-        <PainelCirurgia
-          item={aberta}
-          animal={animalDe(aberta)}
-          protocolo={protoDe(aberta.extra?.protocoloId)}
-          protocoloPos={protoDe(aberta.extra?.protocoloPosId)}
-          risco={info(aberta)}
-          onClose={() => setAbertaId("")}
-          onNext={() => setGateId(aberta.id)}
-          onBack={() => setVoltarId(aberta.id)}
-          onEdit={() => forms.open("cirurgias", aberta)}
-          go={(path) => { setAbertaId(""); navigate(path) }}
-        />
-      )}
       {gateItem && faseOf(gateItem) < CONCLUIDA && (
         <Passagem
           key={`${gateItem.id}-${faseOf(gateItem)}`}
@@ -589,12 +596,12 @@ export default function Cirurgias() {
 
 /* ---------------- cartão do dia ---------------- */
 type Risco = ReturnType<typeof riscoDe>
-function CartaoCirurgia({ item, protocolo, risco, onOpen, onNext, onBack, onEdit, onDelete }: { item: Item; protocolo?: Item; risco: Risco; onOpen: () => void; onNext: () => void; onBack: () => void; onEdit: () => void; onDelete: () => void }) {
+function CartaoCirurgia({ item, atual, protocolo, risco, onOpen, onNext, onBack }: { item: Item; atual: boolean; protocolo?: Item; risco: Risco; onOpen: () => void; onNext: () => void; onBack: () => void }) {
   const fase = faseOf(item)
   const concluida = fase === CONCLUIDA
   const live = fase >= 0 && fase <= 2
   return (
-    <article className={`sg-card ${live ? "live" : ""} ${risco.risco ? "risk" : ""} ${concluida ? "done" : ""}`}>
+    <article className={`sg-card ${live ? "live" : ""} ${risco.risco ? "risk" : ""} ${concluida ? "done" : ""} ${atual ? "cur" : ""}`} aria-current={atual ? "true" : undefined} onClick={onOpen}>
       <div className="sg-head">
         <div className="sg-time">
           <strong>{timeOf(item)}</strong>
@@ -609,7 +616,6 @@ function CartaoCirurgia({ item, protocolo, risco, onOpen, onNext, onBack, onEdit
           <StatusPill status={item.status} />
           {fase >= 0 && !concluida && fase <= 2 && <span className="sg-clock"><Clock3 /> {ETAPAS[fase].label} há {fmtMin(duracao(item, fase))}</span>}
         </div>
-        <RowActions name={`${item.name} de ${item.animal}`} onView={onOpen} onEdit={onEdit} onDelete={onDelete} />
       </div>
 
       <div className="sg-tags">
@@ -646,7 +652,7 @@ function CartaoCirurgia({ item, protocolo, risco, onOpen, onNext, onBack, onEdit
         <span className="sg-next-hint">
           {concluida ? `Encerrada${item.extra?.destino ? ` · ${item.extra.destino}` : ""}` : `Próximo passo: ${GATES[fase + 1].title.toLowerCase()}`}
         </span>
-        <div className="sg-foot-actions">
+        <div className="sg-foot-actions" onClick={(e) => e.stopPropagation()}>
           {fase >= 0 && <button type="button" className="vx-btn vx-btn-g vx-btn-sm" onClick={onBack} title="Voltar uma etapa"><Undo2 /> Voltar</button>}
           {!concluida && (
             <button type="button" className="vx-btn vx-btn-p" onClick={onNext}>
@@ -879,9 +885,9 @@ function ResumoProtocolo({ protocolo, conflitos }: { protocolo: Item; conflitos:
 }
 
 /* ---------------- painel da cirurgia (abre ao clicar) ---------------- */
-function PainelCirurgia({ item, animal, protocolo, protocoloPos, risco, onClose, onNext, onBack, onEdit, go }: {
+function PainelCirurgia({ item, animal, protocolo, protocoloPos, risco, onNext, onBack, onEdit, onDelete, go }: {
   item: Item; animal?: Item; protocolo?: Item; protocoloPos?: Item; risco: Risco
-  onClose: () => void; onNext: () => void; onBack: () => void; onEdit: () => void; go: (path: string) => void
+  onNext: () => void; onBack: () => void; onEdit: () => void; onDelete: () => void; go: (path: string) => void
 }) {
   const fase = faseOf(item)
   const concluida = fase === CONCLUIDA
@@ -897,25 +903,8 @@ function PainelCirurgia({ item, animal, protocolo, protocoloPos, risco, onClose,
   }
   const linha = [...ETAPAS.map((e) => ({ key: e.key, label: e.label, icon: e.icon })), { key: "fim", label: "Encerramento", icon: Check }]
 
-  return (
-    <Sheet
-      onClose={onClose}
-      title={
-        <>
-          <span className="sg-gate-step">{fmtDate(itemDate(item))} · {timeOf(item)} · {roomOf(item)}</span>
-          <h3>{item.animal} · {item.name}</h3>
-        </>
-      }
-      sub={<>Tutor: {item.owner || "—"} · Cirurgião: {item.professional || "—"} · <StatusPill status={item.status} /></>}
-      foot={
-        <>
-          <button type="button" className="vx-btn vx-btn-g" onClick={onEdit}>Editar agendamento</button>
-          <button type="button" className="vx-btn vx-btn-g" onClick={() => go(`/cirurgias/${item.id}`)}>Ficha completa</button>
-          {fase >= 0 && <button type="button" className="vx-btn vx-btn-g" onClick={onBack}><Undo2 /> Voltar etapa</button>}
-          {!concluida && !cancelada(item) && <button type="button" className="vx-btn vx-btn-p" onClick={onNext}>{GATES[fase + 1].cta} <ArrowRight /></button>}
-        </>
-      }
-    >
+  const riscoSec = (
+    <>
       <section className={`sg-psec ${risco.risco ? "sg-psec-risk" : ""}`}>
         <h4><ShieldAlert /> {risco.risco ? "Por que é uma cirurgia de risco" : "Risco"}</h4>
         {risco.risco ? <ul className="sg-reasons">{risco.motivos.map((m) => <li key={m}>{m}</li>)}</ul> : <p className="sg-muted">Nenhum fator de risco registrado no agendamento nem no cadastro do animal.</p>}
@@ -940,7 +929,9 @@ function PainelCirurgia({ item, animal, protocolo, protocoloPos, risco, onClose,
           <p className="sg-pos">Pós-operatório: <button type="button" className="sg-link" onClick={() => go(`/protocolos?id=${encodeURIComponent(protocoloPos.id)}`)}>{protocoloPos.name}</button></p>
         )}
       </section>
-
+    </>
+  )
+  const etapasSec = (
       <section className="sg-psec">
         <h4><Clock3 /> Etapas e durações</h4>
         <div className="sg-durs">
@@ -975,7 +966,8 @@ function PainelCirurgia({ item, animal, protocolo, protocoloPos, risco, onClose,
           </div>
         )}
       </section>
-
+  )
+  const equipeSec = (
       <section className="sg-psec">
         <h4><UserRound /> Equipe e sala</h4>
         <dl className="sg-dl">
@@ -987,6 +979,29 @@ function PainelCirurgia({ item, animal, protocolo, protocoloPos, risco, onClose,
           <div><dt>Indicação</dt><dd>{ex.indicacao || "—"}</dd></div>
         </dl>
       </section>
-    </Sheet>
+  )
+  return (
+    <div className="sg-side">
+      <FichaLivre
+        titulo={`${item.animal || "Paciente"} · ${item.name}`}
+        sub={`${fmtDate(itemDate(item))} · ${timeOf(item)} · ${roomOf(item)} · ${item.owner || "tutor não informado"}`}
+        status={item.status}
+        tom={cancelada(item) ? "gray" : risco.risco && !concluida ? "red" : concluida ? "" : "orange"}
+        avatar={<PawPrint size={28} />}
+        cor={risco.risco ? "#b4322a" : "#0f766e"}
+        acoes={[
+          ...(!concluida && !cancelada(item) ? [{ label: GATES[fase + 1].cta, icon: <ArrowRight />, main: true, onClick: onNext }] : []),
+          { label: "Editar", icon: <Edit3 />, onClick: onEdit },
+          ...(fase >= 0 ? [{ label: "Voltar etapa", icon: <Undo2 />, onClick: onBack }] : []),
+          { label: "Ficha completa", icon: <ExternalLink />, onClick: () => go(`/cirurgias/${item.id}`) },
+          { label: "Excluir", icon: <Trash2 />, danger: true, onClick: onDelete },
+        ]}
+        abas={[
+          { label: "Etapas", content: etapasSec },
+          { label: "Risco e protocolo", content: riscoSec },
+          { label: "Equipe", content: equipeSec },
+        ]}
+      />
+    </div>
   )
 }

@@ -1,4 +1,7 @@
-import { Fragment, useCallback, useMemo, useState, type ReactNode } from "react"
+import { createContext, Fragment, useCallback, useContext, useMemo, useState, type ReactNode } from "react"
+
+/** Dentro da página o cartão do paciente abre ao lado da lista (não por cima). */
+const InlineDrawer = createContext(false)
 import { AlertTriangle, Check, ChevronLeft, Syringe, Pencil, Plus, Printer, Search, Trash2, X } from "lucide-react"
 import { localISO } from "../../date"
 import { normalize, useVetFlow, type Item } from "../../store"
@@ -100,7 +103,12 @@ export default function Exames() {
 
   const paged = usePaged(groups, 12, [filter, query])
   const allOf = (key: string) => data.exames.filter((e) => patientKey(e) === key && !isCanceled(e))
-  const openExams = openKey ? allOf(openKey) : []
+  const keyAtual = (openKey && groups.some((g) => g.key === openKey) ? openKey : "") || paged.visible[0]?.key || ""
+  const openExams = keyAtual ? allOf(keyAtual) : []
+  const escolher = (key: string) => {
+    setOpenKey(key)
+    if (window.innerWidth < 1100) window.setTimeout(() => document.querySelector(".exm-wrap .cd-side-wrap")?.scrollIntoView({ behavior: "smooth", block: "start" }), 40)
+  }
 
   const ctx = (animalId?: string): LaudoCtx => {
     const u = activeUnit
@@ -142,6 +150,8 @@ export default function Exames() {
         </>
       }
     >
+      <div className="cd-grid exm-wrap">
+      <div className="cd-list">
       <div className="exm-grid">
         {paged.visible.map((g) => {
           const first = g.exams[0]
@@ -150,7 +160,7 @@ export default function Exames() {
           const done = all.filter((e) => phaseOf(e) === 4).length
           const allReady = all.length > 0 && done === all.length
           return (
-            <button key={g.key} type="button" className={`exm-card ${g.urgent ? "urgent" : ""}`} onClick={() => setOpenKey(g.key)} aria-label={`Abrir exames de ${first.animal}`}>
+            <button key={g.key} type="button" className={`exm-card ${g.urgent ? "urgent" : ""} ${keyAtual === g.key ? "cur" : ""}`} aria-current={keyAtual === g.key ? "true" : undefined} onClick={() => escolher(g.key)} aria-label={`Abrir exames de ${first.animal}`}>
               <div className="exm-card-hd">
                 <span className="exm-ava">{(first.animal || "?").charAt(0).toUpperCase()}</span>
                 <span className="exm-who">
@@ -184,9 +194,12 @@ export default function Exames() {
           <Pager page={paged.page} pages={paged.pages} onPage={paged.setPage} label={`Página ${paged.page} de ${paged.pages}`} />
         </div>
       )}
-
-      {openKey && openExams.length > 0 && (
+      </div>
+      <div className="cd-side-wrap">
+      {openExams.length > 0 && (
+        <InlineDrawer.Provider value={true}>
         <PatientDrawer
+          key={keyAtual}
           exams={openExams}
           animal={openExams[0].animalId ? animals.get(openExams[0].animalId) : undefined}
           userName={user?.displayName || "Equipe"}
@@ -195,7 +208,10 @@ export default function Exames() {
           onPrint={print}
           onAdd={(animalId) => setRequest({ animalId })}
         />
+        </InlineDrawer.Provider>
       )}
+      </div>
+      </div>
       {request && (
         <RequestDrawer
           animalId={request.animalId}
@@ -212,6 +228,19 @@ export default function Exames() {
    Drawer genérico
    ===================================================================== */
 function Drawer({ title, sub, onClose, onBack, footer, children, wide }: { title: string; sub?: string; onClose: () => void; onBack?: () => void; footer?: ReactNode; children: ReactNode; wide?: boolean }) {
+  const inline = useContext(InlineDrawer)
+  if (inline)
+    return (
+      <aside className="exd exd-inline" aria-label={title}>
+        <header>
+          {onBack ? <button type="button" onClick={onBack} aria-label="Voltar"><ChevronLeft /></button> : <span />}
+          <div><strong>{title}</strong>{sub && <small>{sub}</small>}</div>
+          <span />
+        </header>
+        <div className="exd-scroll">{children}</div>
+        {footer && <footer>{footer}</footer>}
+      </aside>
+    )
   return (
     <div className="exd-backdrop" onMouseDown={onClose}>
       <aside className={`exd ${wide ? "wide" : ""}`} role="dialog" aria-modal="true" aria-label={title} onMouseDown={(e) => e.stopPropagation()}>
@@ -298,11 +327,15 @@ function PatientDrawer({ exams, animal, userName, onClose, onToast, onPrint, onA
   }
 
   const target = sorted.find((e) => e.id === resultFor)
-  if (target) {
-    return <ResultDrawer exam={target} animal={animal} onBack={() => setResultFor("")} onClose={onClose} onSaved={(msg) => { setResultFor(""); onToast(msg) }} />
-  }
+  const resultado = target ? (
+    <InlineDrawer.Provider value={false}>
+      <ResultDrawer exam={target} animal={animal} onBack={() => setResultFor("")} onClose={() => setResultFor("")} onSaved={(msg) => { setResultFor(""); onToast(msg) }} />
+    </InlineDrawer.Provider>
+  ) : null
 
   return (
+    <>
+    {resultado}
     <Drawer
       title={first.animal || "Paciente"}
       sub={`${sorted.length} exame(s) · ${ready.length} liberado(s)`}
@@ -394,6 +427,7 @@ function PatientDrawer({ exams, animal, userName, onClose, onToast, onPrint, onA
         )
       })}
     </Drawer>
+    </>
   )
 }
 

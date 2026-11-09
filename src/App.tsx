@@ -728,12 +728,10 @@ function Header({ openMobile }: { openMobile: () => void }) {
           <ChevronRight size={13} className="bc-chev" />
           {(() => {
             const PageIcon = (location.pathname === "/" ? LayoutDashboard : moduleIcons[slug as ModuleSlug]) || LayoutDashboard
-            const h = new Date().getHours()
             return (
               <span className="bc-page" key={location.pathname}>
                 <span className="bc-page-ico"><PageIcon size={19} /></span>
                 <span className="bc-page-txt">
-                  <small>{h < 12 ? "Bom dia" : h < 18 ? "Boa tarde" : "Boa noite"}, {(profile.displayName || "").replace(/^(Dr\.?|Dra\.?)\s+/i, "")}</small>
                   <strong>{title}</strong>
                 </span>
               </span>

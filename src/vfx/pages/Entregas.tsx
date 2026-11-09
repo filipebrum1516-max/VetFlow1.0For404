@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import { AlertTriangle, ArrowDown, ArrowUp, Camera, Check, MapPin, MessageCircle, Navigation, PackageCheck, Phone, Printer, Search, Truck, X } from "lucide-react"
+import { AlertTriangle, ArrowDown, ArrowUp, Camera, Check, Edit3, MapPin, MessageCircle, Navigation, Phone, Printer, Truck, X, UserRound } from "lucide-react"
 import { useVetFlow, type Item } from "../../store"
 import { brl, fmtDate, normalizeText, todayISO, Page } from "../ui"
 import { ENTREGADORES, lineTotal, printHtml, saleSlipHtml, saleTone, stamp, type Entrega, type Line } from "../vendasShared"
 import Layer from "../OpLayer"
 import { PrintBar } from "../PrintMenu"
+import { Duo, Ident, ListaFicha, Status } from "../CadastroLista"
+import { FichaDados, FichaLivre } from "../Ficha"
 
 const KPIS: [string, string, string][] = [
   ["Aguardando liberação", "#9a5800", "Aguardando liberação"],
@@ -14,6 +16,8 @@ const KPIS: [string, string, string][] = [
   ["Entregue", "#137a48", "Entregues"],
   ["Não entregue", "#b42318", "Com problema"],
 ]
+const SITUACOES = ["Aguardando liberação", "A separar", "Pronta para sair", "Em rota", "Entregue", "Concluída", "Não entregue", "Reagendada", "Cancelada"]
+const tomEntrega = (s: string) => (/conclu|^entregue/i.test(s) ? "green" : /não entregue/i.test(s) ? "red" : /cancel/i.test(s) ? "gray" : /rota/i.test(s) ? "violet" : /pronta|reagend/i.test(s) ? "blue" : "orange")
 const MOTIVOS = ["Cliente ausente", "Endereço não encontrado", "Cliente recusou", "Produto avariado", "Outro"]
 const Tag = ({ s }: { s: string }) => <span className={`op-tag ${saleTone(s)}`}>{s}</span>
 const addrLine = (e: Entrega) => `${e.rua}, ${e.numero}${e.complemento ? ` · ${e.complemento}` : ""}`
@@ -42,11 +46,9 @@ export default function Entregas() {
   const [periodo, setPeriodo] = useState("Todos")
   const [bairro, setBairro] = useState("Todos")
   const [entregador, setEntregador] = useState("Todos")
-  const [sel, setSel] = useState<Set<string>>(new Set())
-  const [detail, setDetail] = useState<Item | null>(null)
-  const [bulkTo, setBulkTo] = useState(ENTREGADORES[0])
-  const [reag, setReag] = useState<Item | null>(null)
-  const [reagForm, setReagForm] = useState({ data: todayISO(), periodo: "Manhã" })
+  const [fichaId, setFichaId] = useState("")
+  const [edit, setEdit] = useState<Item | null>(null)
+  const [ef, setEf] = useState({ status: "", entregador: "", data: "", periodo: "Manhã", obs: "", recebidoPor: "", forma: "Dinheiro", valor: "", motivo: MOTIVOS[0] })
   const bairros = useMemo(() => ["Todos", ...new Set(deliveries.map((s) => (s.extra.entrega as Entrega).bairro))], [deliveries])
   const counts = useMemo(() => {
     const m = new Map<string, number>()
@@ -58,7 +60,7 @@ export default function Entregas() {
     return deliveries.filter((s) => {
       const e = s.extra.entrega as Entrega
       if (kpi === "pendentes" ? /conclu|cancel|^entregue/i.test(e.status) : kpi !== "todas" && e.status !== kpi) return false
-      if (dia && e.data !== dia) return false
+      if (dia && dia !== "Todas" && e.data !== dia) return false
       if (periodo !== "Todos" && e.periodo !== periodo) return false
       if (bairro !== "Todos" && e.bairro !== bairro) return false
       if (entregador !== "Todos" && (e.entregador || "Sem entregador") !== entregador) return false
@@ -66,27 +68,40 @@ export default function Entregas() {
       return true
     }).sort((a, b) => `${(a.extra.entrega as Entrega).data}${(a.extra.entrega as Entrega).periodo}${a.time}`.localeCompare(`${(b.extra.entrega as Entrega).data}${(b.extra.entrega as Entrega).periodo}${b.time}`))
   }, [deliveries, kpi, q, dia, periodo, bairro, entregador])
-  const toggle = (id: string) => setSel((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n })
-  const selected = rows.filter((r) => sel.has(r.id))
-
-  const separar = (s: Item) => upd(s, { status: "Pronta para sair" }, `Itens separados por ${user}`)
+  const datas = useMemo(() => [...new Set(deliveries.map((s) => (s.extra.entrega as Entrega).data))].sort(), [deliveries])
   const atribuir = (s: Item, who: string) => {
     const e = s.extra.entrega as Entrega
     const ordem = deliveries.filter((d) => (d.extra.entrega as Entrega).entregador === who && /pronta|rota/i.test((d.extra.entrega as Entrega).status)).length + 1
     upd(s, { entregador: who, ordem, status: e.status === "A separar" ? "A separar" : e.status === "Não entregue" || e.status === "Reagendada" ? "Pronta para sair" : e.status }, `Atribuída a ${who}`)
   }
-  const bulkAssign = () => { selected.forEach((s) => atribuir(s, bulkTo)); showToast(`${selected.length} entregas atribuídas a ${bulkTo}.`); setSel(new Set()) }
-  const bulkSeparar = () => { selected.filter((s) => (s.extra.entrega as Entrega).status === "A separar").forEach(separar); showToast("Itens marcados como separados."); setSel(new Set()) }
   const romaneioRota = (list: Item[], who: string) => {
     const ordered = [...list].sort((a, b) => ((a.extra.entrega as Entrega).ordem || 0) - ((b.extra.entrega as Entrega).ordem || 0))
     const body = `<h1>VetFlow · ${activeUnit.name}</h1><div>ROMANEIO DA ROTA · ${who}</div><div>${fmtDate(todayISO())} · ${ordered.length} entregas · a cobrar ${brl(ordered.reduce((a, s) => a + (s.extra.entrega as Entrega).aCobrar, 0))}</div>` +
       ordered.map((s, i) => { const e = s.extra.entrega as Entrega; return `<h2>${i + 1}. ${s.name} · ${e.periodo}</h2><div><b>${s.owner}</b> · ${e.telefone}<br>${addrLine(e)} · ${e.bairro}<br>${e.referencia ? `Ref.: ${e.referencia}<br>` : ""}${((s.extra.itens || []) as Line[]).map((l) => `${l.qtd}× ${l.descricao}`).join("; ")}<br>${e.aCobrar ? `<b>COBRAR ${brl(e.aCobrar)}</b>` : "Pago"}${e.obs ? `<br>Obs.: ${e.obs}` : ""}</div><div class="sig">Recebido por</div>` }).join("")
     printHtml(`Romaneio ${who}`, body)
   }
-  const reagendar = () => {
-    if (!reag) return
-    upd(reag, { data: reagForm.data, periodo: reagForm.periodo, status: "Pronta para sair", motivo: "" }, `Reagendada para ${fmtDate(reagForm.data)} (${reagForm.periodo})`)
-    showToast(`${reag.name} reagendada.`); setReag(null); setDetail(null)
+  /* editar entrega: é aqui (e só aqui) que a situação muda */
+  const abrirEdicao = (s: Item) => {
+    const e = s.extra.entrega as Entrega
+    setEdit(s)
+    setEf({ status: e.status, entregador: e.entregador || "", data: e.data, periodo: e.periodo, obs: e.obs || "", recebidoPor: e.recebidoPor || "", forma: e.cobradoForma || "Dinheiro", valor: e.aCobrar ? String(e.cobradoValor ?? e.aCobrar).replace(".", ",") : "", motivo: e.motivo || MOTIVOS[0] })
+  }
+  const salvarEdicao = () => {
+    if (!edit) return
+    const e = edit.extra.entrega as Entrega
+    const mudou: string[] = []
+    if (ef.status !== e.status) mudou.push(`situação: ${e.status} → ${ef.status}`)
+    if (ef.entregador !== (e.entregador || "")) mudou.push(`entregador: ${ef.entregador || "nenhum"}`)
+    if (ef.data !== e.data || ef.periodo !== e.periodo) mudou.push(`quando: ${fmtDate(ef.data)} (${ef.periodo})`)
+    if (ef.obs !== (e.obs || "")) mudou.push("observações")
+    const entregue = /^entregue|conclu/i.test(ef.status)
+    const patch: Partial<Entrega> = { status: ef.status, entregador: ef.entregador, data: ef.data, periodo: ef.periodo, obs: ef.obs, motivo: ef.status === "Não entregue" ? ef.motivo : "" }
+    if (entregue) Object.assign(patch, { recebidoPor: ef.recebidoPor || "Cliente", ...(e.aCobrar ? { cobradoForma: ef.forma, cobradoValor: Number(ef.valor.replace(",", ".")) || e.aCobrar } : {}) })
+    if (ef.entregador && ef.entregador !== e.entregador) patch.ordem = deliveries.filter((d) => (d.extra.entrega as Entrega).entregador === ef.entregador && /pronta|rota/i.test((d.extra.entrega as Entrega).status)).length + 1
+    const saleStatus = /conclu/i.test(ef.status) ? "Concluída" : ef.status === "Em rota" && /paga/i.test(edit.status) ? "Em entrega" : undefined
+    upd(edit, patch, mudou.length ? `Editada por ${user} · ${mudou.join(" · ")}` : `Editada por ${user}`, saleStatus)
+    showToast(`${edit.name} atualizada.`)
+    setEdit(null)
   }
 
   /* ---------- rotas ---------- */
@@ -190,57 +205,81 @@ export default function Entregas() {
       {view === "exp" && (
         <>
           {kpiRow}
-          <div className="op-card">
-            <div className="op-cb" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-              <div className="op-search" style={{ width: 280 }}><Search /><input className="op-in" placeholder="Nº, cliente, rua ou bairro" value={q} onChange={(e) => setQ(e.target.value)} /></div>
-              <label className="op-flt"><span>Data</span><input className="op-in" type="date" style={{ width: 150 }} value={dia} onChange={(e) => setDia(e.target.value)} /></label>
-              <label className="op-flt"><span>Período</span><select className="op-in" style={{ width: 150 }} value={periodo} onChange={(e) => setPeriodo(e.target.value)}>{["Todos", "Manhã", "Tarde", "Noite"].map((p) => <option key={p} value={p}>{p === "Todos" ? "Todos os períodos" : p}</option>)}</select></label>
-              <label className="op-flt"><span>Bairro</span><select className="op-in" style={{ width: 170 }} value={bairro} onChange={(e) => setBairro(e.target.value)}>{bairros.map((b) => <option key={b} value={b}>{b === "Todos" ? "Todos os bairros" : b}</option>)}</select></label>
-              <label className="op-flt"><span>Entregador</span><select className="op-in" style={{ width: 180 }} value={entregador} onChange={(e) => setEntregador(e.target.value)}>{["Todos", "Sem entregador", ...ENTREGADORES].map((b) => <option key={b} value={b}>{b === "Todos" ? "Todos os entregadores" : b}</option>)}</select></label>
-              <label className="op-flt"><span>Situação</span><select className="op-in" style={{ width: 160 }} value={kpi} onChange={(e) => setKpi(e.target.value)}><option value="pendentes">Pendentes</option><option value="todas">Todas</option>{KPIS.map(([s]) => <option key={s}>{s}</option>)}<option>Concluída</option><option>Cancelada</option></select></label>
-              <span className="grow" />
-              <span className="muted" style={{ fontSize: 12 }}>{rows.length} entregas</span>
-            </div>
-            {selected.length > 0 && (
-              <div className="op-cb" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", background: "var(--or-soft)", borderTop: "1px solid var(--line2)" }}>
-                <b>{selected.length} selecionadas</b>
-                <span className="muted">Atribuir a</span>
-                <select className="op-in" style={{ width: 170, height: 32 }} value={bulkTo} onChange={(e) => setBulkTo(e.target.value)}>{ENTREGADORES.map((w) => <option key={w}>{w}</option>)}</select>
-                <button className="op-btn sm pri" onClick={bulkAssign}>Atribuir</button>
-                <button className="op-btn sm" onClick={bulkSeparar}><PackageCheck /> Marcar separadas</button>
-                <button className="op-btn sm" onClick={() => romaneioRota(selected, "Seleção")}><Printer /> Romaneio</button>
-                <button className="op-link" onClick={() => setSel(new Set())}>Limpar</button>
-              </div>
-            )}
-            <div className="op-table">
-              <div className="op-tr op-th" style={{ gridTemplateColumns: "26px 104px minmax(0,1.1fr) minmax(0,1.5fr) 92px 96px 120px 140px 150px" }}>
-                <input type="checkbox" aria-label="Selecionar todas" checked={rows.length > 0 && rows.every((r) => sel.has(r.id))} onChange={(e) => setSel(e.target.checked ? new Set(rows.map((r) => r.id)) : new Set())} />
-                <span>Nº</span><span>Cliente</span><span>Endereço</span><span>Quando</span><span className="r">A cobrar</span><span>Entregador</span><span>Situação</span><span />
-              </div>
-              {rows.slice(0, 80).map((s) => {
-                const e = s.extra.entrega as Entrega
-                return (
-                  <div key={s.id} className={`op-tr click ${sel.has(s.id) ? "sel" : ""}`} style={{ gridTemplateColumns: "26px 104px minmax(0,1.1fr) minmax(0,1.5fr) 92px 96px 120px 140px 150px" }} onClick={() => setDetail(s)}>
-                    <input type="checkbox" checked={sel.has(s.id)} onClick={(ev) => ev.stopPropagation()} onChange={() => toggle(s.id)} aria-label={`Selecionar ${s.name}`} />
-                    <b className="mono">{s.name}</b>
-                    <span><span className="op-hl-name">{s.owner}</span><small>{e.telefone}</small></span>
-                    <span><span className="op-hl-addr">{addrLine(e)}</span><small><b>{e.bairro}</b>{e.referencia ? ` · ${e.referencia}` : ""}</small></span>
-                    <span className="num">{fmtDate(e.data, { day: "2-digit", month: "2-digit" })}<small>{e.periodo}</small></span>
-                    <span className="r">{e.aCobrar ? <b className="num" style={{ color: "var(--amber)" }}>{brl(e.aCobrar)}</b> : <span className="muted">pago</span>}</span>
-                    <span>{e.entregador || <span className="muted">—</span>}</span>
-                    <span><Tag s={e.status} /></span>
-                    <span onClick={(ev) => ev.stopPropagation()} style={{ textAlign: "right" }}>
-                      {e.status === "A separar" && <button className="op-btn sm" onClick={() => separar(s)}><PackageCheck /> Separado</button>}
-                      {(e.status === "Em rota" || (e.status === "Pronta para sair" && e.entregador)) && <button className="op-btn sm ok" onClick={() => openConfirm(s)}><Check /> Confirmar entrega</button>}
-                      {(e.status === "Pronta para sair" || e.status === "Não entregue") && !e.entregador && <select className="op-in" style={{ height: 30 }} value="" onChange={(ev) => ev.target.value && atribuir(s, ev.target.value)}><option value="">Atribuir…</option>{ENTREGADORES.map((w) => <option key={w}>{w}</option>)}</select>}
-                      {e.status === "Não entregue" && e.entregador && <button className="op-btn sm" onClick={() => { setReag(s); setReagForm({ data: todayISO(), periodo: e.periodo }) }}>Reagendar</button>}
-                    </span>
-                  </div>
-                )
-              })}
-              {!rows.length && <div className="op-empty">Nenhuma entrega com esses filtros.</div>}
-            </div>
-          </div>
+          <ListaFicha
+            className="et-lista"
+            label="Entregas"
+            abas={[
+              { key: "pendentes", label: "Pendentes", count: deliveries.filter((s) => !/conclu|cancel|^entregue/i.test((s.extra.entrega as Entrega).status)).length },
+              ...KPIS.map(([st]) => ({ key: st, label: st, count: counts.get(st) || 0, tone: st === "Não entregue" ? ("red" as const) : undefined })),
+              { key: "todas", label: "Todas", count: deliveries.length },
+            ]}
+            aba={kpi}
+            onAba={(k) => setKpi(k || "pendentes")}
+            query={q}
+            onQuery={setQ}
+            placeholder="Nº, cliente, rua ou bairro"
+            filtros={[
+              { label: "Data", value: dia || "Todas", onChange: setDia, options: [["Todas", "Todas as datas"], ...datas.map((d) => [d, d === todayISO() ? `Hoje · ${fmtDate(d)}` : fmtDate(d)] as [string, string])] },
+              { label: "Período", value: periodo, onChange: setPeriodo, options: [["Todos", "Todos os períodos"], "Manhã", "Tarde", "Noite"] },
+              { label: "Bairro", value: bairro, onChange: setBairro, options: bairros.map((b) => (b === "Todos" ? ["Todos", "Todos os bairros"] : b) as string | [string, string]) },
+              { label: "Entregador", icon: <UserRound />, value: entregador, onChange: setEntregador, options: [["Todos", "Todos os entregadores"], "Sem entregador", ...ENTREGADORES] },
+            ]}
+            rows={rows}
+            rowKey={(s) => s.id}
+            noun="entregas"
+            vazio="Nenhuma entrega com esses filtros"
+            perPageDefault={10}
+            exportar={{ nome: "entregas", linha: (s) => { const e = s.extra.entrega as Entrega; return { Venda: s.name, Cliente: s.owner || "", Telefone: e.telefone, Endereco: addrLine(e), Bairro: e.bairro, Data: fmtDate(e.data), Periodo: e.periodo, ACobrar: e.aCobrar, Entregador: e.entregador || "", Situacao: e.status } } }}
+            colunas={[
+              { label: "Entrega", w: "minmax(220px,1.3fr)", cell: (s) => { const e = s.extra.entrega as Entrega; return <Ident square title={s.owner || "Cliente"} sub={`${s.name} · ${e.telefone}`} icon={<Truck />} color="#3d5fd6" /> } },
+              { label: "Endereço", w: "minmax(200px,1.3fr)", cell: (s) => { const e = s.extra.entrega as Entrega; return <Duo title={addrLine(e)} sub={`${e.bairro}${e.referencia ? ` · ${e.referencia}` : ""}`} /> } },
+              { label: "Quando", w: "100px", cell: (s) => { const e = s.extra.entrega as Entrega; return <Duo title={fmtDate(e.data, { day: "2-digit", month: "2-digit" })} sub={e.periodo} /> } },
+              { label: "A cobrar", w: "110px", align: "right", cell: (s) => { const e = s.extra.entrega as Entrega; return e.aCobrar ? <b className="cl-money" style={{ color: "var(--lv-brand-ink)" }}>{brl(e.aCobrar)}</b> : <span className="vx-muted">pago</span> } },
+              { label: "Entregador", w: "minmax(120px,.8fr)", cell: (s) => <Duo title={(s.extra.entrega as Entrega).entregador || "—"} /> },
+              { label: "Situação", w: "170px", cell: (s) => { const st = (s.extra.entrega as Entrega).status; return <Status status={st} toneOverride={tomEntrega(st)} /> } },
+            ]}
+            atual={fichaId}
+            onAtual={setFichaId}
+            ficha={(s) => {
+              const e = s.extra.entrega as Entrega
+              return (
+                <FichaLivre
+                  titulo={s.owner || "Cliente"}
+                  sub={`${s.name} · ${fmtDate(e.data)} · ${e.periodo}`}
+                  status={e.status}
+                  tom={tomEntrega(e.status) === "violet" ? "blue" : tomEntrega(e.status) === "green" ? "" : tomEntrega(e.status)}
+                  avatar={<Truck size={28} />}
+                  cor="#3d5fd6"
+                  acoes={[
+                    { label: "Editar", icon: <Edit3 />, main: true, onClick: () => abrirEdicao(s) },
+                    { label: "Romaneio", icon: <Printer />, onClick: () => printHtml(s.name, saleSlipHtml(s, activeUnit.name, "romaneio")) },
+                    { label: "WhatsApp", icon: <MessageCircle />, onClick: () => window.open(waUrl(e, `Olá! Aqui é da ${activeUnit.name}. Sobre seu pedido ${s.name}.`), "_blank", "noopener") },
+                    { label: "Mapa", icon: <MapPin />, onClick: () => window.open(mapsUrl(e), "_blank", "noopener") },
+                  ]}
+                  abas={[
+                    { label: "Entrega", content: (
+                      <FichaDados campos={[
+                        ["Endereço", `${addrLine(e)} · ${e.bairro} · ${e.cidade}/${e.uf}`, true],
+                        ["Referência", e.referencia || ""],
+                        ["CEP", e.cep || ""],
+                        ["Telefone", e.telefone],
+                        ["Quando", `${fmtDate(e.data)} · ${e.periodo}`],
+                        ["Entregador", e.entregador || "Sem entregador"],
+                        ["Taxa", brl(e.taxa)],
+                        ["Pagamento", e.aCobrar ? `Cobrar ${brl(e.aCobrar)} na entrega` : /aguardando/i.test(e.status) ? "Aguardando o caixa" : "Pago no caixa"],
+                        ["Motivo", e.motivo || ""],
+                        ["Recebido por", e.recebidoPor ? `${e.recebidoPor}${e.cobradoValor ? ` · ${e.cobradoForma} ${brl(e.cobradoValor)}` : ""}${e.foto ? " · com foto" : ""}${e.assinatura ? " · assinado" : ""}` : ""],
+                        ["Observações", e.obs || "", true],
+                      ]} />
+                    ) },
+                    { label: "Itens", content: <div>{((s.extra.itens || []) as Line[]).map((l, i) => <div key={i} className="cd-li static et-item"><time>{l.qtd}×</time><span><b>{l.descricao}</b> · {brl(lineTotal(l))}</span></div>)}</div> },
+                    { label: "Imprimir", content: <div className="et-print"><PrintBar sale={s} unitName={activeUnit.name} tutor={data.tutores.find((t) => t.id === s.ownerId)} only={["Romaneio", "Conferência", "Comprovante", "Recibo", "Duplicata"]} /></div> },
+                    { label: "Histórico", content: <div>{[...(e.historico || [])].reverse().map((h, i) => <div key={i} className="cd-li static et-hist"><span>{h}</span></div>)}{!(e.historico || []).length && <p className="cd-empty">Sem registros ainda.</p>}</div> },
+                  ]}
+                />
+              )
+            }}
+          />
         </>
       )}
 
@@ -312,63 +351,32 @@ export default function Entregas() {
         </div>
       )}
 
-      {/* detalhe */}
-      {detail && (() => { const s = deliveries.find((d) => d.id === detail.id) || detail; const e = s.extra.entrega as Entrega; return (
-        <Layer className="op-drawer-layer" onMouseDown={() => setDetail(null)}>
-          <aside className="op-drawer" onMouseDown={(ev) => ev.stopPropagation()}>
-            <div className="op-ch"><h2 style={{ fontSize: 14, textTransform: "none", letterSpacing: 0 }}><span className="op-num">{s.name}</span> <Tag s={e.status} /></h2><button className="op-x" onClick={() => setDetail(null)} aria-label="Fechar"><X /></button></div>
-            <div className="body">
-              <div className="op-hl">
-                <span className="op-hl-label">Entregar para</span>
-                <strong>{s.owner}</strong>
-                <span className="op-hl-addr2"><MapPin size={16} /> {addrLine(e)} · {e.bairro}</span>
-                <span className="muted">{e.cidade}/{e.uf}{e.cep ? ` · CEP ${e.cep}` : ""}{e.referencia ? ` · ${e.referencia}` : ""}</span>
-                <span className="op-hl-phone"><Phone size={14} /> {e.telefone} · {fmtDate(e.data)} · {e.periodo}{e.aCobrar ? <b style={{ color: "var(--amber)" }}> · cobrar {brl(e.aCobrar)}</b> : null}</span>
-              </div>
-              <dl className="op-dl">
-                <dt>Cliente</dt><dd>{s.owner}</dd>
-                <dt>Telefone</dt><dd><a href={`tel:${e.telefone.replace(/\D/g, "")}`}>{e.telefone}</a> · <a href={waUrl(e, `Olá! Sobre seu pedido ${s.name}.`)} target="_blank" rel="noreferrer">WhatsApp</a></dd>
-                <dt>Endereço</dt><dd>{addrLine(e)}<br />{e.bairro} · {e.cidade}/{e.uf} · CEP {e.cep || "—"}<br /><a href={mapsUrl(e)} target="_blank" rel="noreferrer">Abrir no mapa</a></dd>
-                {e.referencia && <><dt>Referência</dt><dd>{e.referencia}</dd></>}
-                <dt>Quando</dt><dd>{fmtDate(e.data)} · {e.periodo}</dd>
-                <dt>Taxa</dt><dd>{brl(e.taxa)}</dd>
-                <dt>Pagamento</dt><dd>{e.aCobrar ? <b style={{ color: "var(--amber)" }}>Cobrar {brl(e.aCobrar)} na entrega</b> : /aguardando/i.test(e.status) ? "Aguardando o caixa" : "Pago no caixa"}</dd>
-                {e.obs && <><dt>Observações</dt><dd>{e.obs}</dd></>}
-                {e.motivo && <><dt>Motivo</dt><dd>{e.motivo}</dd></>}
-                {e.recebidoPor && <><dt>Recebido por</dt><dd>{e.recebidoPor}{e.foto ? " · com foto" : ""}{e.assinatura ? " · assinado" : ""}</dd></>}
-              </dl>
-              <div className="op-sec">Imprimir</div>
-              <PrintBar sale={s} unitName={activeUnit.name} tutor={data.tutores.find((t) => t.id === s.ownerId)} only={["Romaneio", "Conferência", "Comprovante", "Recibo", "Duplicata"]} />
-              <div className="op-sec">Entregador</div>
-              <select className="op-in" value={e.entregador} onChange={(ev) => atribuir(s, ev.target.value)} disabled={/conclu|entregue|cancel/i.test(e.status) && e.status !== "Não entregue"}><option value="">Sem entregador</option>{ENTREGADORES.map((w) => <option key={w}>{w}</option>)}</select>
-              <div className="op-sec">Itens</div>
-              <div className="op-card">{((s.extra.itens || []) as Line[]).map((l, i) => <div key={i} className="op-tr" style={{ gridTemplateColumns: "40px minmax(0,1fr) 90px" }}><span className="num muted">{l.qtd}×</span><span>{l.descricao}</span><b className="r num">{brl(lineTotal(l))}</b></div>)}</div>
-              <div className="op-sec">Histórico</div>
-              <ul className="op-timeline">{(e.historico || []).map((h, i) => <li key={i}>{h}</li>)}</ul>
-            </div>
-            <div className="foot">
-              <button className="op-btn" onClick={() => printHtml(s.name, saleSlipHtml(s, activeUnit.name, "romaneio"))}><Printer /> Romaneio</button>
-              {e.status === "A separar" && <button className="op-btn" onClick={() => separar(s)}><PackageCheck /> Itens separados</button>}
-              {!/conclu|cancel|aguardando/i.test(e.status) && <button className="op-btn" onClick={() => { setReag(s); setReagForm({ data: e.data, periodo: e.periodo }) }}>Reagendar</button>}
-              {(e.status === "Em rota" || e.status === "Pronta para sair") && <button className="op-btn ok" onClick={() => openConfirm(s)}><Check /> Confirmar entrega</button>}
-            </div>
-          </aside>
-        </Layer>
-      ) })()}
-
-      {reag && (
-        <Layer className="op-modal-layer" onMouseDown={() => setReag(null)}>
-          <div className="op-modal" onMouseDown={(e) => e.stopPropagation()}>
-            <div className="op-ch"><h2>Reagendar {reag.name}</h2></div>
+      {edit && (() => { const e = edit.extra.entrega as Entrega; const entregue = /^entregue|conclu/i.test(ef.status); return (
+        <Layer className="op-modal-layer" onMouseDown={() => setEdit(null)}>
+          <div className="op-modal et-edit" role="dialog" aria-modal="true" aria-label={`Editar entrega ${edit.name}`} onMouseDown={(ev) => ev.stopPropagation()}>
+            <div className="op-ch"><h2>Editar entrega · {edit.name}</h2><button className="op-x" onClick={() => setEdit(null)} aria-label="Fechar"><X /></button></div>
             <div className="op-cb">
-              <label className="op-f"><span>Nova data</span><input className="op-in" type="date" value={reagForm.data} onChange={(e) => setReagForm({ ...reagForm, data: e.target.value })} /></label>
-              <div className="op-f"><span>Período</span><div className="op-tabs">{["Manhã", "Tarde", "Noite"].map((p) => <button key={p} className={reagForm.periodo === p ? "on" : ""} onClick={() => setReagForm({ ...reagForm, periodo: p })}>{p}</button>)}</div></div>
-              <a className="op-link" href={waUrl(reag.extra.entrega as Entrega, `Olá! Sua entrega ${reag.name} foi reagendada para ${fmtDate(reagForm.data)} (${reagForm.periodo}).`)} target="_blank" rel="noreferrer">Avisar o cliente pelo WhatsApp</a>
+              <label className="op-f"><span>Situação</span><select className="op-in" value={ef.status} onChange={(ev) => setEf({ ...ef, status: ev.target.value })}>{[...new Set([e.status, ...SITUACOES])].map((x) => <option key={x}>{x}</option>)}</select></label>
+              <label className="op-f"><span>Entregador</span><select className="op-in" value={ef.entregador} onChange={(ev) => setEf({ ...ef, entregador: ev.target.value })}><option value="">Sem entregador</option>{ENTREGADORES.map((w) => <option key={w}>{w}</option>)}</select></label>
+              <div className="et-two">
+                <label className="op-f"><span>Data</span><input className="op-in" type="date" value={ef.data} onChange={(ev) => setEf({ ...ef, data: ev.target.value })} /></label>
+                <label className="op-f"><span>Período</span><select className="op-in" value={ef.periodo} onChange={(ev) => setEf({ ...ef, periodo: ev.target.value })}>{["Manhã", "Tarde", "Noite"].map((x) => <option key={x}>{x}</option>)}</select></label>
+              </div>
+              {entregue && <label className="op-f"><span>Recebido por</span><input className="op-in" value={ef.recebidoPor} onChange={(ev) => setEf({ ...ef, recebidoPor: ev.target.value })} placeholder="Nome de quem recebeu" /></label>}
+              {entregue && e.aCobrar > 0 && (
+                <div className="et-two">
+                  <label className="op-f"><span>Forma de pagamento</span><select className="op-in" value={ef.forma} onChange={(ev) => setEf({ ...ef, forma: ev.target.value })}>{["Dinheiro", "Pix", "Cartão"].map((x) => <option key={x}>{x}</option>)}</select></label>
+                  <label className="op-f"><span>Valor recebido</span><input className="op-in r" inputMode="decimal" value={ef.valor} onChange={(ev) => setEf({ ...ef, valor: ev.target.value })} /></label>
+                </div>
+              )}
+              {ef.status === "Não entregue" && <label className="op-f"><span>Motivo</span><select className="op-in" value={ef.motivo} onChange={(ev) => setEf({ ...ef, motivo: ev.target.value })}>{MOTIVOS.map((m) => <option key={m}>{m}</option>)}</select></label>}
+              <label className="op-f"><span>Observações</span><textarea className="op-in" rows={2} value={ef.obs} onChange={(ev) => setEf({ ...ef, obs: ev.target.value })} /></label>
+              {ef.status !== e.status && <p className="muted" style={{ margin: 0, fontSize: 12.5 }}>A troca de situação fica registrada no histórico com o seu nome.</p>}
             </div>
-            <div className="foot"><button className="op-btn" onClick={() => setReag(null)}>Cancelar</button><button className="op-btn pri" onClick={reagendar}>Reagendar</button></div>
+            <div className="foot"><button className="op-btn" onClick={() => setEdit(null)}>Cancelar</button><button className="op-btn pri" onClick={salvarEdicao}><Check /> Salvar</button></div>
           </div>
         </Layer>
-      )}
+      ) })()}
       {confirm && (() => { const e = confirm.extra.entrega as Entrega; return (
         <Layer className="op-modal-layer">
           <div className="op-modal">

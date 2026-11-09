@@ -912,7 +912,7 @@ function AnimalDrawer({
   presetTutor?: string
   item?: Item
 }) {
-  const [tutorQuery, setTutorQuery] = useState("")
+  const store = useVetFlow()
   const [selectedTutor, setSelectedTutor] = useState<TutorOption | null>(
     () =>
       tutors.find((t) => t.id === (item?.ownerId || presetTutor)) ||
@@ -928,18 +928,6 @@ function AnimalDrawer({
         ? "Canino"
         : item?.species || "",
   )
-  const digitCount = tutorQuery.replace(/\D/g, "").length
-  const letterCount = tutorQuery.replace(/[^A-Za-zÀ-ÿ]/g, "").length
-  const qualifies = digitCount >= 3 || letterCount >= 2
-  const tutorResults = useMemo(() => {
-    if (!qualifies) return []
-    const term = normalize(tutorQuery)
-    const digits = tutorQuery.replace(/\D/g, "")
-    return tutors
-      .filter((tutor) => normalize(tutor.name).includes(term) || (digits && tutor.cpf.replace(/\D/g, "").includes(digits)) || (digits && tutor.rg.replace(/\D/g, "").includes(digits)))
-      .slice(0, 6)
-  }, [qualifies, tutorQuery, tutors])
-
   const submit = (form: HTMLFormElement) => {
     const values = Object.fromEntries(new FormData(form)) as Record<string, string>
     const next: Record<string, string> = {}
@@ -1005,34 +993,19 @@ function AnimalDrawer({
       <>
         <CadSec n={1} title="Tutor responsável" desc="Quem cuida do animal">
           <div className="vx-c6" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {selectedTutor ? (
-              <div className="vx-row" style={{ gap: 10, padding: 12, borderRadius: 12, background: "var(--vx-soft)", justifyContent: "space-between" }}>
-                <span>
-                  <b>{selectedTutor.name}</b>
-                  <span className="vx-hint" style={{ display: "block" }}>CPF {selectedTutor.cpf} · RG {selectedTutor.rg}</span>
-                </span>
-                <button type="button" className="vx-btn vx-btn-g vx-btn-sm" onClick={() => { setSelectedTutor(null); setTutorQuery("") }}>Trocar</button>
-              </div>
-            ) : (
-              <>
-                <Campo label="Buscar tutor" req span={6} error={errors.tutor} hint="Digite pelo menos 3 números do CPF/RG ou 2 letras do nome.">
-                  <input className={cadInput(errors.tutor)} value={tutorQuery} placeholder="Nome, CPF ou RG" onChange={(e) => { setTutorQuery(e.target.value); setErrors((c) => ({ ...c, tutor: "" })) }} />
-                </Campo>
-                {qualifies && (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                    {tutorResults.length ? (
-                      tutorResults.map((tutor) => (
-                        <button key={tutor.id} type="button" className="vx-chip" style={{ justifyContent: "flex-start", minHeight: 44, padding: "0 12px" }} onClick={() => { setSelectedTutor(tutor); setTutorQuery("") }}>
-                          <b>{tutor.name}</b> <span className="vx-hint">· CPF {tutor.cpf}</span>
-                        </button>
-                      ))
-                    ) : (
-                      <p className="vx-hint" style={{ margin: 0 }}>Nenhum tutor encontrado. Cadastre o tutor primeiro, na tela Tutores.</p>
-                    )}
-                  </div>
-                )}
-              </>
-            )}
+            <span className="vx-lbl">Tutor <i style={{ color: "var(--vx-red, #c43b3b)", fontStyle: "normal" }}>*</i></span>
+            <TutorBusca
+              tutores={store.data.tutores}
+              animais={store.data.animais}
+              value={selectedTutor?.id || ""}
+              placeholder="Buscar tutor por nome, telefone, CPF ou pet"
+              onChange={(id) => {
+                const t = store.data.tutores.find((c) => c.id === id)
+                setSelectedTutor(id ? tutors.find((c) => c.id === id) || (t ? { id: t.id, name: t.name, cpf: String(t.extra?.cpf || t.cpf || ""), rg: String(t.extra?.rg || ""), phone: t.phone || "" } : null) : null)
+                setErrors((c) => ({ ...c, tutor: "" }))
+              }}
+            />
+            {errors.tutor && <span className="vx-err" style={{ color: "var(--vx-red, #c43b3b)", fontSize: 12.5 }}>{errors.tutor}</span>}
           </div>
         </CadSec>
 

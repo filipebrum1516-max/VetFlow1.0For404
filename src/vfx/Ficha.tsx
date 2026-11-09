@@ -12,7 +12,7 @@ import { display } from "./Detail"
 import { formFor, statusOptions } from "./forms"
 import { colorFor, fmtDate, initials, itemDate } from "./ui"
 
-export type FichaAcao = { label: string; icon?: ReactNode; onClick: () => void; main?: boolean }
+export type FichaAcao = { label: string; icon?: ReactNode; onClick: () => void; main?: boolean; danger?: boolean; disabled?: boolean }
 type Campo = [string, ReactNode]
 
 const nomeModulo = (slug: string) => modules.find(([k]) => k === slug)?.[1] || slug
@@ -62,6 +62,13 @@ export function FichaCadastro({
   onToast,
   abrir,
   semExcluir,
+  semUso,
+  onExcluir,
+  excluirLabel,
+  titulo,
+  status,
+  statusTom,
+  icone,
 }: {
   slug: ModuleSlug
   item: Item
@@ -76,12 +83,22 @@ export function FichaCadastro({
   /** Troca o destino de "Ficha completa". */
   abrir?: () => void
   semExcluir?: boolean
+  /** Registros (atendimentos, lançamentos…): sem a aba Uso. */
+  semUso?: boolean
+  /** Troca a janela de excluir por outra ação (ex.: cancelar prontuário com motivo). */
+  onExcluir?: () => void
+  excluirLabel?: string
+  titulo?: ReactNode
+  status?: string
+  statusTom?: string
+  icone?: ReactNode
 }) {
   const { data, audit, updateItem, user } = useVetFlow()
   const navigate = useNavigate()
   const [aba, setAba] = useState("Dados")
   const [excluir, setExcluir] = useState(false)
-  const usos = useUsos(slug, item)
+  const usosTodos = useUsos(slug, item)
+  const usos = semUso ? [] : usosTodos
   const nUsos = usos.reduce((n, u) => n + u.items.length, 0)
   const nivel = accessLevel(user?.role, slug, user?.perms)
   const podeEditar = nivel === "Editar" || nivel === "Total"
@@ -113,30 +130,32 @@ export function FichaCadastro({
         .reverse(),
     [audit, slug, item.name],
   )
-  const inativo = INATIVO.test(item.status)
-  const tom = tomDe(item.status)
+  const inativo = !onExcluir && INATIVO.test(item.status)
+  const statusTxt = status ?? item.status
+  const tom = statusTom ?? tomDe(statusTxt)
 
-  const abas = ["Dados", ...abasExtras.map((a) => a.label), `Uso${nUsos ? ` · ${nUsos}` : ""}`, "Alterações"]
+  const abas = ["Dados", ...abasExtras.map((a) => a.label), ...(semUso ? [] : [`Uso${nUsos ? ` · ${nUsos}` : ""}`]), "Alterações"]
   const atual = abas.find((a) => a === aba || (aba.startsWith("Uso") && a.startsWith("Uso"))) || "Dados"
 
   return (
     <aside className="cd-side" aria-label={`Ficha de ${item.name}`}>
       <section className="cd-pane">
         <div className="cd-hero">
-          {foto ? <img className="cd-big" src={foto} alt="" /> : <i className="cd-big" style={{ background: colorFor(item.id) }}>{initials(item.name)}</i>}
+          {foto ? <img className="cd-big" src={foto} alt="" /> : <i className="cd-big" style={{ background: colorFor(item.id) }}>{icone || initials(item.name)}</i>}
           <div className="cd-hero-t">
-            <strong>{item.name}</strong>
+            <strong>{titulo ?? item.name}</strong>
             <span>{sub ?? item.subtitle}</span>
-            <span className={`lv-pill ${tom}`}><i />{item.status || "—"}</span>
+            <span className={`lv-pill ${tom}`}><i />{statusTxt || "—"}</span>
           </div>
         </div>
         <div className="cd-acts">
           {acoes.map((a) => (
-            <button key={a.label} type="button" className={a.main ? "main" : ""} onClick={a.onClick}>{a.icon}{a.label}</button>
+            <button key={a.label} type="button" className={a.main ? "main" : a.danger ? "danger" : ""} disabled={a.disabled} onClick={a.onClick}>{a.icon}{a.label}</button>
           ))}
           {onEdit && podeEditar && <button type="button" className={acoes.some((a) => a.main) ? "" : "main"} onClick={onEdit}><Edit3 />Editar</button>}
           <button type="button" onClick={() => (abrir ? abrir() : navigate(`/${slug}/${item.id}`))}><ExternalLink />Ficha completa</button>
-          {podeEditar && !semExcluir && (inativo ? (
+          {podeEditar && !semExcluir && onExcluir && <button type="button" className="danger" onClick={onExcluir}><Trash2 />{excluirLabel || "Excluir"}</button>}
+          {podeEditar && !semExcluir && !onExcluir && (inativo ? (
             <button type="button" onClick={() => { updateItem(slug, item.id, { status: statusAtivo(slug) }); onToast?.(`${item.name} reativado.`) }}><Power />Reativar</button>
           ) : (
             <button type="button" className="danger" onClick={() => setExcluir(true)}><Trash2 />{nUsos ? "Desativar" : "Excluir"}</button>
@@ -189,6 +208,62 @@ export function FichaCadastro({
       </section>
       {excluir && <ExcluirDialog slug={slug} item={item} usos={nUsos} onClose={() => setExcluir(false)} onDone={(msg) => { setExcluir(false); onToast?.(msg) }} />}
     </aside>
+  )
+}
+
+/** Mesma ficha, para o que não é um cadastro do store (entregas, carteira de vacinas…). */
+export function FichaLivre({ titulo, sub, status, tom = "", avatar, cor, foto, acoes = [], abas }: {
+  titulo: ReactNode
+  sub?: ReactNode
+  status?: ReactNode
+  tom?: string
+  avatar?: ReactNode
+  cor?: string
+  foto?: string
+  acoes?: FichaAcao[]
+  abas: { label: string; content: ReactNode }[]
+}) {
+  const [aba, setAba] = useState(abas[0]?.label || "")
+  const atual = abas.find((a) => a.label === aba) || abas[0]
+  return (
+    <aside className="cd-side">
+      <section className="cd-pane">
+        <div className="cd-hero">
+          {foto ? <img className="cd-big" src={foto} alt="" /> : <i className="cd-big" style={{ background: cor || "#5f626c" }}>{avatar}</i>}
+          <div className="cd-hero-t">
+            <strong>{titulo}</strong>
+            {sub && <span>{sub}</span>}
+            {status && <span className={`lv-pill ${tom}`}><i />{status}</span>}
+          </div>
+        </div>
+        {acoes.length > 0 && (
+          <div className="cd-acts">
+            {acoes.map((a) => (
+              <button key={a.label} type="button" className={a.main ? "main" : a.danger ? "danger" : ""} disabled={a.disabled} onClick={a.onClick}>{a.icon}{a.label}</button>
+            ))}
+          </div>
+        )}
+        {abas.length > 1 && (
+          <nav className="lv-tabs cd-tabs" role="tablist" aria-label="Seções da ficha">
+            {abas.map((a) => (
+              <button key={a.label} type="button" role="tab" aria-selected={atual?.label === a.label} className={`lv-tab ${atual?.label === a.label ? "on" : ""}`} onClick={() => setAba(a.label)}>{a.label}</button>
+            ))}
+          </nav>
+        )}
+        {atual && <div className="cd-extra">{atual.content}</div>}
+      </section>
+    </aside>
+  )
+}
+/** Lista de pares rótulo/valor no padrão da ficha. */
+export function FichaDados({ campos }: { campos: [string, ReactNode, boolean?][] }) {
+  const lista = campos.filter(([, v]) => v !== undefined && v !== null && v !== "")
+  return (
+    <div className="cd-dl">
+      {lista.map(([k, v, full]) => (
+        <div key={k} className={full ? "full" : ""}><small>{k}</small><b className={full ? "wrap" : ""}>{v}</b></div>
+      ))}
+    </div>
   )
 }
 

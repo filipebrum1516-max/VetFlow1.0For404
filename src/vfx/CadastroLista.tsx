@@ -176,7 +176,9 @@ export function ListaCard<T>({
   const pages = Math.max(1, Math.ceil(rows.length / perPage))
   const atual = Math.min(page, pages)
   const visiveis = rows.slice((atual - 1) * perPage, atual * perPage)
-  const selecionavel = !!emMassa || !!exportar
+  // sem caixas de seleção: tocar na linha abre a ficha; exportar leva a lista filtrada inteira
+  const selecionavel = false
+  void emMassa
   // colunas encolhem até 75% antes de a linha virar cartão (nada de rolagem para o lado)
   const flex = (w: string) => /^\d+px$/.test(w) ? `minmax(${Math.round(parseInt(w) * 0.75)}px, ${w})` : w.replace(/minmax\((\d+)px/, (_, n) => `minmax(${Math.round(Number(n) * 0.75)}px`)
   const cols = `${selecionavel ? "24px " : ""}${colunas.map((c) => flex(c.w)).join(" ")}${acoes ? ` ${acoesW}` : ""}`
@@ -253,8 +255,13 @@ export function ListaCard<T>({
             <ChevronDown />
           </label>
         ))}
-        {toolbarExtra && <span className="lv-spacer" />}
+        {(toolbarExtra || exportar) && <span className="lv-spacer" />}
         {toolbarExtra}
+        {exportar && rows.length > 0 && (
+          <button type="button" className="lv-export" onClick={() => baixarCsv(exportar.nome, rows.map(exportar.linha))} title="Baixar a lista filtrada em planilha">
+            <Download /> Exportar
+          </button>
+        )}
       </div>
       {ativos.length > 0 && (
         <div className="lv-chips">
@@ -393,28 +400,7 @@ export function CadastroLista<T>({
     novo = undefined
     lista = { ...lista, acoes: undefined, emMassa: undefined }
   }
-  const [atualInterno, setAtualInterno] = useState("")
-  const atualKey = atualControlado ?? atualInterno
-  const setAtualKey = (k: string) => { setAtualInterno(k); onAtual?.(k) }
-  const asideRef = useRef<HTMLDivElement>(null)
-  const atual = ficha ? lista.rows.find((r) => lista.rowKey(r) === atualKey) || lista.rows[0] : undefined
-  const escolher = (row: T) => {
-    setAtualKey(lista.rowKey(row))
-    if (typeof window !== "undefined" && window.innerWidth < 1100) window.setTimeout(() => asideRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 40)
-  }
-  // com a ficha aberta a lista fica com 3 colunas: quem é, o dado principal e a situação
-  const visiveisF = lista.colunas.filter((c) => c.ficha !== false)
-  const colsFicha = (visiveisF.length > 3 ? [visiveisF[0], visiveisF[1], visiveisF[visiveisF.length - 1]] : visiveisF).map((c, i) => (i === 0 ? { ...c, w: "minmax(200px,1.6fr)" } : { ...c, w: "minmax(96px,.8fr)" }))
-  const corpo = ficha ? (
-    <div className="cd-grid">
-      <ListaCard {...lista} acoes={undefined} colunas={colsFicha} onRow={escolher} ativo={atual ? lista.rowKey(atual) : undefined} className={`cd-list ${lista.className || ""}`} />
-      <div ref={asideRef} className="cd-side-wrap">
-        {atual ? ficha(atual) : <aside className="cd-side"><section className="cd-pane"><p className="cd-empty">Nada para mostrar com estes filtros.</p></section></aside>}
-      </div>
-    </div>
-  ) : (
-    <ListaCard {...lista} />
-  )
+  const corpo = <ListaFicha {...lista} ficha={ficha} atual={atualControlado} onAtual={onAtual} />
   return (
     <div className="animals-page cl-page">
       <header className="cl-head">
@@ -440,6 +426,33 @@ export function CadastroLista<T>({
       {corpo}
       {children}
     </div>
+  )
+}
+
+
+/* ---------- lista + ficha ao lado (tocar na linha abre o cadastro à direita) ---------- */
+export function ListaFicha<T>({ ficha, atual: atualControlado, onAtual, ...lista }: ListaProps<T> & { ficha?: (row: T) => ReactNode; atual?: string; onAtual?: (key: string) => void }) {
+  const [atualInterno, setAtualInterno] = useState("")
+  const atualKey = atualControlado ?? atualInterno
+  const setAtualKey = (k: string) => { setAtualInterno(k); onAtual?.(k) }
+  const asideRef = useRef<HTMLDivElement>(null)
+  const atual = ficha ? lista.rows.find((r) => lista.rowKey(r) === atualKey) || lista.rows[0] : undefined
+  const escolher = (row: T) => {
+    setAtualKey(lista.rowKey(row))
+    if (typeof window !== "undefined" && window.innerWidth < 1100) window.setTimeout(() => asideRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 40)
+  }
+  // com a ficha aberta a lista fica com 3 colunas: quem é, o dado principal e a situação
+  const visiveisF = lista.colunas.filter((c) => c.ficha !== false)
+  const colsFicha = (visiveisF.length > 3 ? [visiveisF[0], visiveisF[1], visiveisF[visiveisF.length - 1]] : visiveisF).map((c, i) => (i === 0 ? { ...c, w: "minmax(200px,1.6fr)" } : { ...c, w: "minmax(96px,.8fr)" }))
+  return ficha ? (
+    <div className="cd-grid">
+      <ListaCard {...lista} acoes={undefined} colunas={colsFicha} onRow={escolher} ativo={atual ? lista.rowKey(atual) : undefined} className={`cd-list ${lista.className || ""}`} />
+      <div ref={asideRef} className="cd-side-wrap">
+        {atual ? ficha(atual) : <aside className="cd-side"><section className="cd-pane"><p className="cd-empty">Nada para mostrar com estes filtros.</p></section></aside>}
+      </div>
+    </div>
+  ) : (
+    <ListaCard {...lista} />
   )
 }
 

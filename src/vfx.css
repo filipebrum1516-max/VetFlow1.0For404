@@ -2602,3 +2602,91 @@ textarea.vx-in { height: auto; min-height: 84px; padding: 10px 12px; line-height
   .cl-metrics article, .animals-glass-metrics > *, .tutor-metrics > * { container-type: inline-size; }
   .cl-metrics strong, .animals-glass-metrics strong, .tutor-metrics strong { font-size: clamp(14px, 9.5cqw, 28px) !important; white-space: nowrap !important; }
 }
+
+/* =====================================================================
+   v6 · ficha ao lado em todas as listas
+   ===================================================================== */
+.lv-export{height:40px;padding:0 14px;display:inline-flex;align-items:center;gap:7px;border-radius:999px;border:1px solid var(--lv-line);background:var(--lv-card);color:var(--lv-ink);font:600 13px inherit;font-family:inherit;cursor:pointer;flex:none}
+.lv-export:hover{border-color:var(--lv-brand)}
+.lv-export svg{width:15px;height:15px}
+.cd-list .lv-tools{flex-wrap:wrap}
+.cd-list .lv-tools .animals-select{min-width:0;flex:1 1 150px}
+.cd-list .lv-tools .lv-search{flex:2 1 220px}
+/* entregas */
+.et-lista{margin-top:14px}
+.et-item{grid-template-columns:44px minmax(0,1fr)!important}
+.et-hist{grid-template-columns:minmax(0,1fr)!important;font-size:12.5px}
+.et-print{padding:14px 20px}
+.et-print .op-printbar{display:flex;flex-wrap:wrap;gap:8px}
+.et-edit{width:520px;max-width:calc(100vw - 32px)}
+.et-edit .op-cb{display:flex;flex-direction:column;gap:12px}
+.et-two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media (max-width:520px){.et-two{grid-template-columns:1fr}}
+/* cirurgias: lista + painel escuro do centro cirúrgico */
+.sg-grid{margin-top:4px}
+.sg-grid > .cd-list{flex:999 1 520px;min-width:0}
+.sg-card{cursor:pointer;transition:box-shadow .15s,border-color .15s}
+.sg-card.cur{border-color:var(--sg-accent)!important;box-shadow:0 0 0 1px var(--sg-accent),0 14px 34px -18px rgba(52,211,153,.6)}
+.sg-table .sg-tr.cur{background:var(--sg-accent-soft)!important;box-shadow:inset 3px 0 0 var(--sg-accent)}
+.sg-table .sg-risk-tag{margin-left:6px}
+.sg-side .cd-extra{padding:12px 14px 16px;display:flex;flex-direction:column;gap:10px}
+.sg-side .sg-psec{width:100%;box-sizing:border-box}
+.sg-or .sg-side,.sg-or .cd-side-wrap{--lv-card:#0c1613;--lv-line:rgba(52,211,153,.16);--lv-ink:#e6f4ee;--lv-muted:#9fbcb0;--lv-soft:#0b1512;--lv-brand:#34d399;--lv-brand-ink:#6ee7b7;--lv-cta:#10b981;--lv-cta-ink:#022c1f;--lv-green:#6ee7b7;--lv-red:#ff8a8a;--lv-blue:#9fb4ff}
+.sg-or .sg-side .cd-pane{box-shadow:0 18px 50px -20px rgba(0,0,0,.8)}
+.sg-or .sg-side .cd-hero{background:linear-gradient(120deg,rgba(16,185,129,.14),rgba(16,185,129,.03))}
+@media (min-width:1101px){.sg-grid .cd-side-wrap{max-width:480px;flex-basis:420px}}
+.sg-grid .sg-card .sg-steps{grid-template-columns:repeat(auto-fit,minmax(130px,1fr))}
+/* agenda no padrão dos botões do sistema */
+.vf-agenda-page .ag-head{max-width:none;margin:0 0 18px}
+.vf-agenda-page .ag-head .cl-crumb{font-size:13px;color:var(--lv-muted)}
+.vf-agenda-page .ag-head .cl-crumb b{color:var(--lv-brand-ink)}
+.vf-agenda-page .ag-head h1{font-size:34px;font-weight:700;color:var(--lv-ink)}
+.vf-agenda-page .ag-head .cl-sub{margin:4px 0 0;font-size:14px;color:var(--lv-muted)}
+.app-main .vf-agenda-page .new-animal-button{height:46px;padding:0 18px;border:0;border-radius:14px!important;color:var(--lv-cta-ink)!important;background:var(--lv-cta)!important;box-shadow:0 9px 20px rgba(191,85,8,.25)!important;font:600 14px Inter,sans-serif;display:inline-flex;align-items:center;gap:8px;cursor:pointer}
+.app-main .vf-agenda-page .ag-toolbar{padding:12px 14px;border-radius:20px!important;background:var(--lv-card)!important;border:1px solid var(--lv-line)!important;box-shadow:0 16px 45px rgba(36,31,26,.06)!important;gap:12px;flex-wrap:wrap}
+.vf-agenda-page .ag-toolbar .cl-modo{box-shadow:none;background:var(--lv-soft);border-color:var(--lv-line)}
+.vf-agenda-page .ag-toolbar .cl-modo button{min-width:76px}
+.vf-agenda-page .ag-toolbar .cl-modo button.on{background:var(--lv-cta);color:var(--lv-cta-ink)}
+.app-main .vf-agenda-page .vf-date-navigation{gap:8px;flex-wrap:wrap}
+.app-main .vf-agenda-page .vf-date-navigation > button{width:40px!important;height:40px!important;border-radius:999px!important;border:1px solid var(--lv-line)!important;background:var(--lv-card)!important;color:var(--lv-ink)!important;box-shadow:none!important}
+.app-main .vf-agenda-page .vf-date-navigation > button:hover{border-color:var(--lv-brand)!important}
+.app-main .vf-agenda-page .vf-date-navigation label{height:40px!important;border-radius:999px!important;border:1px solid var(--lv-line)!important;background:var(--lv-soft)!important;color:var(--lv-ink)!important;font-size:13px!important;font-weight:600!important;box-shadow:none!important}
+.app-main .vf-agenda-page .vf-date-navigation > select{height:40px!important;padding:0 14px!important;border-radius:999px!important;border:1px solid var(--lv-line)!important;background:var(--lv-card)!important;color:var(--lv-ink)!important;font-size:13px!important;font-weight:600!important;box-shadow:none!important}
+@media (max-width:620px){.app-main .vf-agenda-page .new-animal-button{width:100%;justify-content:center}.vf-agenda-page .ag-head .cl-head-actions{width:100%}}
+/* exames: cartão do paciente ao lado */
+.exm-wrap > .cd-list{flex:999 1 560px}
+.exm-wrap .exm-grid{grid-template-columns:repeat(auto-fill,minmax(270px,1fr))}
+.exm-card.cur{border-color:#e94f17!important;box-shadow:0 0 0 2px rgba(233,79,23,.35),0 14px 30px -16px rgba(233,79,23,.5)!important}
+.exd.exd-inline{width:100%;height:auto;max-height:calc(100vh - 110px);border-radius:24px;border:1px solid var(--lv-line);box-shadow:0 16px 45px rgba(36,31,26,.08);animation:none;overflow:hidden;background:var(--lv-card);color:var(--lv-ink)}
+@media (max-width:1100px){.exd.exd-inline{max-height:none}}
+.exd.exd-inline > header{min-height:60px;background:linear-gradient(120deg,rgba(244,124,32,.09),rgba(0,169,157,.06))}
+.exd.exd-inline > footer{flex-wrap:wrap}
+[data-theme="dark"] .exd.exd-inline > header,[data-theme="dark"] .exd.exd-inline > footer{border-color:var(--lv-line)}
+
+/* =====================================================================
+   v7 · UMA cor para todos os botões do sistema
+   Botão principal, botão de ação da ficha, alternâncias (Lista/Mapa, Dia/Semana,
+   filtros em pílula) e página atual: todos no mesmo laranja.
+   Botões secundários continuam neutros e excluir continua vermelho.
+   ===================================================================== */
+:root,[data-theme="dark"]{--vf-btn:#e94f17;--vf-btn-h:#d4440f;--vf-btn-ink:#fff;--vf-btn-shadow:0 10px 22px -12px rgba(233,79,23,.75);--lv-cta:#e94f17;--lv-cta-ink:#fff}
+html body .vx-btn-p,html body .new-animal-button,html body .lv-cta,html body .tf-primary,html body .pr-btn-primary,
+html body .button-primary,html body .exd-btn.primary,html body .op-btn.pri,html body button.pri,html body .esc-go.pri,
+html body .cq-next,html body .cd-acts button.main,html body .vf-save,html body .vf-new-appointment,html body .tf-save,
+html body .animal-save,html body .save-tutor-edit,html body .sg-or .vx-btn-p,html body .sg-layer .vx-btn-p,html body .cl-sheet .vx-btn-p,
+html body .op-btn.ok{
+  background:var(--vf-btn)!important;background-image:none!important;color:var(--vf-btn-ink)!important;border-color:var(--vf-btn)!important;box-shadow:var(--vf-btn-shadow)!important}
+html body .vx-btn-p:hover,html body .new-animal-button:hover,html body .lv-cta:hover,html body .tf-primary:hover,html body .pr-btn-primary:hover,
+html body .button-primary:hover,html body .exd-btn.primary:hover,html body .op-btn.pri:hover,html body button.pri:hover,html body .cq-next:hover,
+html body .cd-acts button.main:hover,html body .vf-save:hover,html body .tf-save:hover,html body .animal-save:hover,html body .save-tutor-edit:hover,html body .op-btn.ok:hover{background:var(--vf-btn-h)!important}
+html body .vx-btn-p svg,html body .new-animal-button svg,html body .cd-acts button.main svg,html body .cq-next svg{color:currentColor!important}
+/* alternâncias e filtros: a opção escolhida fica no mesmo laranja */
+html body .cl-modo button.on,html body .vx-seg button.on,html body .pc-tabs button.on,html body .op-tabs button.on,html body .tl-filters button.on,
+html body .vx-pill.on,html body .period-tabs button.active,html body .vf-view-tabs button.active,html body .animals-pagination button.active,
+html body .sg-or .vx-seg button.on,html body .sg-or .pc-tabs button.on{
+  background:var(--vf-btn)!important;background-image:none!important;color:var(--vf-btn-ink)!important;border-color:var(--vf-btn)!important;box-shadow:0 6px 14px -6px rgba(233,79,23,.6)!important}
+html body .pc-tabs button.on b,html body .tl-filters button.on b,html body .op-tabs button.on b,html body .vx-seg button.on b{background:rgba(255,255,255,.25)!important;color:#fff!important}
+/* barra de cima: só o nome da tela */
+.bc-page-txt strong{font-size:19px!important;color:var(--lv-ink)!important}
+html body .up-seg button.on0,html body .up-seg button.on1,html body .up-seg button.on2,html body .up-seg button.on3{background:var(--vf-btn)!important;color:var(--vf-btn-ink)!important;box-shadow:0 4px 10px -4px rgba(233,79,23,.6)!important}
+html body .tl-day.today{background:var(--vf-btn)!important;color:#fff!important;border-color:var(--vf-btn)!important}html body .tl-day.today small,html body .tl-day.today i{color:rgba(255,255,255,.85)!important}

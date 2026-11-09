@@ -4,6 +4,7 @@ import { useNavigate } from "react-router"
 import { Edit3, Plus, Printer, Send } from "lucide-react"
 import { useVetFlow, type Item } from "../../store"
 import { usePageForms } from "../hooks"
+import { esc, printRaw } from "../printDoc"
 import { fmtDate, itemDate, matches, Page, Pager, SearchBox, Seg, StatusPill, usePaged, GovSign } from "../ui"
 
 const paper: Record<string, string> = { Simples: "#fffdf8", "Controle especial": "#fff6d6", Manipulação: "#eaf0fb" }
@@ -38,6 +39,20 @@ export default function Prescricoes() {
     if (!selected) return
     updateItem("prescricoes", selected.id, { extra: { ...(selected.extra || {}), assinadoPor: user?.displayName || selected.professional, assinadoEm: new Date().toISOString() } })
     forms.toast("Receita marcada como assinada (registro interno).")
+  }
+  /* imprime só a folha da receita (sem menu, botões nem cabeçalho/rodapé do navegador) */
+  const imprimir = () => {
+    const folha = document.getElementById("vf-rx-paper")
+    if (!folha || !selected) return
+    printRaw(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Receita ${esc(selected.animal || "")}</title><style>
+      *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+      @page{size:A4;margin:0}
+      html,body{margin:0;background:#fff}
+      body{font-family:Inter,Arial,Helvetica,sans-serif;color:#1a2233}
+      .paper{width:210mm;height:297mm;padding:18mm 18mm 16mm;display:flex;flex-direction:column;background:#fff!important;box-shadow:none!important;border:0!important;border-radius:0!important;overflow:hidden;page-break-after:avoid;break-inside:avoid}
+      .vx-row{display:flex;align-items:center}
+      b{font-weight:700}
+    </style></head><body>${folha.outerHTML}</body></html>`)
   }
   const renew = () => {
     if (!selected) return
@@ -84,7 +99,7 @@ export default function Prescricoes() {
 
         {selected ? (
           <div className="vx-pad">
-            <div className="paper vx-typed">
+            <div className="paper vx-typed" id="vf-rx-paper">
               <div className="vx-row" style={{ justifyContent: "space-between", padding: "14px 0 12px", borderBottom: "2px solid #1a2233", gap: 12 }}>
                 <div>
                   <div style={{ fontSize: 18, fontWeight: 700 }}>Clínica VetFlow</div>
@@ -137,7 +152,7 @@ export default function Prescricoes() {
               <Edit3 /> Editar receita
             </button>
             <button className="vx-btn vx-btn-g" onClick={renew}>Renovar</button>
-            <button className="vx-btn vx-btn-g" onClick={() => window.print()}>
+            <button className="vx-btn vx-btn-g" onClick={imprimir}>
               <Printer /> Imprimir
             </button>
             {!selected.extra?.assinadoPor && <button className="vx-btn vx-btn-g" onClick={markSigned}>Marcar como assinada</button>}

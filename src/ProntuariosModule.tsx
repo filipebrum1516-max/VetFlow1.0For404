@@ -1,4 +1,4 @@
-import RowActions, { RowButton } from "./vfx/RowActions"
+import { FichaCadastro } from "./vfx/Ficha"
 import { CadastroLista, Duo, Ident } from "./vfx/CadastroLista"
 import {
   useEffect,
@@ -500,6 +500,7 @@ export default function ProntuariosModule() {
   const [drawer, setDrawer] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
   const [detailId, setDetailId] = useState<string | null>(null)
+  const [fichaId, setFichaId] = useState("")
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [printOnOpen, setPrintOnOpen] = useState(false)
   const [toast, setToast] = useState("")
@@ -594,6 +595,7 @@ export default function ProntuariosModule() {
     setExtrasMap(loadExtras())
     setDrawer(false)
     setEditId(null)
+    setFichaId(item.id)
     if (!edited) {
       setView("list")
       setPage(1)
@@ -684,7 +686,6 @@ export default function ProntuariosModule() {
           filtros={[{ label: "Veterinário", icon: <UserRound />, value: vet, onChange: setVet, options: ["Todos os veterinários", ...veterinarians] }]}
           rows={filtered}
           rowKey={(item) => item.id}
-          onRow={(item) => openDetail(item.id)}
           noun="prontuários"
           vazio="Nenhum prontuário encontrado"
           exportar={{ nome: "prontuarios", linha: (item) => ({ Codigo: codeOf(item.id, extrasMap[item.id]), Paciente: recordAnimalName(item), Tutor: item.owner || "", Veterinario: item.professional || "", Diagnostico: item.diagnosis || extrasMap[item.id]?.suspicion || "", Data: formatDate(item.date), Situacao: item.status }) }}
@@ -696,13 +697,44 @@ export default function ProntuariosModule() {
             { label: "Data", w: "110px", cell: (item) => <Duo title={formatDate(item.date)} sub={item.time || ""} /> },
             { label: "Situação", w: "150px", cell: (item) => <span onClick={(event) => event.stopPropagation()}><StatusMenu status={item.status} onChange={(value) => changeStatus(item.id, value)} /></span> },
           ]}
-          acoesW="170px"
-          acoes={(item) => {
-            const name = recordAnimalName(item)
+          atual={fichaId}
+          onAtual={setFichaId}
+          ficha={(item) => {
+            const extra = extrasMap[item.id]
+            const tutor = data.tutores.find((c) => c.id === item.ownerId)
+            const cancelado = /cancel/i.test(item.status)
             return (
-              <RowActions name={`prontuário de ${name}`} onView={() => openDetail(item.id)} onEdit={() => openEdit(item.id)} onDelete={() => setDeleteId(item.id)} deleteLabel="Cancelar">
-                <RowButton title="Imprimir" onClick={() => openDetail(item.id, true)}><Printer /></RowButton>
-              </RowActions>
+              <FichaCadastro
+                slug="prontuarios"
+                item={item}
+                titulo={recordAnimalName(item)}
+                icone={<PawPrint size={28} />}
+                sub={`cód. ${codeOf(item.id, extra)} · ${formatDate(item.date)}${item.time ? ` às ${item.time}` : ""}`}
+                semUso
+                acoes={[
+                  { label: "Abrir prontuário", icon: <Eye />, main: true, onClick: () => openDetail(item.id) },
+                  { label: "Imprimir", icon: <Printer />, onClick: () => openDetail(item.id, true) },
+                ]}
+                onEdit={cancelado ? undefined : () => openEdit(item.id)}
+                abrir={() => openDetail(item.id)}
+                onExcluir={cancelado ? undefined : () => setDeleteId(item.id)}
+                semExcluir={cancelado}
+                excluirLabel="Cancelar prontuário"
+                onToast={showToast}
+                campos={[
+                  ["Tutor", item.owner || "Não informado"],
+                  ["Telefone", tutor?.phone || ""],
+                  ["Veterinário", item.professional || "Não informado"],
+                  ["Tipo", item.category || extra?.recordType || "Consulta clínica"],
+                  ["Queixa", extra?.complaint || ""],
+                  ["Suspeita ou diagnóstico", item.diagnosis || extra?.suspicion || (extra ? "" : diseaseOf(item.id))],
+                  ["Tratamento", item.treatment || ""],
+                  ["Medicações", extra?.medications?.filter((m) => m.name).map((m) => m.name).join(", ") || ""],
+                  ["Retorno", extra?.returnDate ? formatDate(extra.returnDate) : ""],
+                  ["Anexos", extra?.files ? String(Object.values(extra.files).reduce((n, l) => n + (l?.length || 0), 0) || "") : ""],
+                  ...(cancelado && item.extra?.motivoCancelamento ? ([["Motivo do cancelamento", String(item.extra.motivoCancelamento)]] as [string, string][]) : []),
+                ]}
+              />
             )
           }}
         />
