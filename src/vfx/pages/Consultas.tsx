@@ -1,10 +1,12 @@
 import { useMemo, useState, type DragEvent } from "react"
 import { useNavigate } from "react-router"
-import { ArrowRight, Check, ChevronLeft, ChevronRight, CircleCheck, Clock3, Plus, Siren, Stethoscope, TriangleAlert, Undo2, UserRound, Volume2 } from "lucide-react"
+import { ArrowRight, Activity, CalendarDays, Check, ChevronLeft, ChevronRight, CircleCheck, Clock3, Plus, Siren, Stethoscope, TriangleAlert, Undo2, UserRound, Volume2 } from "lucide-react"
 import { useVetFlow, type Item } from "../../store"
 import { usePageForms } from "../hooks"
 import RowActions from "../RowActions"
-import { addDays, Confirm, fmtDate, fmtLong, itemDate, matches, Modal, Page, Pager, SearchBox, StatusPill, todayISO, usePaged } from "../ui"
+import { addDays, Confirm, fmtDate, fmtLong, itemDate, matches, Modal, noPeriodo, Page, PERIODOS, SearchBox, StatusPill, todayISO } from "../ui"
+import { Duo, Ident, initialsOf, ListaFicha, Status } from "../CadastroLista"
+import { FichaCadastro } from "../Ficha"
 
 /*
  * Consultas do dia em 4 colunas de vidro. A consulta nasce em "Chegou" já com a senha
@@ -21,7 +23,6 @@ const ULTIMA = ETAPAS.length - 1
 const etapaIdx = (item: Item) => ETAPAS.findIndex((e) => e.statuses.includes(item.status))
 const ausente = (item: Item) => /falt|cancel/i.test(item.status)
 const prioridade = (item: Item) => (item.urgency || item.extra?.prioridade === "Urgente" ? "Urgente" : item.extra?.prioridade === "Preferencial" ? "Preferencial" : "Normal")
-const COLS_HIST = "110px 70px minmax(0,1.3fr) minmax(0,1.1fr) minmax(0,1fr) 170px 128px"
 
 export default function Consultas() {
   const { data, deleteItem, updateItem } = useVetFlow()
@@ -33,6 +34,9 @@ export default function Consultas() {
   const [confirmDelete, setConfirmDelete] = useState<Item | null>(null)
   const [callItem, setCallItem] = useState<Item | null>(null)
   const [dragOver, setDragOver] = useState(-1)
+  const [periodo, setPeriodo] = useState("todos")
+  const [sitHist, setSitHist] = useState("Todas")
+  const [histId, setHistId] = useState("")
 
   /* Senha: ordem de cadastro no dia (A = normal, P = preferencial, U = urgente). Não muda com a busca. */
   const senhas = useMemo(() => {
@@ -66,10 +70,13 @@ export default function Consultas() {
   })
 
   const historico = useMemo(
-    () => data.consultas.filter((item) => matches(item, query)).sort((a, b) => `${itemDate(b)}${b.time}`.localeCompare(`${itemDate(a)}${a.time}`)),
-    [data.consultas, query],
+    () =>
+      data.consultas
+        .filter((item) => matches(item, query) && noPeriodo(itemDate(item), periodo))
+        .filter((item) => sitHist === "Todas" || (sitHist === "Finalizadas" ? /conclu/i.test(item.status) : sitHist === "Faltas e cancelamentos" ? ausente(item) : !/conclu/i.test(item.status) && !ausente(item)))
+        .sort((a, b) => `${itemDate(b)}${b.time}`.localeCompare(`${itemDate(a)}${a.time}`)),
+    [data.consultas, query, periodo, sitHist],
   )
-  const paged = usePaged(historico, 15, [query, aba])
 
   const mover = (item: Item, destino: number) => {
     const etapa = ETAPAS[Math.max(0, Math.min(ULTIMA, destino))]
@@ -165,7 +172,7 @@ export default function Consultas() {
       title="Consultas"
       actions={
         <>
-          <SearchBox value={query} onChange={setQuery} placeholder="Buscar" />
+          {aba === "dia" && <SearchBox value={query} onChange={setQuery} placeholder="Buscar" />}
           <button className="vx-btn vx-btn-p" onClick={() => forms.open("consultas", undefined, { date: day, status: "Chegou" })}>
             <Plus /> Nova consulta
           </button>
@@ -247,32 +254,55 @@ export default function Consultas() {
           )}
         </>
       ) : (
-        <>
-          <div className="vx-table">
-            <div className="vx-tr vx-th" style={{ gridTemplateColumns: COLS_HIST }}>
-              <span>Data</span><span>Hora</span><span>Paciente</span><span>Tipo</span><span>Veterinário</span><span>Situação</span><span className="r">Ações</span>
-            </div>
-            {paged.visible.map((item) => (
-              <div key={item.id} className="vx-tr" style={{ gridTemplateColumns: COLS_HIST, cursor: "pointer" }} onClick={() => navigate(`/consultas/${item.id}`)}>
-                <span className="vx-mono" data-label="Data">{fmtDate(itemDate(item))}</span>
-                <span className="vx-mono" data-label="Hora">{item.time || "—"}</span>
-                <span data-label="Paciente"><strong>{item.animal || "—"}</strong><small className="vx-muted" style={{ display: "block" }}>{item.owner || ""}</small></span>
-                <span data-label="Tipo">{item.name}</span>
-                <span data-label="Veterinário">{item.professional || "—"}</span>
-                <span data-label="Situação"><StatusPill status={item.status} /></span>
-                <span className="r" data-label="Ações">
-                  <RowActions name={`consulta de ${item.animal}`} onView={() => navigate(`/consultas/${item.id}`)} onEdit={() => forms.open("consultas", item)} onDelete={() => setConfirmDelete(item)} />
-                </span>
-              </div>
-            ))}
-            {!historico.length && <div className="vx-empty">Nenhuma consulta.</div>}
-          </div>
-          {paged.pages > 1 && (
-            <div className="vx-row" style={{ justifyContent: "center", marginTop: 12 }}>
-              <Pager page={paged.page} pages={paged.pages} onPage={paged.setPage} />
-            </div>
+        <ListaFicha
+          query={query}
+          onQuery={setQuery}
+          placeholder="Buscar paciente, tutor, tipo ou veterinário"
+          filtros={[
+            { label: "Período", icon: <CalendarDays />, value: periodo, onChange: setPeriodo, options: PERIODOS },
+            { label: "Situação", icon: <Activity />, value: sitHist, onChange: setSitHist, options: [["Todas", "Todas as situações"], "Em andamento", "Finalizadas", "Faltas e cancelamentos"] },
+          ]}
+          rows={historico}
+          rowKey={(item) => item.id}
+          atual={histId}
+          onAtual={setHistId}
+          noun="consultas"
+          vazio="Nenhuma consulta neste período"
+          exportar={{ nome: "consultas", linha: (item) => ({ Data: fmtDate(itemDate(item)), Hora: item.time || "", Paciente: item.animal || "", Tutor: item.owner || "", Tipo: item.name, Veterinario: item.professional || "", Situacao: item.status }) }}
+          colunas={[
+            { label: "Paciente", w: "minmax(210px,1.2fr)", cell: (item) => <Ident title={item.animal || "—"} sub={item.owner || ""} initials={initialsOf(item.animal || "")} /> },
+            { label: "Tipo", w: "minmax(160px,1fr)", cell: (item) => <Duo title={item.name} sub={item.professional || ""} /> },
+            { label: "Data", w: "120px", cell: (item) => <Duo title={fmtDate(itemDate(item))} sub={item.time || ""} /> },
+            { label: "Veterinário", w: "minmax(150px,.8fr)", ficha: false, cell: (item) => <Duo title={item.professional || "—"} /> },
+            { label: "Situação", w: "150px", cell: (item) => <Status status={item.status} /> },
+          ]}
+          ficha={(item) => (
+            <FichaCadastro
+              slug="consultas"
+              item={item}
+              semUso
+              titulo={item.animal || item.name}
+              sub={`${item.name} · ${fmtDate(itemDate(item))}${item.time ? ` às ${item.time}` : ""}`}
+              icone={<Stethoscope />}
+              campos={[
+                ["Paciente", item.animal],
+                ["Tutor", item.owner],
+                ["Tipo de consulta", item.name],
+                ["Data", `${fmtDate(itemDate(item))}${item.time ? ` às ${item.time}` : ""}`],
+                ["Veterinário", item.professional],
+                ["Senha", senhas.get(item.id)],
+                ["Prioridade", prioridade(item)],
+                ["Situação", item.status],
+                ["Observações", item.notes],
+              ]}
+              onEdit={() => forms.open("consultas", item)}
+              abrir={() => navigate(`/consultas/${item.id}`)}
+              onExcluir={() => setConfirmDelete(item)}
+              excluirLabel="Excluir consulta"
+              onToast={forms.toast}
+            />
           )}
-        </>
+        />
       )}
       {forms.node}
       {callItem && (() => {

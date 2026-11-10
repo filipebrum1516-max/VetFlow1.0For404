@@ -25,12 +25,12 @@ import {
   useEffect,
   useMemo,
   useState,
-  type FormEvent,
   type CSSProperties,
 } from "react"
 import { useNavigate } from "react-router"
 import { useVetFlow, type Item } from "./store"
 import { initialTutors } from "./TutorsModule"
+import { NovoAnimalCadastro } from "./AnimalsModule"
 import { printHtml } from "./vfx/vendasShared"
 
 type ClientPet = {
@@ -157,13 +157,6 @@ export default function AgendaModule() {
   const [draft, setDraft] = useState({ ...emptyAppointment })
   const [errors, setErrors] = useState<string[]>([])
   const [quickPet, setQuickPet] = useState(false)
-  const [quickPetForm, setQuickPetForm] = useState({
-    name: "",
-    species: "Canina",
-    breed: "",
-    sex: "",
-    birth: "",
-  })
   const [petSelector, setPetSelector] = useState(false)
   const [catalogOpen, setCatalogOpen] = useState(false)
   const [catalogSearch, setCatalogSearch] = useState("")
@@ -341,35 +334,6 @@ export default function AgendaModule() {
     else setDrawer("search")
   }, [clients])
 
-  const addQuickPet = (event: FormEvent) => {
-    event.preventDefault()
-    if (!quickPetForm.name.trim() || !selectedClient) return
-    const stored = addItem("animais", {
-      name: quickPetForm.name,
-      owner: selectedClient.name,
-      ownerId: selectedClient.id,
-      species: quickPetForm.species,
-      breed: quickPetForm.breed || "Sem raça definida",
-      sex: quickPetForm.sex,
-      birthDate: quickPetForm.birth,
-      subtitle: `${quickPetForm.species} • ${quickPetForm.breed || "Sem raça definida"}`,
-      status: "Ativo",
-    })
-    const created: ClientPet = {
-      id: stored.id,
-      name: stored.name,
-      species: stored.species || "Canina",
-      breed: stored.breed || "Sem raça definida",
-    }
-    const updated = {
-      ...selectedClient,
-      pets: [...selectedClient.pets, created],
-    }
-    setSelectedClient(updated)
-    setSelectedPet(created)
-    setQuickPet(false)
-    setDrawer("form")
-  }
 
   const selectService = (service: string) => {
     const match = services.find(([name]) => name === service)
@@ -476,6 +440,8 @@ export default function AgendaModule() {
     window.setTimeout(() => setToast(""), 3000)
   }
 
+  const tomAgenda = (status = "") =>
+    /cancel|falt|n[aã]o compareceu/i.test(status) ? "red" : /conclu|finaliz|atendido/i.test(status) ? "gray" : /confirm/i.test(status) ? "green" : /andamento|atendimento|chegou|triagem/i.test(status) ? "orange" : "blue"
   const statusClass = (status: string) =>
     `vf-status-${status
       .normalize("NFD")
@@ -615,19 +581,18 @@ export default function AgendaModule() {
                       >
                         {events.map((item, index) => (
                           <span
-                            className={`vf-appointment ${statusClass(item.status)}`}
+                            className={`vf-appointment ag-ev ag-${tomAgenda(item.status)} ${statusClass(item.status)}`}
                             key={item.id}
                             title={`${item.time} · ${item.duration || 30} min · ${item.animal || ""} · ${item.service || ""}`}
-                            style={{ position: "absolute", top: 3 + ((minutesFromTime(item.time || "00:00") - minutesFromTime(time)) / 30) * 54, left: `calc(${(index / events.length) * 100}% + 3px)`, width: `calc(${100 / events.length}% - 6px)`, height: Math.max(24, (Number(item.duration || 30) / 30) * 54 - 6), zIndex: 2 }}
+                            style={{ position: "absolute", top: 3 + ((minutesFromTime(item.time || "00:00") - minutesFromTime(time)) / 30) * 54, left: `calc(${(index / events.length) * 100}% + 3px)`, width: `calc(${100 / events.length}% - 6px)`, height: Math.max(50, (Number(item.duration || 30) / 30) * 54 - 6), zIndex: 2 }}
                             onClick={(event) => {
                               event.stopPropagation()
                               openEdit(item)
                             }}
                           >
-                            <b>{item.time}</b>
+                            <span className="ag-ev-top"><b>{item.time}</b><i className={`ag-dot ${tomAgenda(item.status)}`} />{item.status && <em className="ag-ev-st">{item.status}</em>}</span>
                             <strong>{item.animal || item.name}</strong>
-                            <small>{item.owner}</small>
-                            <em>{item.service}</em>
+                            <small>{[item.service, item.owner].filter(Boolean).join(" · ")}</small>
                           </span>
                         ))}
                       </button>
@@ -640,29 +605,33 @@ export default function AgendaModule() {
       )}
 
       {view === "Semana" && (
-        <section className="vf-week-grid">
+        <section className="vf-week-grid ag-week">
           {weekDays.map((date) => {
-            const events = appointments.filter((item) => item.date === iso(date))
+            const events = appointments.filter((item) => item.date === iso(date)).sort((a, b) => (a.time || "").localeCompare(b.time || ""))
+            const hojeCol = iso(date) === iso(new Date())
             return (
-              <div key={iso(date)}>
+              <div key={iso(date)} className={hojeCol ? "ag-today" : ""}>
                 <header>
-                  <small>{date.toLocaleDateString("pt-BR", { weekday: "short" })}</small>
+                  <small>{date.toLocaleDateString("pt-BR", { weekday: "short" }).replace(".", "")}</small>
                   <strong>{date.getDate()}</strong>
+                  <em>{events.length ? `${events.length} ${events.length === 1 ? "horário" : "horários"}` : "livre"}</em>
                 </header>
-                <button onClick={() => openNew(iso(date), "08:00")}>
-                  <Plus size={14} /> adicionar
+                <button className="ag-add" onClick={() => openNew(iso(date), "08:00")}>
+                  <Plus size={14} /> Agendar
                 </button>
                 {events.slice(0, 8).map((item) => (
                   <button
-                    className={`vf-week-event ${statusClass(item.status)}`}
+                    className={`vf-week-event ag-ev ag-${tomAgenda(item.status)} ${statusClass(item.status)}`}
                     onClick={() => openEdit(item)}
                     key={item.id}
                   >
-                    <b>{item.time}</b>
-                    <span>{item.animal}</span>
+                    <span className="ag-ev-top"><b>{item.time}</b><i className={`ag-dot ${tomAgenda(item.status)}`} /></span>
+                    <strong>{item.animal || item.name}</strong>
                     <small>{item.service}</small>
+                    {item.owner && <small className="ag-ev-owner">{item.owner}</small>}
                   </button>
                 ))}
+                {events.length > 8 && <button className="ag-more" onClick={() => { setCursor(date); setView("Dia") }}>+{events.length - 8} no dia</button>}
               </div>
             )
           })}
@@ -678,17 +647,18 @@ export default function AgendaModule() {
             const events = appointments.filter((item) => item.date === iso(date))
             return (
               <button
-                className={
-                  date.getMonth() !== cursor.getMonth() ? "other-month" : ""
-                }
+                className={`ag-mcell ${date.getMonth() !== cursor.getMonth() ? "other-month" : ""} ${iso(date) === iso(new Date()) ? "ag-today" : ""}`}
                 key={iso(date)}
                 onClick={() => {
                   setCursor(date)
                   setView("Dia")
                 }}
               >
-                <span>{date.getDate()}</span>
-                {events.length > 0 && <b>{events.length} agendamento{events.length > 1 ? "s" : ""}</b>}
+                <span className="ag-mday">{date.getDate()}</span>
+                {[...events].sort((a, b) => (a.time || "").localeCompare(b.time || "")).slice(0, 3).map((item) => (
+                  <i key={item.id} className={`ag-mev ag-${tomAgenda(item.status)}`}><b>{item.time}</b> {item.animal || item.name}</i>
+                ))}
+                {events.length > 3 && <em className="ag-mmore">+{events.length - 3} {events.length - 3 === 1 ? "agendamento" : "agendamentos"}</em>}
               </button>
             )
           })}
@@ -818,15 +788,18 @@ export default function AgendaModule() {
       )}
 
       {quickPet && selectedClient && (
-        <div className="vf-modal-layer">
-          <form className="vf-quick-pet-modal" onSubmit={addQuickPet}>
-            <header><h3>Novo animal de {selectedClient.name}</h3><button type="button" onClick={() => setQuickPet(false)}><X size={18} /></button></header>
-            <label>Nome *<input value={quickPetForm.name} onChange={(event) => setQuickPetForm({ ...quickPetForm, name: event.target.value })} /></label>
-            <div><label>Espécie<select value={quickPetForm.species} onChange={(event) => setQuickPetForm({ ...quickPetForm, species: event.target.value })}><option>Canina</option><option>Felina</option><option>Ave</option></select></label><label>Raça<input value={quickPetForm.breed} onChange={(event) => setQuickPetForm({ ...quickPetForm, breed: event.target.value })} /></label></div>
-            <div><label>Sexo<select value={quickPetForm.sex} onChange={(event) => setQuickPetForm({ ...quickPetForm, sex: event.target.value })}><option value="">Selecione</option><option>Macho</option><option>Fêmea</option></select></label><label>Nascimento<input type="date" value={quickPetForm.birth} onChange={(event) => setQuickPetForm({ ...quickPetForm, birth: event.target.value })} /></label></div>
-            <footer><button type="button" onClick={() => setQuickPet(false)}>Cancelar</button><button>Salvar e selecionar</button></footer>
-          </form>
-        </div>
+        <NovoAnimalCadastro
+          tutorId={selectedClient.id}
+          onClose={() => setQuickPet(false)}
+          onCreated={(stored) => {
+            const created: ClientPet = { id: stored.id, name: stored.name, species: stored.species || "Canina", breed: stored.breed || "Sem raça definida" }
+            const dono = clients.find((c) => c.id === stored.ownerId) || selectedClient
+            setSelectedClient({ ...dono, pets: [...dono.pets.filter((p) => p.id !== created.id), created] })
+            setSelectedPet(created)
+            setQuickPet(false)
+            setDrawer("form")
+          }}
+        />
       )}
 
       {catalogOpen && (

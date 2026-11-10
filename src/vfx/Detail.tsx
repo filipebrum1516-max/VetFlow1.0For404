@@ -18,7 +18,7 @@ import {
 } from "lucide-react"
 import { accessLevel, modules, useVetFlow, type Item, type ModuleSlug } from "../store"
 import FormDrawer, { permModules, type Field } from "./FormDrawer"
-import { formFor, statusOptions } from "./forms"
+import { formFor } from "./forms"
 import { brl, colorFor, Confirm, fmtDate, initials, itemDate, StatusPill, useToast } from "./ui"
 
 const animalTabs: [string, ModuleSlug | "historico"][] = [
@@ -207,6 +207,74 @@ export default function Detail({
     ...(item.address ? ([["Endereço", item.address]] as [string, ReactNode][]) : []),
   ]
 
+  /* ficha do tutor e do animal: mais informações reunidas de todos os módulos */
+  const hojeIso = new Date().toISOString().slice(0, 10)
+  const idade = (nasc?: string) => {
+    if (!nasc) return ""
+    const d = new Date(`${nasc}T12:00:00`), n = new Date()
+    let anos = n.getFullYear() - d.getFullYear(); let meses = n.getMonth() - d.getMonth()
+    if (n.getDate() < d.getDate()) meses--
+    if (meses < 0) { anos--; meses += 12 }
+    return anos > 0 ? `${anos} ${anos === 1 ? "ano" : "anos"}${meses ? ` e ${meses} ${meses === 1 ? "mês" : "meses"}` : ""}` : `${Math.max(0, meses)} ${meses === 1 ? "mês" : "meses"}`
+  }
+  const ultimo = (lista: Item[]) => lista.filter((r) => itemDate(r) <= hojeIso).sort((a, b) => itemDate(b).localeCompare(itemDate(a)))[0]
+  const proximo = (lista: Item[]) => lista.filter((r) => itemDate(r) >= hojeIso && !/cancel|conclu|falt/i.test(r.status || "")).sort((a, b) => `${itemDate(a)}${a.time || ""}`.localeCompare(`${itemDate(b)}${b.time || ""}`))[0]
+  const quando = (r?: Item) => (r ? `${fmtDate(itemDate(r))}${r.time ? ` às ${r.time}` : ""} · ${r.name}` : "—")
+  const extrasFicha: [string, ReactNode][] = []
+  if (slug === "tutores") {
+    const c = (item.extra?.cadastro || {}) as Record<string, string>
+    const pets = data.animais.filter((a) => a.ownerId === item.id)
+    const petIds = new Set(pets.map((a) => a.id))
+    const doTutor = (lista: Item[]) => lista.filter((r) => r.ownerId === item.id || (r.animalId && petIds.has(r.animalId)) || r.owner === item.name)
+    const consultas = doTutor(data.consultas)
+    const fin = doTutor(data.financeiro)
+    const pago = fin.filter((r) => r.category === "Receita" && /receb|pago/i.test(r.status || "")).reduce((n, r) => n + (r.amountValue || 0), 0)
+    const aberto = fin.filter((r) => r.category === "Receita" && !/receb|pago|estorn|cancel/i.test(r.status || "")).reduce((n, r) => n + (r.amountValue || 0), 0) + (item.amountValue && /inadimpl/i.test(item.status || "") ? item.amountValue : 0)
+    const vacAtrasadas = data.vacinas.filter((v) => v.animalId && petIds.has(v.animalId) && /atrasad/i.test(v.status || "")).length
+    extrasFicha.push(
+      ["CPF / CNPJ", item.cpf || c.cpf || "Não informado"],
+      ["RG", item.rg || c.rg || "Não informado"],
+      ["WhatsApp", c.whatsapp || item.phone || "Não informado"],
+      ["Bairro / cidade", [c.bairro, c.cidade || (item.address || "").split(" • ")[1]].filter(Boolean).join(" · ") || "Não informado"],
+      ["Cliente desde", fmtDate((item.createdAt || item.date || "").slice(0, 10))],
+      ["Animais", pets.length ? `${pets.length} · ${pets.map((a) => a.name).join(", ")}` : "Nenhum cadastrado"],
+      ["Consultas", `${consultas.length} no histórico`],
+      ["Última consulta", quando(ultimo(consultas))],
+      ["Próximo agendamento", quando(proximo(doTutor(data.agendas)))],
+      ["Total pago", brl(pago)],
+      ["Em aberto", aberto ? brl(aberto) : "Nada em aberto"],
+      ["Vacinas atrasadas", vacAtrasadas ? `${vacAtrasadas} nos animais` : "Todas em dia"],
+    )
+  }
+  if (slug === "animais") {
+    const ex = (item.extra || {}) as Record<string, unknown>
+    const doAnimal = (lista: Item[]) => lista.filter((r) => r.animalId === item.id)
+    const consultas = doAnimal(data.consultas)
+    const vacinas = doAnimal(data.vacinas)
+    const proxVac = vacinas.filter((v) => v.dueDate && !/aplicad/i.test(v.status || "") || (v.dueDate || "") >= hojeIso).sort((a, b) => (a.dueDate || "").localeCompare(b.dueDate || ""))[0]
+    const atend = historyModules.reduce((n, m) => n + doAnimal(data[m] || []).length, 0)
+    const vets = consultas.map((c) => c.professional).filter(Boolean) as string[]
+    const vetFreq = vets.sort((a, b) => vets.filter((x) => x === b).length - vets.filter((x) => x === a).length)[0]
+    const lista = (v: unknown) => (Array.isArray(v) ? v.join(", ") : String(v || ""))
+    extrasFicha.push(
+      ["Sexo", item.sex || "Não informado"],
+      ["Nascimento", item.birthDate ? `${fmtDate(item.birthDate)} · ${idade(item.birthDate)}` : "Não informado"],
+      ["Peso", item.weight || "Não informado"],
+      ["Castrado", lista(ex.castrado) || "Não informado"],
+      ["Pelagem", lista(ex.pelagem) || "Não informado"],
+      ["Microchip", lista(ex.microchip) || "Não informado"],
+      ["Código", lista(ex.code) || "—"],
+      ["Condições", lista(ex.condicoes) || "Nenhuma informada"],
+      ["Alergias", lista(ex.alergias) || "Nenhuma informada"],
+      ["Atendimentos", `${atend} no histórico`],
+      ["Última consulta", quando(ultimo(consultas))],
+      ["Próxima vacina", proxVac ? `${proxVac.name} · ${fmtDate(proxVac.dueDate)}` : "Nenhuma pendente"],
+      ["Veterinário frequente", vetFreq || "—"],
+      ["Próximo agendamento", quando(proximo(doAnimal(data.agendas)))],
+    )
+  }
+  summary.push(...extrasFicha.filter(([label]) => !summary.some(([l]) => l === label)))
+
   const fullSections = def
     ? def.sections
         .map((section) => ({
@@ -234,7 +302,6 @@ export default function Detail({
   }
   const prev = index > 0 ? list[index - 1] : undefined
   const next = index < list.length - 1 ? list[index + 1] : undefined
-  const statuses = statusOptions[slug] || [...new Set(list.map((record) => record.status))].slice(0, 8)
   const quick = (path: string) => navigate(path)
   const animalParam = animal ? `&animal=${encodeURIComponent(animal.id)}` : ""
 
@@ -270,22 +337,7 @@ export default function Detail({
           <div className="vx-sub" style={{ marginTop: 0 }}>{item.subtitle}</div>
           <div className="vx-row" style={{ gap: 8, marginTop: 10, flexWrap: "wrap" }}>
             <StatusPill status={item.status} />
-            <label className="vx-chip" style={{ paddingRight: 4 }}>
-              Mudar situação
-              <select
-                aria-label="Mudar situação"
-                value={item.status}
-                onChange={(event) => {
-                  updateItem(slug, item.id, { status: event.target.value })
-                  showToast(`Situação alterada para ${event.target.value}.`)
-                }}
-                style={{ border: 0, background: "transparent", font: "inherit", color: "inherit", fontWeight: 800 }}
-              >
-                {[item.status, ...statuses.filter((status) => status !== item.status)].map((status) => (
-                  <option key={status}>{status}</option>
-                ))}
-              </select>
-            </label>
+<span className="vx-chip" title="A situação é alterada em Editar">Alterar situação em Editar</span>
           </div>
         </div>
         <div className="vx-actions">
@@ -404,6 +456,15 @@ export default function Detail({
                   </span>
                 </button>
               )}
+              {slug === "tutores" && data.animais.filter((a) => a.ownerId === item.id).map((a) => (
+                <button key={a.id} className="vx-list-item" onClick={() => navigate(`/animais/${a.id}`)}>
+                  <PawPrint size={18} />
+                  <span className="t">
+                    <strong>{a.name}</strong>
+                    <small>{a.subtitle || a.species}</small>
+                  </span>
+                </button>
+              ))}
               {tutor && slug !== "tutores" && (
                 <button className="vx-list-item" onClick={() => navigate(`/tutores/${tutor.id}`)}>
                   <Users size={18} />

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNod
 import { createPortal } from "react-dom"
 import { ChevronDown, ChevronLeft, ChevronRight, Download, Plus, Search, X } from "lucide-react"
 import { accessLevel, normalize, useVetFlow } from "../store"
-import { tone } from "./ui"
+import { PageModo, tone } from "./ui"
 
 /*
  * Lista VetFlow — o padrão único de todas as listas do sistema.
@@ -477,13 +477,9 @@ export function ModoSwitch({ value, onChange, options }: { value: string; onChan
     </div>
   )
 }
-/** Barra que fica acima da visão antiga para voltar à lista. */
-export function ModoBar(props: { value: string; onChange: (v: string) => void; options: [string, string][] }) {
-  return (
-    <div className="cl-modobar">
-      <ModoSwitch {...props} />
-    </div>
-  )
+/** Coloca o alternador junto das ações da visão ilustrada (mesmo lugar que na lista). */
+export function ModoBar({ children, ...props }: { value: string; onChange: (v: string) => void; options: [string, string][]; children: ReactNode }) {
+  return <PageModo.Provider value={<ModoSwitch {...props} />}>{children}</PageModo.Provider>
 }
 
 /** Subtítulo útil (ignora o texto genérico dos dados de exemplo: unidade, "atualizado em", quantidade). */

@@ -133,8 +133,9 @@ export default function Servicos() {
   if (modo !== "lista")
     return (
       <>
-        <ModoBar value={modo} onChange={setModo} options={MODOS} />
-        <ServicosVisual />
+        <ModoBar value={modo} onChange={setModo} options={MODOS}>
+          <ServicosVisual />
+        </ModoBar>
       </>
     )
   return <ServicosLista modo={switcher} />

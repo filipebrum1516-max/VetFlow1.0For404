@@ -1,10 +1,10 @@
 import { useMemo, useState } from "react"
 import { useNavigate } from "react-router"
-import { Activity, CircleDollarSign, ClipboardList, Layers, Play, Stethoscope } from "lucide-react"
+import { Activity, CalendarDays, CircleDollarSign, ClipboardList, Layers, Play, Stethoscope } from "lucide-react"
 import { useVetFlow, type Item } from "../../store"
 import { usePageForms } from "../hooks"
 import RowActions, { RowButton } from "../RowActions"
-import { brl, fmtDate, itemDate, todayISO } from "../ui"
+import { brl, fmtDate, itemDate, noPeriodo, PERIODOS, todayISO } from "../ui"
 import { CadastroLista, Duo, Ident, initialsOf, Status } from "../CadastroLista"
 import { FichaCadastro } from "../Ficha"
 
@@ -33,6 +33,8 @@ export default function Procedimentos() {
   const [query, setQuery] = useState("")
   const [cat, setCat] = useState("Todas")
   const [sit, setSit] = useState("Todas")
+  const [periodo, setPeriodo] = useState("todos")
+  const [histId, setHistId] = useState("")
 
   const linhas = useMemo(() => {
     const map = new Map<string, Linha & { soma: number; n: number }>()
@@ -59,6 +61,7 @@ export default function Procedimentos() {
   const historico = data.procedimentos
     .filter((item) => !item.extra?.catalogo)
     .filter((item) => `${item.name} ${item.animal || ""} ${item.owner || ""} ${item.professional || ""}`.toLowerCase().includes(q))
+    .filter((item) => noPeriodo(itemDate(item), periodo))
     .filter((item) => sit === "Todas" || (sit === "Concluídos" ? /conclu/i.test(item.status) : sit === "Em andamento" ? /andamento/i.test(item.status) : /agend|pend/i.test(item.status)))
     .sort((a, b) => itemDate(b).localeCompare(itemDate(a)))
 
@@ -162,25 +165,50 @@ export default function Procedimentos() {
       query={query}
       onQuery={setQuery}
       placeholder="Buscar paciente, tutor, procedimento ou profissional..."
-      filtros={[{ label: "Situação", icon: <Activity />, value: sit, onChange: setSit, options: [["Todas", "Todas as situações"], "Agendados", "Em andamento", "Concluídos"] }]}
+      filtros={[
+        { label: "Período", icon: <CalendarDays />, value: periodo, onChange: setPeriodo, options: PERIODOS },
+        { label: "Situação", icon: <Activity />, value: sit, onChange: setSit, options: [["Todas", "Todas as situações"], "Agendados", "Em andamento", "Concluídos"] },
+      ]}
       novo={{ label: "Registrar procedimento", onClick: () => forms.open("procedimentos-exec") }}
       rows={historico}
       exportar={{ nome: "procedimentos-historico", linha: (item) => ({ Paciente: item.animal || "", Tutor: item.owner || "", Procedimento: item.name, Data: fmtDate(itemDate(item)), Profissional: item.professional || "", Valor: item.amountValue || "", Situacao: item.status }) }}
       rowKey={(item) => item.id}
-      onRow={(item) => navigate(`/procedimentos/${item.id}`)}
+      atual={histId}
+      onAtual={setHistId}
       noun="registros"
-      vazio="Nenhum procedimento registrado"
+      vazio="Nenhum procedimento registrado neste período"
+      ficha={(item) => (
+        <FichaCadastro
+          slug="procedimentos"
+          item={item}
+          semUso
+          titulo={item.animal || item.name}
+          sub={`${item.name} · ${fmtDate(itemDate(item))}${item.time ? ` às ${item.time}` : ""}`}
+          icone={<Stethoscope />}
+          campos={[
+            ["Paciente", item.animal],
+            ["Tutor", item.owner],
+            ["Procedimento", item.name],
+            ["Categoria", seedCat[item.name] || "Clínico"],
+            ["Data", `${fmtDate(itemDate(item))}${item.time ? ` às ${item.time}` : ""}`],
+            ["Profissional", item.professional],
+            ["Valor", item.amountValue ? brl(item.amountValue) : undefined],
+            ["Situação", item.status],
+            ["Observações", item.notes],
+          ]}
+          onEdit={() => forms.open("procedimentos-exec", item)}
+          abrir={() => navigate(`/procedimentos/${item.id}`)}
+          onToast={forms.toast}
+        />
+      )}
       colunas={[
-        { label: "Paciente", w: "minmax(230px,1.2fr)", cell: (item) => <Ident title={item.animal || "—"} sub={item.owner || ""} initials={initialsOf(item.animal || "")} color={CATEGORIAS[seedCat[item.name] || "Clínico"]} /> },
-        { label: "Procedimento", w: "minmax(180px,1fr)", cell: (item) => <Duo title={item.name} sub={seedCat[item.name] || "Clínico"} /> },
-        { label: "Data", w: "130px", cell: (item) => <Duo title={fmtDate(itemDate(item))} sub={item.time || ""} /> },
-        { label: "Profissional", w: "minmax(150px,.8fr)", cell: (item) => <Duo title={item.professional || "—"} /> },
-        { label: "Valor", w: "110px", cell: (item) => <span className="cl-money">{item.amountValue ? brl(item.amountValue) : "—"}</span> },
+        { label: "Paciente", w: "minmax(220px,1.2fr)", cell: (item) => <Ident title={item.animal || "—"} sub={item.owner || ""} initials={initialsOf(item.animal || "")} color={CATEGORIAS[seedCat[item.name] || "Clínico"]} /> },
+        { label: "Procedimento", w: "minmax(170px,1fr)", cell: (item) => <Duo title={item.name} sub={seedCat[item.name] || "Clínico"} /> },
+        { label: "Data", w: "120px", ficha: false, cell: (item) => <Duo title={fmtDate(itemDate(item))} sub={item.time || ""} /> },
+        { label: "Profissional", w: "minmax(150px,.8fr)", ficha: false, cell: (item) => <Duo title={item.professional || "—"} /> },
+        { label: "Valor", w: "110px", ficha: false, cell: (item) => <span className="cl-money">{item.amountValue ? brl(item.amountValue) : "—"}</span> },
         { label: "Situação", w: "140px", cell: (item) => <Status status={item.status} /> },
       ]}
-      acoes={(item) => (
-        <RowActions name={`${item.name} de ${item.animal || "paciente"}`} onView={() => navigate(`/procedimentos/${item.id}`)} onEdit={() => forms.open("procedimentos-exec", item)} onDelete={() => navigate(`/procedimentos/${item.id}?excluir=1`)} />
-      )}
     >
       {forms.node}
     </CadastroLista>

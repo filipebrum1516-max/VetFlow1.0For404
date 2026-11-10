@@ -1,4 +1,7 @@
 import { FichaCadastro } from "./vfx/Ficha"
+import { TutorBusca } from "./vfx/FormDrawer"
+import { esc, printDoc } from "./vfx/printDoc"
+import { useDescartar } from "./vfx/ui"
 import { CadastroLista, Duo, Ident } from "./vfx/CadastroLista"
 import {
   useEffect,
@@ -256,17 +259,19 @@ const DISEASES = [
 ]
 const diseaseOf = (id: string) => DISEASES[hash(`doenca:${id}`) % DISEASES.length]
 
-function Highlight({ text, term }: { text: string; term: string }) {
-  if (!term.trim()) return <>{text}</>
-  const position = normalize(text).indexOf(normalize(term))
-  if (position < 0) return <>{text}</>
-  return (
-    <>
-      {text.slice(0, position)}
-      <mark>{text.slice(position, position + term.length)}</mark>
-      {text.slice(position + term.length)}
-    </>
-  )
+
+/* prontuários de exemplo: monta a visualização a partir do conteúdo clínico gerado */
+function seedExtras(item: Item): Extras {
+  const ex = item.extra || {}
+  const meds = (ex.medicacoes || []) as string[][]
+  return {
+    code: codeOf(item.id), mode: "digital", recordType: item.category || "Consulta clínica",
+    complaint: item.clinicalHistory || "", physicalExam: ex.exame || "", vitals: ex.vitals || {},
+    suspicion: item.diagnosis || "",
+    medications: meds.map((m, i) => ({ id: `s${i}`, name: m[0], dose: m[1], route: m[2], frequency: m[3], duration: m[4], notes: "" })),
+    examRequestText: "", labText: "", imagingText: "", returnDate: "",
+    files: { request: [], lab: [], imaging: [], physical: [] },
+  }
 }
 
 /* Mesma estrutura do campo do cadastro de animais */
@@ -350,82 +355,6 @@ function Pagination({
 /* =========================================================
    Menu para trocar a situação direto na lista
    ========================================================= */
-function StatusMenu({
-  status,
-  onChange,
-}: {
-  status: string
-  onChange: (value: string) => void
-}) {
-  const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
-  const button = useRef<HTMLButtonElement>(null)
-  const options = STATUSES.includes(status) ? STATUSES : [status, ...STATUSES]
-
-  useEffect(() => {
-    if (!pos) return
-    const close = () => setPos(null)
-    window.addEventListener("scroll", close, true)
-    window.addEventListener("resize", close)
-    return () => {
-      window.removeEventListener("scroll", close, true)
-      window.removeEventListener("resize", close)
-    }
-  }, [pos])
-
-  const toggle = () => {
-    if (pos) return setPos(null)
-    const rect = button.current?.getBoundingClientRect()
-    if (!rect) return
-    const menuHeight = options.length * 44 + 16
-    const below = rect.bottom + 6
-    const top = below + menuHeight > window.innerHeight ? rect.top - menuHeight - 6 : below
-    setPos({ top: Math.max(8, top), left: rect.left })
-  }
-
-  return (
-    <>
-      <button
-        type="button"
-        ref={button}
-        className={`pr-pill pv-status-btn ${statusClass(status)}`}
-        onClick={toggle}
-        title="Alterar situação"
-      >
-        <i />
-        {status}
-        <ChevronDown size={13} />
-      </button>
-      {pos && (
-        <div className="pv-menu-backdrop" onMouseDown={() => setPos(null)}>
-          <div
-            className="pv-menu"
-            style={{ top: pos.top, left: pos.left }}
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <small>Alterar situação para</small>
-            {options.map((option) => (
-              <button
-                type="button"
-                key={option}
-                className={option === status ? "current" : ""}
-                onClick={() => {
-                  setPos(null)
-                  if (option !== status) onChange(option)
-                }}
-              >
-                <span className={`pr-pill ${statusClass(option)}`}>
-                  <i />
-                  {option}
-                </span>
-                {option === status && <Check size={16} />}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-    </>
-  )
-}
 
 /* =========================================================
    Confirmação de exclusão
@@ -695,7 +624,7 @@ export default function ProntuariosModule() {
             { label: "Veterinário", w: "minmax(150px,.9fr)", cell: (item) => <Duo title={item.professional || "Não informado"} sub={item.category || extrasMap[item.id]?.recordType || "Consulta clínica"} /> },
             { label: "Suspeita ou diagnóstico", w: "minmax(170px,1fr)", cell: (item) => { const extra = extrasMap[item.id]; return <Duo title={item.diagnosis || extra?.suspicion || (extra ? "Não informado" : diseaseOf(item.id))} /> } },
             { label: "Data", w: "110px", cell: (item) => <Duo title={formatDate(item.date)} sub={item.time || ""} /> },
-            { label: "Situação", w: "150px", cell: (item) => <span onClick={(event) => event.stopPropagation()}><StatusMenu status={item.status} onChange={(value) => changeStatus(item.id, value)} /></span> },
+            { label: "Situação", w: "150px", cell: (item) => <span className={`pr-pill ${statusClass(item.status)}`}><i />{item.status}</span> },
           ]}
           atual={fichaId}
           onAtual={setFichaId}
@@ -765,7 +694,7 @@ export default function ProntuariosModule() {
         <RecordDrawer
           key={editing ? `edit-${editing.id}` : "new"}
           editing={editing || undefined}
-          editingExtras={editing ? extrasMap[editing.id] : undefined}
+          editingExtras={editing ? (extrasMap[editing.id] || (editing.extra?.vitals ? seedExtras(editing) : undefined)) : undefined}
           close={() => {
             setDrawer(false)
             setEditId(null)
@@ -903,6 +832,13 @@ function RecordDrawer({
 }) {
   const { data } = useVetFlow()
   const isEdit = !!editing
+  const [sujo, setSujo] = useState(false)
+  const descartar = useDescartar(close, sujo)
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") descartar.tentar() }
+    document.addEventListener("keydown", onKey)
+    return () => document.removeEventListener("keydown", onKey)
+  })
 
   const initialTutor = editing
     ? data.tutores.find((candidate) => candidate.id === editing.ownerId) ||
@@ -915,7 +851,6 @@ function RecordDrawer({
     : undefined
 
   const [mode, setMode] = useState<Mode>(editingExtras?.mode || "digital")
-  const [tutorQuery, setTutorQuery] = useState("")
   const [tutor, setTutor] = useState<Item | null>(initialTutor)
   const [animalId, setAnimalId] = useState(editing?.animalId || "")
   const [vetId, setVetId] = useState(initialVet?.id || "")
@@ -957,22 +892,6 @@ function RecordDrawer({
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
 
-  const digitCount = tutorQuery.replace(/\D/g, "").length
-  const letterCount = tutorQuery.replace(/[^A-Za-zÀ-ÿ]/g, "").length
-  const qualifies = digitCount >= 3 || letterCount >= 2
-  const tutorResults = useMemo(() => {
-    if (!qualifies) return []
-    const term = normalize(tutorQuery)
-    const digits = tutorQuery.replace(/\D/g, "")
-    return data.tutores
-      .filter(
-        (candidate) =>
-          normalize(candidate.name).includes(term) ||
-          (digits && (candidate.cpf || "").replace(/\D/g, "").includes(digits)) ||
-          (digits && (candidate.rg || "").replace(/\D/g, "").includes(digits)),
-      )
-      .slice(0, 6)
-  }, [qualifies, tutorQuery, data.tutores])
 
   const tutorAnimals = tutor
     ? data.animais.filter(
@@ -1085,17 +1004,17 @@ function RecordDrawer({
 
   return (
     <div className="animals-page" style={{ display: "contents" }}>
-      <div className="animal-drawer-backdrop" onMouseDown={close}>
+      <div className="animal-drawer-backdrop" onMouseDown={descartar.tentar}>
         <aside className="animal-drawer pv-drawer" onMouseDown={(event) => event.stopPropagation()}>
           <header className="pv-cad-head">
             <span>
               <strong>{isEdit ? "Editar prontuário" : "Novo prontuário"}</strong>
             </span>
-            <button type="button" className="vx-xb" onClick={close} aria-label="Fechar">
+            <button type="button" className="vx-xb" onClick={descartar.tentar} aria-label="Fechar">
               <X />
             </button>
           </header>
-          <form onSubmit={submit}>
+          <form onSubmit={submit} onInput={() => setSujo(true)} onChange={() => setSujo(true)} onClick={(event) => { if ((event.target as HTMLElement).closest?.(".vx-pick-list button, .vx-chip, .pv-mode button")) setSujo(true) }}>
             <div className="animal-form-scroll">
               {/* forma de cadastro */}
               <div className="pv-mode">
@@ -1112,69 +1031,19 @@ function RecordDrawer({
               {/* tutor */}
               <section className={`tutor-search-box ${errors.tutor ? "error" : ""}`}>
                 <span className="form-section-label">Tutor responsável *</span>
-                {tutor ? (
-                  <div className="selected-tutor">
-                    <i>{tutor.name[0]}</i>
-                    <span>
-                      <strong>{tutor.name}</strong>
-                      <small>
-                        CPF {tutor.cpf || "—"} · RG {tutor.rg || "—"}
-                      </small>
-                    </span>
-                    <button
-                      type="button"
-                      aria-label="Trocar tutor"
-                      onClick={() => {
-                        setTutor(null)
-                        setAnimalId("")
-                        setTutorQuery("")
-                      }}
-                    >
-                      <X />
-                    </button>
-                  </div>
-                ) : (
-                  <div className="tutor-search-control">
-                    <Search />
-                    <input
-                      value={tutorQuery}
-                      onChange={(event) => {
-                        setTutorQuery(event.target.value)
-                        clearError("tutor")
-                      }}
-                      placeholder="Pesquisar tutor por nome, CPF ou RG *"
-                    />
-                    {qualifies && (
-                      <div className="tutor-results">
-                        {tutorResults.length ? (
-                          tutorResults.map((candidate) => (
-                            <button
-                              type="button"
-                              key={candidate.id}
-                              onClick={() => {
-                                setTutor(candidate)
-                                setTutorQuery("")
-                              }}
-                            >
-                              <i>{candidate.name[0]}</i>
-                              <span>
-                                <strong>
-                                  <Highlight text={candidate.name} term={tutorQuery} />
-                                </strong>
-                                <small>
-                                  CPF <Highlight text={candidate.cpf || "—"} term={tutorQuery} /> · RG{" "}
-                                  <Highlight text={candidate.rg || "—"} term={tutorQuery} />
-                                </small>
-                              </span>
-                            </button>
-                          ))
-                        ) : (
-                          <p>Nenhum tutor encontrado. Cadastre o tutor primeiro.</p>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
+                <TutorBusca
+                  tutores={data.tutores}
+                  animais={data.animais}
+                  value={tutor?.id || ""}
+                  placeholder="Pesquisar tutor por nome, CPF, telefone ou animal"
+                  onChange={(id) => {
+                    const novo = data.tutores.find((candidate) => candidate.id === id) || null
+                    setTutor(novo)
+                    const pets = novo ? data.animais.filter((a) => a.ownerId === novo.id || normalize(a.owner || "") === normalize(novo.name)) : []
+                    setAnimalId(pets.length === 1 ? pets[0].id : "")
+                    clearError("tutor")
+                  }}
+                />
                 {errors.tutor && <em>{errors.tutor}</em>}
                 {tutor && (
                   <div className="pv-tutor-details">
@@ -1455,11 +1324,12 @@ function RecordDrawer({
             </div>
             <footer className="pv-cad-foot">
               <span className="sp">Campos com * são obrigatórios</span>
-              <button type="button" className="vx-btn vx-btn-g" onClick={close}>Cancelar</button>
+              <button type="button" className="vx-btn vx-btn-g" onClick={descartar.tentar}>Cancelar</button>
               <button type="submit" className="vx-btn vx-btn-p">{isEdit ? "Salvar alterações" : "Salvar prontuário"}</button>
             </footer>
           </form>
         </aside>
+        {descartar.node}
       </div>
     </div>
   )
@@ -1470,7 +1340,7 @@ function RecordDrawer({
    ========================================================= */
 function DetailDrawer({
   item,
-  extras,
+  extras: extrasSalvos,
   animalName,
   code,
   autoPrint,
@@ -1495,6 +1365,7 @@ function DetailDrawer({
   onNext?: () => void
   position: string
 }) {
+  const extras: Extras | undefined = extrasSalvos || (item.extra?.vitals ? seedExtras(item) : undefined)
   const { data } = useVetFlow()
   const tutor =
     data.tutores.find((candidate) => candidate.id === item.ownerId) ||
@@ -1502,11 +1373,44 @@ function DetailDrawer({
   const animal = data.animais.find((candidate) => candidate.id === item.animalId)
   const veterinarian = data.profissionais.find((candidate) => candidate.id === item.professionalId)
   const text = (value?: string) => value?.trim() || "Não informado"
-  const statusOptions = STATUSES.includes(item.status) ? STATUSES : [item.status, ...STATUSES]
+  void onStatus
+  const { activeUnit, profile } = useVetFlow()
+  const imprimir = () => {
+    const v = (value?: string) => esc(value?.trim() || "Não informado")
+    const kv = (todas: [string, string | undefined, boolean?][]) => {
+      const rows = todas.filter(([, value]) => value?.trim())
+      if (!rows.length) return `<div class="note">Não informado.</div>`
+      return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 18px;margin-top:8px">${rows
+        .map(([label, value, wide]) => `<div style="${wide ? "grid-column:1/-1;" : ""}border:1px solid #e3e7ed;border-radius:8px;padding:7px 10px;break-inside:avoid"><small style="display:block;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:#6b7482;font-weight:700">${esc(label)}</small><div style="font-size:12px;white-space:pre-wrap">${v(value)}</div></div>`)
+        .join("")}</div>`
+    }
+    const meds = extras?.medications?.filter((m) => m.name?.trim()) || []
+    const vit = extras?.vitals || {}
+    printDoc({
+      title: "Prontuário clínico",
+      subtitle: `${animalName} · Cód. ${code}`,
+      unit: activeUnit,
+      issuedBy: profile.displayName,
+      meta: [["Data", `${formatDate(item.date)} ${item.time || ""}`.trim()], ["Tipo", item.category || extras?.recordType || "Consulta"], ["Situação", item.status || "—"], ["Veterinário", item.professional || "—"]],
+      sections: [
+        { title: "Tutor responsável", html: kv([["Nome completo", item.owner || tutor?.name, true], ["CPF", tutor?.cpf], ["RG", tutor?.rg], ["Telefone", tutor?.phone], ["E-mail", tutor?.email], ["Endereço", tutor?.address, true]]) },
+        { title: "Paciente", html: kv([["Nome", animalName], ["Espécie", animal?.species], ["Raça", animal?.breed], ["Sexo", animal?.sex], ["Nascimento", animal?.birthDate ? formatDate(animal.birthDate) : ""], ["Peso", animal?.weight ? `${animal.weight} kg` : ""]]) },
+        { title: "Queixa, sintomas e histórico", html: kv([["Queixa principal e histórico", item.clinicalHistory || extras?.complaint, true], ["Histórico clínico", extras?.history, true]]) },
+        ...(Object.values(vit).some(Boolean) || extras?.physicalExam ? [{ title: "Parâmetros clínicos", html: kv([...VITALS.filter((vt) => vit[vt.key]).map((vt) => [vt.label, String(vit[vt.key])] as [string, string]), ["Exame físico", extras?.physicalExam, true]]) }] : []),
+        { title: "Suspeita, diagnóstico e conduta", html: kv([["Suspeita clínica", extras?.suspicion, true], ["Diagnóstico", item.diagnosis || (extras ? "" : diseaseOf(item.id)), true], ["Conduta e tratamento", item.treatment, true]]) },
+        meds.length
+          ? { title: "Medicações e doses", head: ["Medicamento", "Dose", "Via", "Frequência", "Duração"], rows: meds.map((m) => [m.name, m.dose || "—", m.route || "—", m.frequency || "—", m.duration || "—"]) }
+          : { title: "Medicações e doses", note: "Nenhuma medicação prescrita neste atendimento." },
+        ...(extras?.examRequestText || extras?.labText || extras?.imagingText ? [{ title: "Exames", html: kv([["Exames solicitados", extras?.examRequestText, true], ["Resultado laboratorial", extras?.labText, true], ["Laudo de imagem", extras?.imagingText, true]]) }] : []),
+        { title: "Retorno e observações", html: kv([["Retorno recomendado", extras?.returnDate ? formatDate(extras.returnDate) : ""], ["Observações", item.notes, true]]) },
+      ],
+      signatures: [`${item.professional || "Médico(a) veterinário(a)"}${veterinarian?.registration ? ` · ${veterinarian.registration}` : ""}`, `${item.owner || tutor?.name || "Tutor"} · tutor responsável`],
+    })
+  }
 
   useEffect(() => {
     if (!autoPrint) return
-    const timer = window.setTimeout(() => window.print(), 450)
+    const timer = window.setTimeout(() => imprimir(), 450)
     return () => window.clearTimeout(timer)
   }, [autoPrint])
   useEffect(() => {
@@ -1584,7 +1488,7 @@ function DetailDrawer({
                 <button type="button" onClick={onEdit} aria-label="Editar prontuário" title="Editar prontuário">
                   <Pencil size={17} />
                 </button>
-                <button type="button" onClick={() => window.print()} aria-label="Imprimir prontuário" title="Imprimir">
+                <button type="button" onClick={imprimir} aria-label="Imprimir prontuário" title="Imprimir">
                   <Printer size={17} />
                 </button>
                 <button type="button" className="danger" onClick={onDelete} aria-label="Cancelar prontuário" title="Cancelar prontuário">
@@ -1593,22 +1497,12 @@ function DetailDrawer({
               </span>
             </div>
 
-            {/* situação */}
+            {/* situação (alterada apenas em Editar) */}
             <div className="pv-status-switch" role="group" aria-label="Situação do prontuário">
               <small>Situação</small>
               <div>
-                {statusOptions.map((option) => (
-                  <button
-                    type="button"
-                    key={option}
-                    className={`${statusClass(option)} ${option === item.status ? "on" : ""}`}
-                    onClick={() => option !== item.status && onStatus(option)}
-                    aria-pressed={option === item.status}
-                  >
-                    <i />
-                    {option}
-                  </button>
-                ))}
+                <span className={`pr-pill ${statusClass(item.status)}`}><i />{item.status}</span>
+                <button type="button" className="pv-status-edit" onClick={onEdit}><Pencil size={13} /> Alterar em Editar</button>
               </div>
             </div>
 

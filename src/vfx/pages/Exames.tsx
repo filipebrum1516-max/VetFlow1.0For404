@@ -5,7 +5,7 @@ const InlineDrawer = createContext(false)
 import { AlertTriangle, Check, ChevronLeft, Syringe, Pencil, Plus, Printer, Search, Trash2, X } from "lucide-react"
 import { localISO } from "../../date"
 import { normalize, useVetFlow, type Item } from "../../store"
-import { fmtDate, itemDate, matches, Page, Pager, SearchBox, Seg, usePaged, useQueryFlag, useQueryParam, useToast } from "../ui"
+import { Confirm, fmtDate, itemDate, matches, Page, Pager, SearchBox, Seg, usePaged, useQueryFlag, useQueryParam, useToast } from "../ui"
 import {
   CATALOGO,
   examNo,
@@ -319,8 +319,10 @@ function PatientDrawer({ exams, animal, userName, onClose, onToast, onPrint, onA
     setPhase(e, 1, { coleta: { em: new Date(coleta.em).toISOString(), por: coleta.por.trim() } })
     setColeta(null)
   }
-  const remove = (e: Item) => {
-    if (!window.confirm(`Excluir o exame ${examNo(e)} (${e.name})? Esta ação não pode ser desfeita.`)) return
+  const [excluindo, setExcluindo] = useState<Item | null>(null)
+  const remove = (e: Item) => setExcluindo(e)
+  const confirmarExclusao = (e: Item) => {
+    setExcluindo(null)
     deleteItem("exames", e.id)
     onToast(`${examNo(e)} excluído.`)
     if (sorted.length === 1) onClose()
@@ -336,6 +338,7 @@ function PatientDrawer({ exams, animal, userName, onClose, onToast, onPrint, onA
   return (
     <>
     {resultado}
+    {excluindo && <Confirm title="Excluir exame?" text={`O exame ${examNo(excluindo)} (${excluindo.name}) será excluído. Esta ação não pode ser desfeita.`} confirm="Excluir" danger onCancel={() => setExcluindo(null)} onConfirm={() => confirmarExclusao(excluindo)} />}
     <Drawer
       title={first.animal || "Paciente"}
       sub={`${sorted.length} exame(s) · ${ready.length} liberado(s)`}

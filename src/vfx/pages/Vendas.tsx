@@ -1,9 +1,9 @@
 import { localDateTime, localISO } from "../../date"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate } from "react-router"
-import { AlertTriangle, Check, Clock, FileText, Lock, MapPin, Package, Pencil, ScanBarcode, Search, Send, ShoppingCart, Trash2, Truck, User, UserPlus, X } from "lucide-react"
+import { AlertTriangle, Check, Clock, FileText, Lock, MapPin, Package, Pencil, ScanBarcode, Search, Send, ShoppingCart, Trash2, Truck, User, UserPlus, Users, X } from "lucide-react"
 import { useVetFlow, type Item } from "../../store"
-import { brl, fmtDate, initials, itemDate, normalizeText, parseMoney, todayISO, Page } from "../ui"
+import { brl, Confirm, fmtDate, initials, itemDate, normalizeText, parseMoney, todayISO, Page } from "../ui"
 import { codeOf, DOCUMENTOS, orcamentoHtml, printHtml, editInfo, planoInfo, PLANOS, LIMITE_DESCONTO, LIMITE_FIADO, lineTotal, minutesSince, mmss, nextNumber, nowTime, priceOf, saleTone, shortCode, stamp, type Entrega, type Line } from "../vendasShared"
 import { PrintBar } from "../PrintMenu"
 import Layer from "../OpLayer"
@@ -103,17 +103,18 @@ export default function Vendas() {
     return m
   }, [data.animais])
   /* busca: nome, apelido, CPF/CNPJ, telefone/WhatsApp, e-mail, animal, bairro, cidade ou código */
-  const clientHits = useMemo(() => {
-    const raw = cq.trim()
+  type Hit = { tutor: Item; pets: string[]; why: string; score: number }
+  const buscaClientes = (raw0: string, limite: number, todos = false): Hit[] => {
+    const raw = raw0.trim()
     const q = normalizeText(raw)
     const digits = raw.replace(/\D/g, "")
-    if (q.length < 2 && digits.length < 2) return [] as { tutor: Item; pets: string[]; why: string; score: number }[]
     const words = q.split(/\s+/).filter(Boolean)
-    const out: { tutor: Item; pets: string[]; why: string; score: number }[] = []
+    const out: Hit[] = []
     for (const tutor of data.tutores) {
       if (cFilter === "debito" && !((tutor.amountValue || 0) > 0)) continue
       if (cFilter === "pj" && tutor.personType !== "Jurídica") continue
       const pets = petsByOwner.get(tutor.id) || []
+      if (!q && !digits) { if (todos) out.push({ tutor, pets, why: "", score: 1 }); continue }
       const c = tutor.extra?.cadastro || {}
       const name = normalizeText(`${tutor.name} ${c.fantasia || ""}`)
       const docD = (tutor.cpf || "").replace(/\D/g, "")
@@ -122,16 +123,27 @@ export default function Vendas() {
       let score = 0, why = ""
       if (digits.length >= 3 && docD.startsWith(digits)) { score = 100; why = tutor.personType === "Jurídica" ? "CNPJ" : "CPF" }
       else if (digits.length >= 4 && phD.includes(digits)) { score = 90; why = "Telefone" }
-      else if (digits.length >= 2 && digits === raw && code.endsWith(digits)) { score = 70; why = "Código" }
+      else if (digits.length >= 1 && digits === raw && code.endsWith(digits)) { score = 70; why = "Código" }
       else if (words.length && name.startsWith(q)) { score = 80; why = "Nome" }
+      else if (words.length && name.split(/\s+/).some((w) => w.startsWith(q))) { score = 75; why = "Nome" }
       else if (words.length && words.every((w) => name.includes(w))) { score = 60; why = "Nome" }
       else if (words.length && pets.some((p) => normalizeText(p).includes(q))) { score = 50; why = `Animal: ${pets.find((p) => normalizeText(p).includes(q))}` }
       else if (q.includes("@") && normalizeText(tutor.email || "").includes(q)) { score = 50; why = "E-mail" }
       else if (words.length && normalizeText(`${tutor.address || ""} ${c.bairro || ""} ${c.cidade || ""}`).includes(q)) { score = 30; why = "Endereço" }
       if (score) out.push({ tutor, pets, why, score })
     }
-    return out.sort((x, y) => y.score - x.score || x.tutor.name.localeCompare(y.tutor.name)).slice(0, 8)
-  }, [cq, cFilter, data.tutores, petsByOwner])
+    return out.sort((x, y) => y.score - x.score || x.tutor.name.localeCompare(y.tutor.name)).slice(0, limite)
+  }
+  const clientHits = useMemo(() => cq.trim() ? buscaClientes(cq, 8) : [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [cq, cFilter, data.tutores, petsByOwner])
+  /* tabela de clientes (F11 ou Enter na busca) */
+  const [cliTab, setCliTab] = useState<string | null>(null)
+  const [cliIdx, setCliIdx] = useState(0)
+  const cliRows = useMemo(() => cliTab === null ? [] : buscaClientes(cliTab, 300, true),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [cliTab, cFilter, data.tutores, petsByOwner])
+  const abrirTabelaClientes = (q: string) => { setCliTab(q); setCliIdx(0) }
   const limiteDe = (t?: Item | null) => (t?.extra?.limiteCredito ?? LIMITE_FIADO) as number
   const fiado = useMemo(() => {
     if (!client) return { aberto: 0, limite: LIMITE_FIADO, bloqueado: false }
@@ -156,7 +168,7 @@ export default function Vendas() {
     window.setTimeout(() => prodRef.current?.focus(), 0)
   }
   const pickClient = (tutor: Item) => {
-    setClientId(tutor.id); setCq(""); setCIdx(0)
+    setClientId(tutor.id); setCq(""); setCIdx(0); setCliTab(null)
     window.setTimeout(() => prodRef.current?.focus(), 0)
   }
 
@@ -366,7 +378,7 @@ export default function Vendas() {
   }
 
   /* atalhos (padrão do ERP) */
-  const focusClient = () => { setClientId(""); setSec("Vendas"); window.setTimeout(() => clientRef.current?.focus(), 0) }
+  const focusClient = () => { setSec("Vendas"); abrirTabelaClientes(cq) }
   const focusProd = (svc = false) => { setSvcMode(svc); setSec("Vendas"); window.setTimeout(() => prodRef.current?.focus(), 0) }
   const deleteLine = () => {
     if (!cart.length) return
@@ -378,9 +390,10 @@ export default function Vendas() {
   const sair = () => {
     if (obsLine != null) return setObsLine(null)
     if (pq) return setPq("")
-    if (cart.length && !window.confirm("Sair e descartar esta venda?")) return
+    if (cart.length) return setSairVenda(true)
     reset()
   }
+  const [sairVenda, setSairVenda] = useState(false)
   /* Ctrl+P: com itens, imprime a pré-venda em A4 (orçamento/conferência); sem itens, imprime a tela */
   const imprimir = () => {
     if (!cart.length) { window.print(); return }
@@ -421,7 +434,7 @@ export default function Vendas() {
     if (tab !== "nova") return undefined
     const onKey = (event: KeyboardEvent) => {
       if (sent) { if (event.key === "Enter" || event.key === "Escape") { event.preventDefault(); setSent(null) } return }
-      if (cadastro || askApproval || picker) return
+      if (cadastro || askApproval || picker || cliTab !== null || sairVenda) return
       const key = event.key.length === 1 ? event.key.toUpperCase() : event.key
       const k = event.ctrlKey && key === "P" ? "Ctrl+P"
         : event.ctrlKey && key === "Enter" ? "Ctrl+Enter"
@@ -495,7 +508,7 @@ export default function Vendas() {
   }
 
   return (
-    <Page bg="#f6eee2" blobs={[["#ffc9a3", -80, 140, 520, 460], ["#a8e2b8", "72%", -60, 380, 360]]} crumb="Vendas" title="Balcão" sub="Monte a venda, consulte o estoque e envie direto para o caixa. Tudo online, sem papel.">
+    <Page bg="#f6eee2" blobs={[["#ffc9a3", -80, 140, 520, 460], ["#a8e2b8", "72%", -60, 380, 360]]} crumb="Vendas" title="Vendas" sub="Monte a venda, consulte o estoque e envie direto para o caixa. Tudo online, sem papel.">
       <div className="op op-vx">
       <div className="op-bar">
         <h1><ShoppingCart size={18} /> Vendas</h1>
@@ -603,8 +616,8 @@ export default function Vendas() {
             {/* cliente */}
             <div className="op-card">
               <div className="op-ch"><h2><User /> Cliente <kbd>F11</kbd></h2>
-                {!client && clientId !== "cf" && <div style={{ display: "flex", gap: 6 }}><button className="op-btn sm" onClick={() => openCadastro(null, cq)}><UserPlus /> Novo cliente</button><button className="op-btn sm" onClick={() => setClientId("cf")}>Consumidor final</button></div>}
-                {(client || clientId === "cf") && <span style={{ display: "flex", gap: 14 }}>{client && <button className="op-link" onClick={() => openCadastro(client)}>Editar cadastro</button>}<button className="op-link" onClick={() => { setClientId(""); window.setTimeout(() => clientRef.current?.focus(), 0) }}>Trocar cliente</button></span>}
+                {!client && clientId !== "cf" && <div style={{ display: "flex", gap: 6 }}><button className="op-btn sm" onClick={() => abrirTabelaClientes(cq)}><Users /> Ver clientes</button><button className="op-btn sm" onClick={() => openCadastro(null, cq)}><UserPlus /> Novo cliente</button><button className="op-btn sm" onClick={() => setClientId("cf")}>Consumidor final</button></div>}
+                {(client || clientId === "cf") && <span style={{ display: "flex", gap: 14 }}>{client && <button className="op-link" onClick={() => openCadastro(client)}>Editar cadastro</button>}<button className="op-link" onClick={() => abrirTabelaClientes("")}>Trocar cliente</button></span>}
               </div>
               <div className="op-cb">
                 {client ? (
@@ -630,8 +643,8 @@ export default function Vendas() {
                   <><div className="op-search">
                     <Search />
                     <input ref={clientRef} className="op-in lg" autoFocus placeholder="Nome, CPF/CNPJ, telefone, e-mail, animal, bairro ou código" value={cq} onChange={(e) => { setCq(e.target.value); setCIdx(0) }}
-                      onKeyDown={(e) => { if (e.key === "ArrowDown") { e.preventDefault(); setCIdx((i) => Math.min(clientHits.length, i + 1)) } if (e.key === "ArrowUp") { e.preventDefault(); setCIdx((i) => Math.max(0, i - 1)) } if (e.key === "Enter") { e.preventDefault(); if (clientHits[cIdx]) pickClient(clientHits[cIdx].tutor); else if (cq.trim().length >= 2) openCadastro(null, cq) } if (e.key === "Escape") setCq("") }} />
-                    {cq.trim().length >= 2 && (
+                      onKeyDown={(e) => { if (e.key === "ArrowDown") { e.preventDefault(); setCIdx((i) => Math.min(clientHits.length, i + 1)) } if (e.key === "ArrowUp") { e.preventDefault(); setCIdx((i) => Math.max(0, i - 1)) } if (e.key === "Enter") { e.preventDefault(); if (cIdx > 0 && clientHits[cIdx]) pickClient(clientHits[cIdx].tutor); else if (cIdx > 0 && cIdx === clientHits.length && cq.trim()) openCadastro(null, cq); else abrirTabelaClientes(cq) } if (e.key === "Escape") setCq("") }} />
+                    {cq.trim().length >= 1 && (
                       <div className="op-drop">
                         {clientHits.map(({ tutor, pets, why }, i) => (
                           <div key={tutor.id} className={`op-tr click ${i === cIdx ? "act" : ""}`} style={{ gridTemplateColumns: "minmax(0,1.5fr) 150px minmax(0,1fr) 120px" }} onMouseDown={(e) => { e.preventDefault(); pickClient(tutor) }}>
@@ -912,6 +925,43 @@ export default function Vendas() {
         </Layer>
       )}
 
+      {sairVenda && <Confirm title="Descartar esta venda?" text="Os itens lançados nesta venda serão perdidos." cancel="Continuar vendendo" confirm="Descartar" danger onCancel={() => setSairVenda(false)} onConfirm={() => { setSairVenda(false); reset() }} />}
+      {cliTab !== null && (
+        <Layer className="op-modal-layer" onMouseDown={() => setCliTab(null)}>
+          <div className="op-modal vd-cli" onMouseDown={(e) => e.stopPropagation()}>
+            <div className="op-ch"><h2><Users /> Clientes <kbd>F11</kbd></h2><span className="muted" style={{ fontSize: 12 }}>{cliRows.length}{cliRows.length >= 300 ? "+" : ""} {cliRows.length === 1 ? "cliente" : "clientes"}</span></div>
+            <div className="op-cb" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <div className="op-search"><Search />
+                <input className="op-in lg" autoFocus placeholder="Digite o nome (ex.: Ma), CPF/CNPJ, telefone, animal ou bairro" value={cliTab} onChange={(e) => { setCliTab(e.target.value); setCliIdx(0) }}
+                  onKeyDown={(e) => {
+                    if (e.key === "ArrowDown") { e.preventDefault(); setCliIdx((i) => Math.min(cliRows.length - 1, i + 1)) }
+                    if (e.key === "ArrowUp") { e.preventDefault(); setCliIdx((i) => Math.max(0, i - 1)) }
+                    if (e.key === "Enter" && cliRows[cliIdx]) { e.preventDefault(); pickClient(cliRows[cliIdx].tutor) }
+                    if (e.key === "Escape") { e.preventDefault(); setCliTab(null) }
+                  }} />
+              </div>
+              <div className="op-tabs">{([["todos", "Todos"], ["debito", "Com débito"], ["pj", "Empresas"]] as const).map(([k, l]) => <button key={k} className={cFilter === k ? "on" : ""} onClick={() => { setCFilter(k); setCliIdx(0) }}>{l}</button>)}</div>
+              <div className="op-table vd-cli-table">
+                <div className="op-tr op-th" style={{ gridTemplateColumns: "64px minmax(0,1.5fr) 150px minmax(0,1fr) 120px" }}><span>Código</span><span>Cliente</span><span>Telefone</span><span>Animais</span><span className="r">Situação</span></div>
+                {cliRows.map(({ tutor, pets }, i) => (
+                  <div key={tutor.id} className={`op-tr click ${i === cliIdx ? "act" : ""}`} style={{ gridTemplateColumns: "64px minmax(0,1.5fr) 150px minmax(0,1fr) 120px" }} onMouseEnter={() => setCliIdx(i)} onClick={() => pickClient(tutor)}>
+                    <span className="mono muted">{tutor.id.replace(/\D/g, "").slice(-5) || "—"}</span>
+                    <span className="op-hit-main"><strong>{tutor.name}</strong><small>{tutor.cpf ? `${tutor.personType === "Jurídica" ? "CNPJ" : "CPF"} ${tutor.cpf}` : "sem documento"} · {(tutor.address || "").split(" • ")[1] || (tutor.address || "").split(" • ")[0] || "sem endereço"}</small></span>
+                    <span className="mono">{tutor.phone || "—"}</span>
+                    <span className="muted">{pets.length ? `${pets.slice(0, 3).join(", ")}${pets.length > 3 ? ` +${pets.length - 3}` : ""}` : "sem animais"}</span>
+                    <span className="r">{(tutor.amountValue || 0) > 0 ? <span className="op-tag amber">deve {brl(tutor.amountValue || 0)}</span> : <span className="op-tag green">em dia</span>}</span>
+                  </div>
+                ))}
+                {!cliRows.length && <div className="op-empty">Nenhum cliente encontrado para “{cliTab.trim()}”.</div>}
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <p className="muted" style={{ margin: 0, fontSize: 12 }}>↑ ↓ para escolher · Enter seleciona · Esc fecha</p>
+                <span style={{ display: "flex", gap: 6 }}><button className="op-btn sm" onClick={() => { setCliTab(null); setClientId("cf") }}>Consumidor final</button><button className="op-btn sm pri" onClick={() => { const q = cliTab; setCliTab(null); openCadastro(null, q) }}><UserPlus /> Novo cliente</button></span>
+              </div>
+            </div>
+          </div>
+        </Layer>
+      )}
       {picker && (
         <Layer className="op-modal-layer" onMouseDown={() => setPicker(null)}>
           <div className="op-modal" style={{ width: 380 }} onMouseDown={(e) => e.stopPropagation()}>

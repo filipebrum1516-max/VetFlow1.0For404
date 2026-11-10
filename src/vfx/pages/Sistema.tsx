@@ -5,7 +5,7 @@ import { modules, useVetFlow, type UserProfile } from "../../store"
 import { Confirm, initials, Page, useToast } from "../ui"
 
 export function Perfil() {
-  const { profile, updateProfile, activeUnit, data } = useVetFlow()
+  const { profile, updateProfile, activeUnit, data, user, units } = useVetFlow()
   const [draft, setDraft] = useState<UserProfile>(profile)
   const [toast, show] = useToast()
   const dirty = JSON.stringify(draft) !== JSON.stringify(profile)
@@ -51,6 +51,57 @@ export function Perfil() {
           </div>
         </form>
       </div>
+
+      {/* minha atividade */}
+      {(() => {
+        const primeiro = (profile.name || "").split(" ")[0]
+        const meu = (r: { professional?: string }) => !!primeiro && !!r.professional && r.professional.includes(primeiro)
+        const hoje = new Date().toISOString().slice(0, 10)
+        const mes = hoje.slice(0, 7)
+        const dataDe = (r: { date?: string; createdAt?: string }) => (r.date || r.createdAt || "").slice(0, 10)
+        const consultasMes = data.consultas.filter((r) => meu(r) && dataDe(r).slice(0, 7) === mes).length
+        const hojeAg = data.agendas.filter((r) => meu(r) && dataDe(r) === hoje).length
+        const cirurgias = data.cirurgias.filter(meu).length
+        const receitas = data.prescricoes.filter(meu).length
+        const pacientes = new Set(data.consultas.filter(meu).map((r) => r.animalId || r.animal)).size
+        const proximos = data.agendas
+          .filter((r) => meu(r) && dataDe(r) >= hoje && !/cancel|conclu/i.test(r.status || ""))
+          .sort((a, b) => `${dataDe(a)}${a.time || ""}`.localeCompare(`${dataDe(b)}${b.time || ""}`))
+          .slice(0, 6)
+        const kpis: [string, string | number, string][] = [
+          ["Agenda de hoje", hojeAg, "atendimentos marcados"],
+          ["Consultas no mês", consultasMes, "registradas por você"],
+          ["Pacientes atendidos", pacientes, "animais diferentes"],
+          ["Cirurgias", cirurgias, "como responsável"],
+          ["Receitas emitidas", receitas, "prescrições assinadas"],
+        ]
+        return (
+          <div className="pf-more">
+            <section className="vx-glass pf-kpis">
+              {kpis.map(([label, valor, sub]) => (
+                <div key={label}><small>{label}</small><strong>{valor}</strong><span>{sub}</span></div>
+              ))}
+            </section>
+            <div className="pf-cols">
+              <section className="vx-glass pf-box">
+                <h3>Próximos atendimentos</h3>
+                {proximos.length ? proximos.map((r) => (
+                  <div key={r.id} className="pf-row"><b>{dataDe(r) === hoje ? "Hoje" : dataDe(r).split("-").reverse().slice(0, 2).join("/")} {r.time || ""}</b><span>{r.animal || r.name}</span><small>{r.name}</small></div>
+                )) : <p className="pf-vazio">Nenhum atendimento futuro na sua agenda.</p>}
+              </section>
+              <section className="vx-glass pf-box">
+                <h3>Acesso e conta</h3>
+                <div className="pf-row"><b>Perfil de acesso</b><span>{user?.role || "Administrador"}</span></div>
+                <div className="pf-row"><b>Login</b><span>{profile.email}</span></div>
+                <div className="pf-row"><b>Unidade ativa</b><span>{activeUnit.name}</span></div>
+                <div className="pf-row"><b>Unidades da clínica</b><span>{units.length}</span></div>
+                <div className="pf-row"><b>Registro profissional</b><span>{profile.crmv || "—"}</span></div>
+                <div className="pf-row"><b>Especialidade</b><span>{profile.specialty || "—"}</span></div>
+              </section>
+            </div>
+          </div>
+        )
+      })()}
       {toast}
     </Page>
   )

@@ -92,8 +92,8 @@ export default function Documentos() {
     <CadastroLista
       crumb="Clínico / Documentos"
       title="Documentos"
-      sub="Cada documento é um processo ligado ao animal e ao tutor — abra para ver os andamentos e imprimir."
-      novo={{ label: "Abrir processo", onClick: () => forms.open("documentos") }}
+      sub="Cada documento fica ligado ao animal e ao tutor — abra para ver os andamentos e imprimir."
+      novo={{ label: "Novo documento", onClick: () => forms.open("documentos") }}
       kpis={[
         { label: "Em tramitação", value: contagem.entrada, detail: "aguardando assinatura", icon: <Inbox />, tone: "blue", aba: "entrada" },
         { label: "Prazo vencido", value: atrasados, detail: "passaram do prazo de assinatura", icon: <TriangleAlert />, tone: "red", aba: "atrasados" },
@@ -111,14 +111,14 @@ export default function Documentos() {
       onAba={(k) => setCaixa((k || "entrada") as Caixa)}
       query={query}
       onQuery={setQuery}
-      placeholder="Nº do processo, paciente, tutor ou tipo"
+      placeholder="Nº do documento, paciente, tutor ou tipo"
       filtros={[{ label: "Tipo", icon: <FolderOpen />, value: tipo, onChange: setTipo, options: [["Todos", "Todos os tipos"], ...tipos.map(([nome, n]) => [nome, `${nome} (${n})`] as [string, string])] }]}
       rows={lista}
       rowKey={(d) => d.id}
-      noun="processos"
-      vazio="Nenhum processo nesta caixa"
+      noun="documentos"
+      vazio="Nenhum documento nesta caixa"
       perPageDefault={10}
-      exportar={{ nome: "processos", linha: (d) => ({ Processo: numero(d), Documento: d.name, Paciente: d.animal || "", Tutor: d.owner || "", Responsavel: d.professional || "", Prazo: fmtDate(prazoDe(d)), Etapa: ETAPAS[etapaDe(d)], Situacao: atrasado(d) ? "Prazo vencido" : d.status }) }}
+      exportar={{ nome: "documentos", linha: (d) => ({ Numero: numero(d), Documento: d.name, Paciente: d.animal || "", Tutor: d.owner || "", Responsavel: d.professional || "", Prazo: fmtDate(prazoDe(d)), Etapa: ETAPAS[etapaDe(d)], Situacao: atrasado(d) ? "Prazo vencido" : d.status }) }}
       atual={fichaId}
       onAtual={setFichaId}
       ficha={(d) => {
@@ -137,7 +137,7 @@ export default function Documentos() {
             statusTom={atrasado(d) ? "red" : etapa === 1 ? "blue" : etapa === 3 ? "gray" : ""}
             semUso
             acoes={[
-              { label: "Abrir processo", icon: <FolderOpen />, main: true, onClick: () => setAbertoId(d.id) },
+              { label: "Abrir documento", icon: <FolderOpen />, main: true, onClick: () => setAbertoId(d.id) },
               ...(etapa === 1 ? [{ label: "Marcar assinado", icon: <CheckCircle2 />, onClick: () => andar({ status: "Assinado" }, "Marcado como assinado", "assinatura", { assinadoEm: new Date().toISOString(), assinadoPor: user?.displayName || "Equipe" }) }, { label: "Reenviar link", icon: <Send />, onClick: () => andar({}, "Link de assinatura reenviado ao tutor", "reenvio", { reenviadoEm: new Date().toISOString() }) }] : []),
               ...(etapa === 2 ? [{ label: "Arquivar", icon: <Archive />, onClick: () => andar({ status: "Arquivado" }, "Arquivado", "arquivo", { arquivadoEm: new Date().toISOString(), arquivadoPor: user?.displayName || "Equipe" }) }] : []),
               ...(etapa === 3 ? [{ label: "Desarquivar", icon: <ArchiveRestore />, onClick: () => andar({ status: d.extra?.assinadoEm ? "Assinado" : "Pendente" }, "Desarquivado", "arquivo") }] : []),
@@ -159,7 +159,7 @@ export default function Documentos() {
         )
       }}
       colunas={[
-        { label: "Processo", w: "minmax(250px,1.4fr)", cell: (d) => <Ident square title={d.name} sub={`${numero(d)} · aberto em ${fmtDate(itemDate(d))}`} icon={<FileText />} color={colorFor(d.name)} /> },
+        { label: "Documento", w: "minmax(250px,1.4fr)", cell: (d) => <Ident square title={d.name} sub={`${numero(d)} · aberto em ${fmtDate(itemDate(d))}`} icon={<FileText />} color={colorFor(d.name)} /> },
         { label: "Interessados", w: "minmax(180px,1fr)", cell: (d) => (d.animalId ? <Duo title={<><PawPrint size={13} /> {d.animal}</>} sub={d.owner || "tutor não informado"} /> : <span className="pz-warn"><Link2 /> sem vínculo</span>) },
         { label: "Responsável", w: "minmax(150px,.8fr)", cell: (d) => <Duo title={d.professional || "—"} sub={gavetaDe(d)} /> },
         { label: "Prazo", w: "120px", cell: (d) => (etapaDe(d) === 1 ? <Duo title={fmtDate(prazoDe(d))} sub={atrasado(d) ? "vencido" : "para assinar"} /> : <Duo title="—" sub="concluído" />) },
@@ -187,11 +187,11 @@ function Processo({ item, numero, prazo, atrasado, onBack, forms, unidade, usuar
   const ex = item.extra || {}
 
   const andamentos: Andamento[] = useMemo(() => {
-    const base: Andamento[] = [{ em: item.createdAt || itemDate(item), por: item.professional || "Equipe", texto: `Processo aberto: ${item.name}${ex.evento ? ` (${ex.evento})` : ""}.`, tipo: "abertura" }]
+    const base: Andamento[] = [{ em: item.createdAt || itemDate(item), por: item.professional || "Equipe", texto: `Documento aberto: ${item.name}${ex.evento ? ` (${ex.evento})` : ""}.`, tipo: "abertura" }]
     base.push({ em: item.createdAt || itemDate(item), por: "Sistema", texto: `Enviado para assinatura do tutor${ex.metodo ? ` · ${ex.metodo}` : ""}. Prazo: ${fmtDate(prazo)}.`, tipo: "envio" })
     if (ex.reenviadoEm) base.push({ em: ex.reenviadoEm, por: usuario, texto: "Link de assinatura reenviado ao tutor.", tipo: "reenvio" })
     if (etapa >= 2) base.push({ em: ex.assinadoEm || itemDate(item), por: ex.assinadoPor || item.owner || "Tutor", texto: "Documento assinado pelas partes.", tipo: "assinatura" })
-    if (etapa === 3) base.push({ em: ex.arquivadoEm || itemDate(item), por: ex.arquivadoPor || "Equipe", texto: `Processo arquivado · guarda ${ex.guarda || "5 anos"}.`, tipo: "arquivo" })
+    if (etapa === 3) base.push({ em: ex.arquivadoEm || itemDate(item), por: ex.arquivadoPor || "Equipe", texto: `Documento arquivado · guarda ${ex.guarda || "5 anos"}.`, tipo: "arquivo" })
     const extras: Andamento[] = Array.isArray(ex.andamentos) ? ex.andamentos : []
     return [...base, ...extras].sort((a, b) => String(a.em).localeCompare(String(b.em)))
   }, [item, ex, etapa, prazo, usuario])
@@ -232,7 +232,7 @@ function Processo({ item, numero, prazo, atrasado, onBack, forms, unidade, usuar
       title={item.name}
       actions={
         <>
-          <button className="vx-btn vx-btn-g" onClick={onBack}><ArrowLeft /> Voltar aos processos</button>
+          <button className="vx-btn vx-btn-g" onClick={onBack}><ArrowLeft /> Voltar aos documentos</button>
           <button className="vx-btn vx-btn-g" onClick={() => forms.open("documentos", item)}><Edit3 /> Editar</button>
           {etapa === 1 && <button className="vx-btn vx-btn-g" onClick={reenviar}><Send /> Reenviar link</button>}
           {etapa === 1 && <button className="vx-btn vx-btn-p" onClick={assinar}><CheckCircle2 /> Marcar assinado</button>}
@@ -278,7 +278,7 @@ function Processo({ item, numero, prazo, atrasado, onBack, forms, unidade, usuar
       </section>
 
       <div className="pz-tabs" role="tablist">
-        {([["andamentos", "Andamentos", ListChecks], ["documento", "Documento", FileSignature], ["dados", "Dados do processo", FolderOpen]] as const).map(([k, label, Icon]) => (
+        {([["andamentos", "Andamentos", ListChecks], ["documento", "Documento", FileSignature], ["dados", "Dados do documento", FolderOpen]] as const).map(([k, label, Icon]) => (
           <button key={k} role="tab" aria-selected={aba === k} className={aba === k ? "on" : ""} onClick={() => setAba(k)}><Icon /> {label}</button>
         ))}
       </div>

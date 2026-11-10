@@ -158,8 +158,9 @@ export default function Profissionais() {
   if (modo !== "lista")
     return (
       <>
-        <ModoBar value={modo} onChange={setModo} options={MODOS} />
-        <ProfissionaisVisual />
+        <ModoBar value={modo} onChange={setModo} options={MODOS}>
+          <ProfissionaisVisual />
+        </ModoBar>
       </>
     )
   return <ProfissionaisLista modo={switcher} />

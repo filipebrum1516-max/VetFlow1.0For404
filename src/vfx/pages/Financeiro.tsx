@@ -4,7 +4,7 @@ import { ArrowDownLeft, ArrowUpRight, CalendarClock, Check, Plus, Receipt, Walle
 import { normalize, useVetFlow, type Item } from "../../store"
 import { usePageForms } from "../hooks"
 import { FichaCadastro } from "../Ficha"
-import { addDays, brl, fmtDate, itemDate, Page, Seg, todayISO } from "../ui"
+import { addDays, brl, fmtDate, itemDate, Modal, Page, Seg, todayISO } from "../ui"
 import { Duo, Ident, ListaFicha, Status } from "../CadastroLista"
 
 /*
@@ -74,9 +74,15 @@ export default function Financeiro() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data.financeiro, aba, faixa, query, hoje])
 
-  const quitar = (item: Item) => {
-    updateItem("financeiro", item.id, { status: isIn(item) ? "Recebido" : "Pago", extra: { ...(item.extra || {}), dataPagamento: hoje, situacao: "Pago / recebido" } })
-    forms.toast(`${item.name.replace(" • Receita", "")}: ${isIn(item) ? "recebido" : "pago"} hoje (${brl(item.amountValue || 0)}).`)
+  /* baixa de conta em aberto: pede confirmação com forma e data do pagamento */
+  const [baixa, setBaixa] = useState<{ item: Item; forma: string; data: string } | null>(null)
+  const quitar = (item: Item) => setBaixa({ item, forma: String(item.extra?.forma || "Pix"), data: hoje })
+  const confirmarBaixa = () => {
+    if (!baixa) return
+    const { item, forma, data: quando } = baixa
+    updateItem("financeiro", item.id, { status: isIn(item) ? "Recebido" : "Pago", extra: { ...(item.extra || {}), dataPagamento: quando, forma, situacao: "Pago / recebido" } })
+    forms.toast(`${item.name.replace(" • Receita", "")}: ${isIn(item) ? "recebido" : "pago"} em ${fmtDate(quando)} via ${forma} (${brl(item.amountValue || 0)}).`)
+    setBaixa(null)
   }
   const situacao = (item: Item) =>
     quitado(item) ? ["ok", isIn(item) ? "Recebido" : "Pago"] : vencido(item) ? ["late", "Vencido"] : ["pend", isIn(item) ? "A receber" : "A pagar"]
@@ -216,6 +222,24 @@ export default function Financeiro() {
           )
         }}
       />
+      {baixa && (
+        <Modal
+          title={isIn(baixa.item) ? "Confirmar recebimento" : "Confirmar pagamento"}
+          text={`${baixa.item.name.replace(" • Receita", "")} · ${brl(baixa.item.amountValue || 0)}. ${isIn(baixa.item) ? "Use para valores que entraram fora do caixa (Pix, transferência, boleto). O que é recebido no balcão é baixado pelo Caixa." : "Registra a saída do valor na data escolhida."}`}
+          onClose={() => setBaixa(null)}
+          actions={
+            <>
+              <button type="button" className="vx-btn vx-btn-g" onClick={() => setBaixa(null)}>Cancelar</button>
+              <button type="button" className="vx-btn vx-btn-p" onClick={confirmarBaixa}><Check /> {isIn(baixa.item) ? "Confirmar recebimento" : "Confirmar pagamento"}</button>
+            </>
+          }
+        >
+          <div className="fn-baixa">
+            <label><span>Forma</span><select value={baixa.forma} onChange={(e) => setBaixa({ ...baixa, forma: e.target.value })}>{["Pix", "Transferência", "Boleto", "Cartão de crédito", "Cartão de débito", "Dinheiro"].map((f) => <option key={f}>{f}</option>)}</select></label>
+            <label><span>Data do {isIn(baixa.item) ? "recebimento" : "pagamento"}</span><input type="date" value={baixa.data} max={hoje} onChange={(e) => setBaixa({ ...baixa, data: e.target.value || hoje })} /></label>
+          </div>
+        </Modal>
+      )}
       {forms.node}
     </Page>
   )

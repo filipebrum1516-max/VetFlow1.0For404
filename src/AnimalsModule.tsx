@@ -1,5 +1,4 @@
 import RowActions, { RowButton, RowMenu } from "./vfx/RowActions"
-import { clinicMetrics } from "./metrics"
 import { CadastroDrawer, CadSec, Campo, cadInput } from "./vfx/CadastroDrawer"
 import { TutorBusca } from "./vfx/FormDrawer"
 import { localISO } from "./date"
@@ -164,6 +163,44 @@ function Highlight({ text, term }: { text: string; term: string }) {
   )
 }
 
+/** Monta o registro do animal a partir do formulário (usado na aba Animais e no agendamento). */
+function montarAnimal(animal: AnimalRow, ownerId: string, more: Partial<Item> = {}): Partial<Item> {
+    const patch: Partial<Item> = {
+      ...more,
+      name: animal.name,
+      subtitle: `${animal.species === "Felino" ? "Gato" : animal.species === "Canino" ? "Cão" : animal.species} • ${animal.breed}`,
+      status: animal.status,
+      owner: animal.owner,
+      ownerId,
+      species: animal.species === "Felino" ? "Gato" : animal.species === "Canino" ? "Cão" : animal.species,
+      breed: animal.breed,
+      extra: {
+        ...(more.extra || {}),
+        code: animal.code,
+        microchip: animal.microchip,
+      },
+    }
+  return patch
+}
+
+/** Cadastro completo de novo animal aberto por cima de outra tela (ex.: agendamento). */
+export function NovoAnimalCadastro({ tutorId, onClose, onCreated }: { tutorId: string; onClose: () => void; onCreated: (animal: Item) => void }) {
+  const { data, addItem } = useVetFlow()
+  const tutors = data.tutores.map((tutor, index) => ({ id: tutor.id, name: tutor.name, cpf: tutor.cpf || `000.000.00${index}-00`, rg: tutor.rg || `000000${index}`, phone: tutor.phone || "Não informado" }))
+  return (
+    <AnimalDrawer
+      tutors={tutors}
+      close={onClose}
+      nextCode={data.animais.length + 1}
+      presetTutor={tutorId}
+      save={(animal, ownerId, more) => {
+        const created = addItem("animais", { ...montarAnimal(animal, ownerId, more), id: animal.id })
+        onCreated(created)
+      }}
+    />
+  )
+}
+
 export default function AnimalsModule() {
   const { addItem, data, theme, updateItem, deleteItem, user } = useVetFlow()
   const soVer = accessLevel(user?.role, "animais", user?.perms) === "Ver"
@@ -212,6 +249,7 @@ export default function AnimalsModule() {
     () => new URLSearchParams(window.location.search).get("animal") || "",
   )
   const [status, setStatus] = useState("Todos os status")
+  const [vacFiltro, setVacFiltro] = useState(false)
   const [species, setSpecies] = useState("Todos os tipos")
   const [sort, setSort] = useState("Mais recentes")
   const [drawerOpen, setDrawerOpen] = useState(() => new URLSearchParams(window.location.search).get("novo") === "1")
@@ -229,6 +267,7 @@ export default function AnimalsModule() {
     return existing
   }, [data.tutores])
 
+  const vacAtrasoIds = useMemo(() => new Set(data.vacinas.filter((v) => /atrasad/i.test(v.status || "")).map((v) => v.animalId || "")), [data.vacinas])
   const filtered = useMemo(() => {
     const result = rows.filter((animal) => {
       const haystack = normalize(
@@ -237,6 +276,7 @@ export default function AnimalsModule() {
       return (
         haystack.includes(normalize(query)) &&
         (status === "Todos os status" || animal.status === status) &&
+        (!vacFiltro || vacAtrasoIds.has(animal.id)) &&
         (species === "Todos os tipos" || animal.species === species)
       )
     })
@@ -244,7 +284,7 @@ export default function AnimalsModule() {
       return [...result].sort((a, b) => a.name.localeCompare(b.name))
     if (sort === "Mais antigos") return [...result].reverse()
     return result
-  }, [query, rows, sort, species, status])
+  }, [query, rows, sort, species, status, vacFiltro, vacAtrasoIds])
 
   const statusTabs = useMemo(() => {
     const base = rows.filter((animal) => normalize(`${animal.name} ${animal.owner} ${animal.microchip}`).includes(normalize(query)) && (species === "Todos os tipos" || animal.species === species))
@@ -281,38 +321,22 @@ export default function AnimalsModule() {
   useEffect(() => {
     setPage((current) => Math.min(current, pages))
   }, [pages])
-  const metrics = clinicMetrics(data)
-  const pct = (n: number) => (data.animais.length ? `${((n / data.animais.length) * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}% do total` : "—")
+  const totalRows = rows.length
+  const contar = (st: string) => rows.filter((a) => a.status === st).length
+  const pct = (n: number) => (totalRows ? `${((n / totalRows) * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}% do total` : "—")
   const newThisMonth = data.animais.filter((a) => (a.date || "").slice(0, 7) === localISO().slice(0, 7)).length
+  const comVacinaAtrasada = rows.filter((a) => vacAtrasoIds.has(a.id)).length
+  const escolherKpi = (st: string, vac = false) => {
+    const ativo = vac ? vacFiltro : !vacFiltro && status === st
+    setVacFiltro(vac && !ativo)
+    setStatus(ativo || vac ? "Todos os status" : st)
+    setPage(1)
+  }
   const indicators = [
-    {
-      label: "Total de animais",
-      value: data.animais.length,
-      detail: `${newThisMonth} cadastrados este mês`,
-      icon: <PawPrint />,
-      tone: "orange",
-    },
-    {
-      label: "Pacientes ativos",
-      value: metrics.patients,
-      detail: pct(metrics.patients),
-      icon: <ShieldCheck />,
-      tone: "aqua",
-    },
-    {
-      label: "Em tratamento",
-      value: metrics.inTreatment,
-      detail: pct(metrics.inTreatment),
-      icon: <HeartPulse />,
-      tone: "orange",
-    },
-    {
-      label: "Vacinas em atraso",
-      value: metrics.lateVaccines,
-      detail: metrics.lateVaccines ? "precisam de atenção" : "tudo em dia",
-      icon: <Syringe />,
-      tone: "red",
-    },
+    { label: "Total de animais", value: totalRows, detail: `${newThisMonth} cadastrados este mês`, icon: <PawPrint />, tone: "orange", on: !vacFiltro && status === "Todos os status", click: () => escolherKpi("Todos os status") },
+    { label: "Pacientes ativos", value: contar("Ativo"), detail: pct(contar("Ativo")), icon: <ShieldCheck />, tone: "aqua", on: !vacFiltro && status === "Ativo", click: () => escolherKpi("Ativo") },
+    { label: "Em tratamento", value: contar("Em tratamento"), detail: pct(contar("Em tratamento")), icon: <HeartPulse />, tone: "orange", on: !vacFiltro && status === "Em tratamento", click: () => escolherKpi("Em tratamento") },
+    { label: "Vacinas em atraso", value: comVacinaAtrasada, detail: comVacinaAtrasada ? "animais precisam de atenção" : "tudo em dia", icon: <Syringe />, tone: "red", on: vacFiltro, click: () => escolherKpi("", true) },
   ]
 
   const flash = (message: string) => {
@@ -323,21 +347,7 @@ export default function AnimalsModule() {
     setDrawerOpen(false)
   }
   const handleSaved = (animal: AnimalRow, ownerId: string, more: Partial<Item> = {}) => {
-    const patch: Partial<Item> = {
-      ...more,
-      name: animal.name,
-      subtitle: `${animal.species === "Felino" ? "Gato" : animal.species === "Canino" ? "Cão" : animal.species} • ${animal.breed}`,
-      status: animal.status,
-      owner: animal.owner,
-      ownerId,
-      species: animal.species === "Felino" ? "Gato" : animal.species === "Canino" ? "Cão" : animal.species,
-      breed: animal.breed,
-      extra: {
-        ...(more.extra || {}),
-        code: animal.code,
-        microchip: animal.microchip,
-      },
-    }
+    const patch = montarAnimal(animal, ownerId, more)
     addItem("animais", { ...patch, id: animal.id })
     flash(`Animal cadastrado e vinculado a ${animal.owner}.`)
     closeAnimalDrawer()
@@ -372,13 +382,15 @@ export default function AnimalsModule() {
         </picture>
         <div className="animals-glass-metrics">
           {indicators.map((item) => (
-            <article key={item.label}>
-              <i className={item.tone}>{item.icon}</i>
-              <span>
-                <small>{item.label}</small>
-                <strong>{item.value}</strong>
-                <em>{item.detail}</em>
-              </span>
+            <article key={item.label} className={`lv-kpi-btn ${item.on && item.label !== "Total de animais" ? "on" : ""}`}>
+              <button type="button" aria-pressed={item.on} title={item.on && item.label !== "Total de animais" ? "Mostrar tudo" : `Filtrar: ${item.label}`} onClick={item.click}>
+                <i className={item.tone}>{item.icon}</i>
+                <span>
+                  <small>{item.label}</small>
+                  <strong>{item.value}</strong>
+                  <em>{item.detail}</em>
+                </span>
+              </button>
             </article>
           ))}
         </div>
@@ -388,7 +400,7 @@ export default function AnimalsModule() {
       <section className="animals-table-card lv-card cd-list">
         <nav className="lv-tabs" role="tablist" aria-label="Situação">
           {statusTabs.map((tab) => (
-            <button key={tab.key} type="button" role="tab" aria-selected={status === tab.key} className={`lv-tab ${status === tab.key ? "on" : ""}`} onClick={() => setStatus(tab.key)}>
+            <button key={tab.key} type="button" role="tab" aria-selected={status === tab.key} className={`lv-tab ${status === tab.key ? "on" : ""}`} onClick={() => { setStatus(tab.key); setVacFiltro(false) }}>
               {tab.label} <b>{tab.count.toLocaleString("pt-BR")}</b>
             </button>
           ))}

@@ -69,7 +69,7 @@ export default function Prescricoes() {
       sub="Receitas emitidas por paciente e tipo (simples, controle especial, manipulação)."
       actions={
         <>
-          <SearchBox value={query} onChange={setQuery} placeholder="Buscar paciente ou medicamento" />
+          <SearchBox value={query} onChange={setQuery} placeholder="Buscar paciente ou remédio" />
           <Seg options={["Todas", "Simples", "Controle especial", "Manipulação"]} value={type} onChange={setType} />
           <button className="vx-btn vx-btn-p" onClick={() => forms.open("prescricoes", undefined, type !== "Todas" ? { tipo: type } : undefined)}>
             <Plus /> Emitir receita

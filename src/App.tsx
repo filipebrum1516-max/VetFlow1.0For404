@@ -415,7 +415,7 @@ function Sidebar({
   mobileOpen: boolean
   closeMobile: () => void
 }) {
-  const { profile, data, user } = useVetFlow()
+  const { data, user } = useVetFlow()
   const location = useLocation()
   const navigate = useNavigate()
   const role = user?.role
@@ -509,34 +509,13 @@ function Sidebar({
           </div>
         ))}
       </nav>
-      {collapsed ? (
+      {collapsed && (
         <button
           className="sidebar-expand"
           onClick={() => setCollapsed(false)}
           aria-label="Expandir menu"
         >
           <ChevronRight size={16} />
-        </button>
-      ) : (
-        <button
-          className="sidebar-profile vx-side-profile"
-          onClick={() => {
-            navigate("/perfil")
-            closeMobile()
-          }}
-        >
-          <span className="avatar">
-            {profile.name
-              .split(" ")
-              .map((part) => part[0])
-              .join("")
-              .slice(0, 2)}
-          </span>
-          <span style={{ minWidth: 0 }}>
-            <strong>{profile.displayName}</strong>
-            <small>{user ? `${user.role}${user.crmv && user.role !== "Administrador" ? ` · ${user.crmv}` : ""}` : profile.crmv}</small>
-          </span>
-          <i className="vx-online" aria-label="online" />
         </button>
       )}
     </aside>
@@ -926,7 +905,7 @@ function Header({ openMobile }: { openMobile: () => void }) {
   )
 }
 
-const EXTRA_TITLES: Record<string, string> = { "usuarios-permissoes": "Permissões detalhadas", "painel-classico": "Painel clássico", "dashboard-proposta": "Dashboard" }
+const EXTRA_TITLES: Record<string, string> = { "usuarios-permissoes": "Permissões detalhadas", "painel-classico": "Painel clássico", "dashboard-proposta": "Dashboard", perfil: "Meu perfil", configuracoes: "Configurações", ajuda: "Ajuda", "escolher-clinica": "Escolher clínica", privacidade: "Privacidade" }
 
 function PrintHead() {
   const { activeUnit, profile } = useVetFlow()

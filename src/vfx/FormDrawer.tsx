@@ -24,7 +24,7 @@ import {
   type UnitData,
   type UserProfile,
 } from "../store"
-import { colorFor, initials, parseMoney, todayISO } from "./ui"
+import { colorFor, initials, parseMoney, todayISO, useDescartar } from "./ui"
 
 /* ---------------- tipos do esquema ---------------- */
 export type Ctx = {
@@ -195,6 +195,8 @@ export default function FormDrawer({
 }) {
   const ctx = useCtx()
   const [values, setValues] = useState<Values>(() => initialValues(def, item, prefill))
+  const [valoresIniciais] = useState(() => JSON.stringify(initialValues(def, item, prefill)))
+  const descartar = useDescartar(onClose, JSON.stringify(values) !== valoresIniciais)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [formError, setFormError] = useState("")
   const [step, setStep] = useState(0)
@@ -204,11 +206,11 @@ export default function FormDrawer({
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose()
+      if (event.key === "Escape") descartar.tentar()
     }
     document.addEventListener("keydown", onKey)
     return () => document.removeEventListener("keydown", onKey)
-  }, [onClose])
+  })
 
   const set = (key: string, value: unknown) => {
     setValues((current) => ({ ...current, [key]: value }))
@@ -337,7 +339,7 @@ export default function FormDrawer({
 
   return createPortal(
 
-    <div className="vx-drawer-layer" onMouseDown={onClose}>
+    <div className="vx-drawer-layer" onMouseDown={descartar.tentar}>
       <aside
         className="vx-drawer"
         role="dialog"
@@ -351,7 +353,7 @@ export default function FormDrawer({
               {item ? def.editTitle || `Editar · ${item.name}` : def.title}
             </h2>
           </div>
-          <button className="vx-xb" aria-label="Fechar" onClick={onClose} type="button">
+          <button className="vx-xb" aria-label="Fechar" onClick={descartar.tentar} type="button">
             <X />
           </button>
         </div>
@@ -402,7 +404,7 @@ export default function FormDrawer({
           <span className="sp">
             {def.footer ? def.footer(values, ctx) : "Campos com * são obrigatórios"}
           </span>
-          <button className="vx-btn vx-btn-g" type="button" onClick={onClose}>
+          <button className="vx-btn vx-btn-g" type="button" onClick={descartar.tentar}>
             Cancelar
           </button>
           <button className="vx-btn vx-btn-p" type="button" onClick={save}>
@@ -410,6 +412,7 @@ export default function FormDrawer({
           </button>
         </div>
       </aside>
+      {descartar.node}
     </div>,
     document.body,
   )
@@ -782,7 +785,7 @@ export function TutorBusca({ tutores, animais = [], value, onChange, placeholder
     return tutores
       .filter((t) => {
         const pets = animais.filter((a) => a.ownerId === t.id).map((a) => a.name).join(" ")
-        return normalize(`${t.name} ${pets}`).includes(term) || (digits.length >= 3 && `${t.phone || ""}${t.extra?.cpf || ""}`.replace(/\D/g, "").includes(digits))
+        return normalize(`${t.name} ${pets}`).includes(term) || (digits.length >= 3 && [t.phone, t.cpf, t.rg, t.extra?.cpf].some((v) => String(v || "").replace(/\D/g, "").includes(digits)))
       })
       .slice(0, 8)
   }, [tutores, animais, query])

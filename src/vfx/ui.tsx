@@ -1,6 +1,8 @@
 import { createPortal } from "react-dom"
 import {
+  createContext,
   useCallback,
+  useContext,
   useEffect,
   useRef,
   useState,
@@ -207,6 +209,9 @@ export function PageHelp({ text }: { text: string }) {
   )
 }
 
+/** Alternador de visualização (Lista / Prateleira / Crachás…) que fica junto das ações da página. */
+export const PageModo = createContext<ReactNode>(null)
+
 export function Page({
   bg,
   bgDark,
@@ -230,6 +235,7 @@ export function Page({
   children: ReactNode
   style?: CSSProperties
 }) {
+  const modo = useContext(PageModo)
   return (
     <div
       className={`vx vx-page ${className}`}
@@ -256,7 +262,7 @@ export function Page({
           </div>
           <h1 className="vx-h1">{title}</h1>
         </div>
-        {actions && <div className="vx-actions">{actions}</div>}
+        {(actions || modo) && <div className="vx-actions">{modo}{actions}</div>}
       </div>
       {children}
     </div>
@@ -433,6 +439,7 @@ export function Confirm({
   title,
   text,
   confirm = "Confirmar",
+  cancel = "Cancelar",
   danger,
   onCancel,
   onConfirm,
@@ -441,6 +448,7 @@ export function Confirm({
   title: string
   text: string
   confirm?: string
+  cancel?: string
   danger?: boolean
   onCancel: () => void
   onConfirm: (reason: string) => void
@@ -463,7 +471,7 @@ export function Confirm({
       actions={
         <>
           <button className="vx-btn vx-btn-g" onClick={onCancel} type="button">
-            Cancelar
+            {cancel}
           </button>
           <button
             className={`vx-btn ${danger ? "vx-btn-d" : "vx-btn-p"}`}
@@ -568,4 +576,39 @@ export function GovSign({ name, when, compact, signed = true, by }: { name: stri
       <span style={{ color: "#5b6474" }}>Registro interno, sem certificado digital ICP-Brasil</span>
     </div>
   )
+}
+
+/** Filtro de período usado nos históricos (consultas, procedimentos…). */
+export const PERIODOS: [string, string][] = [["todos", "Todo o período"], ["7", "Últimos 7 dias"], ["30", "Últimos 30 dias"], ["90", "Últimos 90 dias"], ["365", "Último ano"]]
+export function noPeriodo(iso: string, periodo: string) {
+  if (!periodo || periodo === "todos") return true
+  const dias = Number(periodo)
+  const hoje = todayISO()
+  return !!iso && iso <= hoje && iso >= addDays(hoje, -dias)
+}
+
+/**
+ * Aviso ao sair de um cadastro com alterações não salvas (mesma janela do agendamento).
+ * `sujo` diz se há alterações; `tentar` fecha direto ou pergunta antes.
+ */
+export function useDescartar(fechar: () => void, sujo: boolean) {
+  const [perguntar, setPerguntar] = useState(false)
+  const aberto = useRef(false)
+  aberto.current = perguntar
+  const tentar = () => {
+    if (aberto.current) return
+    if (sujo) setPerguntar(true)
+    else fechar()
+  }
+  const node = perguntar ? (
+    <Confirm
+      title="Descartar alterações?"
+      text="Os dados preenchidos serão perdidos."
+      cancel="Continuar editando"
+      confirm="Descartar"
+      onCancel={() => setPerguntar(false)}
+      onConfirm={() => { setPerguntar(false); fechar() }}
+    />
+  ) : null
+  return { tentar, node }
 }

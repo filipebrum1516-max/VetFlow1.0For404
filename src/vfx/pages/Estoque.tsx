@@ -163,8 +163,9 @@ export default function Estoque() {
   if (modo !== "lista")
     return (
       <>
-        <ModoBar value={modo} onChange={setModo} options={MODOS} />
-        <EstoqueVisual />
+        <ModoBar value={modo} onChange={setModo} options={MODOS}>
+          <EstoqueVisual />
+        </ModoBar>
       </>
     )
   return <EstoqueLista modo={switcher} filtroInicial={["Acabando", "Esgotado", "Vencendo"].includes(filtro) ? filtro : "Todos"} />

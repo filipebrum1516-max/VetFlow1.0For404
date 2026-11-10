@@ -26,7 +26,7 @@ import { useNavigate } from "react-router"
 import { FichaCadastro } from "./vfx/Ficha"
 import { useVetFlow, type Item, accessLevel } from "./store"
 import ClienteForm, { fromItem, toItem } from "./vfx/ClienteForm"
-import { Confirm } from "./vfx/ui"
+import { Confirm, useDescartar } from "./vfx/ui"
 import { printHtml } from "./vfx/vendasShared"
 
 type Pet = {
@@ -296,6 +296,7 @@ export default function TutorsModule() {
   const navigate = useNavigate()
   const [query, setQuery] = useState(() => new URLSearchParams(window.location.search).get("tutor") || "")
   const [statusFilter, setStatusFilter] = useState("Todos os status")
+  const [novosMes, setNovosMes] = useState(false)
   const [sort, setSort] = useState("Mais recentes")
   const [addedRows, setAddedRows] = useState<TutorRow[]>([])
   const [page, setPage] = useState(1)
@@ -383,6 +384,7 @@ export default function TutorsModule() {
       .slice(0, Math.max(320, data.tutores.length))
   }, [addedRows, data.animais, data.tutores])
 
+  const novosIds = useMemo(() => new Set(data.tutores.filter((t) => (t.date || "").slice(0, 7) === new Date().toISOString().slice(0, 7)).map((t) => t.id)), [data.tutores])
   const filtered = useMemo(() => {
     const term = query.trim().toLowerCase()
     const matching = rows.filter(
@@ -393,13 +395,14 @@ export default function TutorsModule() {
           row.pets.some((animal) =>
             animal.name.toLowerCase().includes(term),
           )) &&
-        (statusFilter === "Todos os status" || row.status === statusFilter),
+        (statusFilter === "Todos os status" || row.status === statusFilter) &&
+        (!novosMes || novosIds.has(row.id)),
     )
     if (sort === "Nome A–Z")
       return [...matching].sort((a, b) => a.name.localeCompare(b.name))
     if (sort === "Mais antigos") return [...matching].reverse()
     return matching
-  }, [query, rows, sort, statusFilter])
+  }, [query, rows, sort, statusFilter, novosMes, novosIds])
   const statusTabs = useMemo(() => {
     const term = query.trim().toLowerCase()
     const base = rows.filter((row) => !term || row.name.toLowerCase().includes(term) || row.phone.includes(term) || row.pets.some((animal) => animal.name.toLowerCase().includes(term)))
@@ -428,7 +431,7 @@ export default function TutorsModule() {
 
   useEffect(() => {
     setPage(1)
-  }, [query, statusFilter, sort, perPage])
+  }, [query, statusFilter, sort, perPage, novosMes])
   useEffect(() => {
     setPage((current) => Math.min(current, pages))
   }, [pages])
@@ -527,10 +530,11 @@ export default function TutorsModule() {
     setErrors([])
   }
 
+  const descartarTutor = useDescartar(closeDrawer, drawerOpen && JSON.stringify(form) !== JSON.stringify(emptyTutor))
   const goBack = () => {
     if (animalScreen) return setAnimalScreen(false)
     if (step > 1) return setStep((current) => current - 1)
-    closeDrawer()
+    descartarTutor.tentar()
   }
 
   const nextStep = () => {
@@ -672,23 +676,34 @@ export default function TutorsModule() {
           />
         </picture>
         <div className="tutor-metrics">
-          {[
-            [Users, rows.length, "Tutores cadastrados", "Base completa", "orange"],
-            [UserRound, activeCount, "Ativos", rows.length ? `${((activeCount / rows.length) * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}% da base` : "—", "aqua"],
-            [UserRound, inactiveCount, "Inativos", "Cadastros arquivados", "gray"],
-            [TrendingUp, data.tutores.filter((t) => (t.date || "").slice(0, 7) === new Date().toISOString().slice(0, 7)).length, "Novos este mês", "cadastrados no mês atual", "orange"],
-          ].map(([Icon, value, label, detail, tone]) => {
-            const MetricIcon = Icon as typeof Users
+          {([
+            [Users, rows.length, "Tutores cadastrados", "Base completa", "orange", "Todos os status", false],
+            [UserRound, activeCount, "Ativos", rows.length ? `${((activeCount / rows.length) * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}% da base` : "—", "aqua", "Ativo", false],
+            [UserRound, inactiveCount, "Inativos", "Cadastros arquivados", "gray", "Inativo", false],
+            [TrendingUp, rows.filter((r) => novosIds.has(r.id)).length, "Novos este mês", "cadastrados no mês atual", "orange", "Todos os status", true],
+          ] as [typeof Users, number, string, string, string, string, boolean][]).map(([MetricIcon, value, label, detail, tone, st, novos]) => {
+            const ativo = novos ? novosMes : !novosMes && statusFilter === st
+            const marcado = ativo && st !== "Todos os status" || (novos && novosMes)
             return (
-              <article className="tutor-metric" key={String(label)}>
-                <i className={`tone-${tone}`}>
-                  <MetricIcon size={19} />
-                </i>
-                <span>
-                  <strong>{String(value)}</strong>
-                  <small>{String(label)}</small>
-                  <em>{String(detail)}</em>
-                </span>
+              <article className={`tutor-metric lv-kpi-btn ${marcado ? "on" : ""}`} key={label}>
+                <button
+                  type="button"
+                  aria-pressed={ativo}
+                  title={marcado ? "Mostrar tudo" : `Filtrar: ${label}`}
+                  onClick={() => {
+                    if (novos) { setNovosMes(!novosMes); setStatusFilter("Todos os status") }
+                    else { setNovosMes(false); setStatusFilter(ativo ? "Todos os status" : st) }
+                  }}
+                >
+                  <i className={`tone-${tone}`}>
+                    <MetricIcon size={19} />
+                  </i>
+                  <span>
+                    <strong>{String(value)}</strong>
+                    <small>{label}</small>
+                    <em>{detail}</em>
+                  </span>
+                </button>
               </article>
             )
           })}
@@ -699,7 +714,7 @@ export default function TutorsModule() {
         <section className="tutors-list-card lv-card cd-list">
           <nav className="lv-tabs" role="tablist" aria-label="Situação">
             {statusTabs.map((tab) => (
-              <button key={tab.key} type="button" role="tab" aria-selected={statusFilter === tab.key} className={`lv-tab ${statusFilter === tab.key ? "on" : ""}`} onClick={() => setStatusFilter(tab.key)}>
+              <button key={tab.key} type="button" role="tab" aria-selected={statusFilter === tab.key} className={`lv-tab ${statusFilter === tab.key ? "on" : ""}`} onClick={() => { setStatusFilter(tab.key); setNovosMes(false) }}>
                 {tab.label} <b>{tab.count.toLocaleString("pt-BR")}</b>
               </button>
             ))}
@@ -899,7 +914,7 @@ export default function TutorsModule() {
       </main>
 
       {drawerOpen && (
-        <div className="tf-overlay" onMouseDown={closeDrawer}>
+        <div className="tf-overlay" onMouseDown={descartarTutor.tentar}>
           <aside
             className="tutor-form-drawer"
             onMouseDown={(event) => event.stopPropagation()}
@@ -1031,6 +1046,7 @@ export default function TutorsModule() {
               </>
             )}
           </aside>
+          {descartarTutor.node}
         </div>
       )}
 

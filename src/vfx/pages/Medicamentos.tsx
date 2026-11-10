@@ -188,8 +188,9 @@ export default function Medicamentos() {
   if (modo !== "lista")
     return (
       <>
-        <ModoBar value={modo} onChange={setModo} options={MODOS} />
-        <MedicamentosVisual />
+        <ModoBar value={modo} onChange={setModo} options={MODOS}>
+          <MedicamentosVisual />
+        </ModoBar>
       </>
     )
   return <MedicamentosLista modo={switcher} />

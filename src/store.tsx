@@ -115,7 +115,7 @@ export const modules = [
   ["internacoes", "Internações"],
   ["protocolos", "Protocolos"],
   ["servicos", "Serviços"],
-  ["vendas", "Balcão"],
+  ["vendas", "Vendas"],
   ["caixa", "Caixa"],
   ["entregas", "Entregas"],
   ["estoque", "Estoque"],
@@ -685,6 +685,17 @@ function baseItem(
   }
 }
 
+/* conteúdo clínico dos prontuários de exemplo: [queixa, diagnóstico, conduta, exame físico, medicações] */
+const CASOS_CLINICOS: [string, string, string, string, [string, string, string, string, string][]][] = [
+  ["Vômitos há 2 dias após troca de ração, apetite reduzido.", "Gastroenterite alimentar", "Dieta leve fracionada por 5 dias, hidratação oral e retorno se persistir.", "Abdômen levemente doloroso à palpação, sem massas.", [["Omeprazol 10 mg", "1 comprimido", "Oral", "A cada 24 horas", "7 dias"], ["Ondansetrona 4 mg", "1/2 comprimido", "Oral", "A cada 12 horas", "3 dias"]]],
+  ["Coceira intensa e lambedura das patas há 3 semanas.", "Dermatite atópica", "Banho terapêutico semanal, controle de ectoparasitas e reavaliação em 21 dias.", "Eritema interdigital e alopecia focal em membros anteriores.", [["Oclacitinib 5,4 mg", "1 comprimido", "Oral", "A cada 12 horas", "14 dias"], ["Shampoo de clorexidina 2%", "Banho", "Tópica", "1 vez por semana", "4 semanas"]]],
+  ["Claudicação do membro posterior direito após salto.", "Entorse de joelho", "Repouso por 10 dias, compressa fria e anti-inflamatório.", "Dor à flexão do joelho direito, sem instabilidade.", [["Meloxicam 0,5 mg", "1 comprimido", "Oral", "A cada 24 horas", "5 dias"]]],
+  ["Secreção ocular e espirros há 4 dias.", "Rinotraqueíte viral", "Limpeza ocular, nebulização e suporte nutricional.", "Secreção serosa bilateral, linfonodos submandibulares reativos.", [["Colírio de tobramicina", "1 gota", "Ocular", "A cada 8 horas", "7 dias"], ["L-lisina 250 mg", "1 sachê", "Oral", "A cada 24 horas", "15 dias"]]],
+  ["Check-up anual e atualização vacinal.", "Paciente hígido", "Vacinação atualizada, vermifugação e retorno em 12 meses.", "Sem alterações ao exame físico.", []],
+  ["Diarreia com muco há 3 dias, sem febre.", "Colite inespecífica", "Dieta de fácil digestão, probiótico e exame coproparasitológico.", "Leve desidratação, abdômen sem dor.", [["Probiótico veterinário", "1 sachê", "Oral", "A cada 24 horas", "10 dias"], ["Metronidazol 250 mg", "1/2 comprimido", "Oral", "A cada 12 horas", "7 dias"]]],
+  ["Otite recorrente, balança a cabeça e coça a orelha.", "Otite externa bacteriana", "Limpeza do conduto e otológico por 10 dias.", "Conduto auditivo esquerdo eritematoso com secreção acastanhada.", [["Otológico com gentamicina", "5 gotas", "Otológica", "A cada 12 horas", "10 dias"]]],
+]
+
 function generateUnit(unit: Unit, unitIndex: number): UnitData {
   const random = randomFactory(19_840 + unitIndex * 9_973)
   const scale = unitScale[unit.id]
@@ -743,7 +754,16 @@ function generateUnit(unit: Unit, unitIndex: number): UnitData {
       owner: owner.name,
       ownerId: owner.id,
       status,
-      weight: species === "Bovino" ? `${380 + (index % 9) * 45} kg` : species === "Equino" ? `${360 + (index % 7) * 40} kg` : undefined,
+      weight: species === "Bovino" ? `${380 + (index % 9) * 45} kg` : species === "Equino" ? `${360 + (index % 7) * 40} kg` : species === "Gato" ? `${(3 + (index % 5) * 0.6).toFixed(1).replace(".", ",")} kg` : `${(4 + (index % 17) * 1.9).toFixed(1).replace(".", ",")} kg`,
+      sex: index % 2 === 0 ? "Macho" : "Fêmea",
+      birthDate: new Date(created.getTime() - (1 + (index % 11)) * 365 * DAY - (index % 200) * DAY).toISOString().slice(0, 10),
+      extra: {
+        code: `#ANM-${String(index + 1).padStart(4, "0")}`,
+        castrado: species === "Bovino" || species === "Equino" || index % 3 === 0 ? "Não castrado" : "Castrado",
+        pelagem: ["Caramelo", "Preta", "Branca e marrom", "Tigrada", "Cinza", "Tricolor", "Dourada"][index % 7],
+        microchip: index % 4 === 0 ? "" : `9860${String(100000000 + index * 7919).slice(0, 11)}`,
+        alergias: index % 23 === 5 ? "Dipirona" : "",
+      },
       notes: `Paciente acompanhado desde ${created.toLocaleDateString("pt-BR")}. Histórico clínico e vacinal disponível.`,
     })
   })
@@ -1299,11 +1319,23 @@ function generateUnit(unit: Unit, unitIndex: number): UnitData {
   const prontuarios = [
     ...consultations.slice(0, Math.round(550 * scale)),
     ...exams.slice(0, Math.round(80 * scale)),
-  ].map((item, index) => ({
-    ...item,
-    id: `${unit.id}-prontuarios-${index + 1}`,
-    name: `Evolução • ${item.name}`,
-  }))
+  ].map((item, index) => {
+    const caso = CASOS_CLINICOS[index % CASOS_CLINICOS.length]
+    return {
+      ...item,
+      id: `${unit.id}-prontuarios-${index + 1}`,
+      name: `Evolução • ${item.name}`,
+      clinicalHistory: item.clinicalHistory || caso[0],
+      diagnosis: item.diagnosis || caso[1],
+      treatment: item.treatment || caso[2],
+      extra: {
+        ...(item.extra || {}),
+        vitals: { temperature: (38 + (index % 9) / 10).toFixed(1).replace(".", ","), heartRate: String(90 + (index % 7) * 10), respiratoryRate: String(18 + (index % 5) * 4), weight: (4 + (index % 23) * 1.3).toFixed(1).replace(".", ","), mucous: index % 6 === 0 ? "Pálidas" : "Rosadas (normal)", hydration: index % 5 === 0 ? "Desidratação leve" : "Normal" },
+        exame: caso[3],
+        medicacoes: caso[4],
+      },
+    }
+  })
 
   return {
     tutores: tutors,
@@ -1931,7 +1963,7 @@ export const MINHA_UNIT: Unit = {
 const StoreContext = createContext<StoreValue | null>(null)
 const STORAGE_KEY = "vetflow-state-v4"
 /** Troque este valor a cada versão publicada no Figma Make (formato livre). */
-export const APP_VERSION = "2026-11-09-botoes"
+export const APP_VERSION = "2026-11-10-final"
 const defaultProfile: UserProfile = {
   name: "Rafael Souza",
   displayName: "Dr. Rafael",
