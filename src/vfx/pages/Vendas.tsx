@@ -1,4 +1,5 @@
 import { localDateTime, localISO } from "../../date"
+import { fiadoAbertoVenda } from "../VendasCliente"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate } from "react-router"
 import { AlertTriangle, Check, Clock, FileText, Lock, MapPin, Package, Pencil, ScanBarcode, Search, Send, ShoppingCart, Trash2, Truck, User, UserPlus, Users, X } from "lucide-react"
@@ -148,7 +149,7 @@ export default function Vendas() {
   const fiado = useMemo(() => {
     if (!client) return { aberto: 0, limite: LIMITE_FIADO, bloqueado: false }
     let aberto = client.amountValue || 0
-    for (const sale of sales) if (sale.ownerId === client.id && sale.status !== "Cancelada") for (const p of sale.extra?.pagamentos || []) if (p.forma === "Fiado") aberto += p.valor
+    for (const sale of sales) if (sale.ownerId === client.id) aberto += fiadoAbertoVenda(sale)
     return { aberto, limite: limiteDe(client), bloqueado: !!client.extra?.bloqueadoFiado }
   }, [client, sales])
   const openCadastro = (existing: Item | null, prefill = "") => setCadastro({ initial: fromItem(existing, prefill), existing })

@@ -1,0 +1,11 @@
+{
+  "title": "VetFlow · Sistema de gestão para clínicas veterinárias",
+  "description": "Sistema de gestão para clínicas veterinárias.",
+  "language": "pt-BR",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": true
+  }
+}

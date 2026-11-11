@@ -1112,7 +1112,7 @@ function generateUnit(unit: Unit, unitIndex: number): UnitData {
   })
 
   const sellers = professionalItems.slice(0, 5).map((item) => item.name).concat(["Recepção"])
-  const payForms = ["Pix", "Crédito", "Débito", "Dinheiro", "Pix", "Crédito", "Duplicata", "Dinheiro"]
+  const payForms = ["Pix", "Crédito", "Débito", "Dinheiro", "Pix", "Fiado", "Duplicata", "Dinheiro"]
   const productPool = stock.filter((item) => item.category !== "Materiais" && item.category !== "Vacinas").slice(-60)
   const vendasSeed: Item[] = []
   for (let index = 0; index < Math.round(260 * scale) + 40; index += 1) {
@@ -1156,7 +1156,11 @@ function generateUnit(unit: Unit, unitIndex: number): UnitData {
         desconto,
         pago,
         origem: index % 4 === 0 ? "Atendimento" : index % 9 === 0 ? "Orçamento" : "PDV",
-        pagamentos: pago ? [{ forma: status === "Parcialmente paga" ? "Dinheiro" : forma, valor: pago, parcelas }] : [],
+        pagamentos: pago ? [{ forma: status === "Parcialmente paga" ? "Dinheiro" : forma, valor: pago, parcelas, vencimentos: forma === "Fiado" || forma === "Duplicata" ? [dateValue(new Date(day.getTime() + 30 * DAY))] : undefined }] : [],
+        /* fiado e duplicata antigos já foram acertados pelo cliente; os recentes seguem em aberto */
+        ...(status === "Paga" && (forma === "Fiado" || forma === "Duplicata") && TODAY.getTime() - day.getTime() > 26 * DAY
+          ? { quitada: true, quitadaEm: dateValue(new Date(Math.min(TODAY.getTime(), day.getTime() + 28 * DAY))), recebimentosConta: [{ data: dateValue(new Date(Math.min(TODAY.getTime(), day.getTime() + 28 * DAY))), hora: "10:15", forma: index % 2 ? "Pix" : "Dinheiro", valor: total, por: "Recepção" }] }
+          : {}),
       },
     }))
   }
@@ -1823,9 +1827,7 @@ function applyChanges(
   changes: DataChange[],
 ): Record<string, UnitData> {
   return changes.reduce((current, change) => {
-    const unit = current[change.unitId]
-    const records = unit?.[change.module]
-    if (!Array.isArray(records)) return current
+    const records = current[change.unitId][change.module]
     const nextRecords =
       change.operation === "add" && change.item
         ? [change.item, ...records]
@@ -1965,69 +1967,7 @@ export const MINHA_UNIT: Unit = {
 const StoreContext = createContext<StoreValue | null>(null)
 const STORAGE_KEY = "vetflow-state-v4"
 /** Troque este valor a cada versão publicada no Figma Make (formato livre). */
-export const APP_VERSION = "2026-11-10-unidades"
-
-function normalizePersistedState(value: unknown) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null
-  const persisted = value as Record<string, any>
-
-  persisted.customUnits = Array.isArray(persisted.customUnits)
-    ? persisted.customUnits.filter(
-        (unit: unknown) =>
-          !!unit &&
-          typeof unit === "object" &&
-          typeof (unit as Unit).id === "string",
-      )
-    : []
-
-  const validModules = new Set(modules.map(([slug]) => slug))
-  const validUnits = new Set([
-    ...seedUnits.map((unit) => unit.id),
-    "minha",
-    ...persisted.customUnits.map((unit: Unit) => unit.id),
-  ])
-  persisted.changes = Array.isArray(persisted.changes)
-    ? persisted.changes.filter((change: unknown) => {
-        if (!change || typeof change !== "object") return false
-        const candidate = change as DataChange
-        return (
-          ["add", "update", "delete"].includes(candidate.operation) &&
-          validUnits.has(candidate.unitId) &&
-          validModules.has(candidate.module) &&
-          typeof candidate.id === "string" &&
-          (candidate.operation !== "add" || !!candidate.item)
-        )
-      })
-    : []
-
-  if (persisted.appVersion !== APP_VERSION) {
-    const custom = new Set(
-      persisted.customUnits.map((unit: Unit) => unit.id),
-    )
-    persisted.changes = persisted.changes.filter(
-      (change: DataChange) =>
-        change.unitId === "minha" || custom.has(change.unitId),
-    )
-    persisted.appVersion = APP_VERSION
-  }
-  if (
-    !persisted.unitUpdates ||
-    typeof persisted.unitUpdates !== "object" ||
-    Array.isArray(persisted.unitUpdates)
-  ) {
-    persisted.unitUpdates = {}
-  }
-  if (!Array.isArray(persisted.notifications)) {
-    delete persisted.notifications
-  }
-  if (!["light", "dark"].includes(persisted.theme)) delete persisted.theme
-  if (!validUnits.has(persisted.activeUnitId)) {
-    persisted.activeUnitId = "centro"
-  }
-
-  return persisted
-}
-
+export const APP_VERSION = "2026-11-11-contas-clientes"
 const defaultProfile: UserProfile = {
   name: "Rafael Souza",
   displayName: "Dr. Rafael",
@@ -2077,7 +2017,7 @@ export function VetFlowProvider({ children }: { children: ReactNode }) {
         localStorage.getItem(STORAGE_KEY) ||
         localStorage.getItem("vetflow-state-v3") ||
         "null"
-      return normalizePersistedState(JSON.parse(
+      return JSON.parse(
         stored
           .replaceAll("Unidade Centro", "Unidade - Mirante da Serra")
           .replaceAll("Unidade Zona Sul", "Unidade - Nova União")
@@ -2085,7 +2025,7 @@ export function VetFlowProvider({ children }: { children: ReactNode }) {
           .replaceAll("Centro •", "Mirante da Serra •")
           .replaceAll("Zona Sul •", "Nova União •")
           .replaceAll("Norte 24h •", "Urupá •"),
-      ))
+      )
     } catch {
       return null
     }
@@ -2215,12 +2155,11 @@ export function VetFlowProvider({ children }: { children: ReactNode }) {
     const onStorage = (e: StorageEvent) => {
       try {
         if (e.key === STORAGE_KEY && e.newValue) {
-          const next = normalizePersistedState(JSON.parse(e.newValue))
-          if (!next) return
-          const nextChanges: DataChange[] = next.changes
+          const next = JSON.parse(e.newValue)
+          const nextChanges: DataChange[] = next?.changes || []
           if (JSON.stringify(nextChanges) === JSON.stringify(changesRef.current)) return
-          const custom = Object.fromEntries(next.customUnits.map((u: Unit) => [u.id, emptyUnitData()]))
-          setCustomUnits(next.customUnits)
+          const custom = Object.fromEntries((next?.customUnits || []).map((u: Unit) => [u.id, emptyUnitData()]))
+          setCustomUnits(next?.customUnits || [])
           setChanges(nextChanges)
           setAllData(applyChanges({ ...seed, ...custom, minha: emptyUnitData() }, nextChanges))
         }

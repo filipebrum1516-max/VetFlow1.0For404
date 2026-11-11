@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate } from "react-router"
-import { AlertTriangle, ArrowDownToLine, ArrowUpFromLine, Banknote, Check, Clock, History, ListOrdered, Lock, Package, Pencil, Printer, RotateCcw, ScanBarcode, Truck, Undo2, Unlock, Wallet, X } from "lucide-react"
+import { AlertTriangle, ArrowDownToLine, Users, ArrowUpFromLine, Banknote, Check, Clock, History, ListOrdered, Lock, Package, Pencil, Printer, RotateCcw, ScanBarcode, Truck, Undo2, Unlock, Wallet, X } from "lucide-react"
 import { useVetFlow, type Item } from "../../store"
 import { brl, fmtDate, itemDate, parseMoney, todayISO, Page } from "../ui"
 import { docHtml, printDoc, printRaw } from "../printDoc"
 import { A_PRAZO, planoInfo, addMonths, FORMAS, PARCELADAS, LIMITE_FIADO, lineTotal, minutesSince, nowTime, printHtml, stamp, type Entrega, type Line, type Pay } from "../vendasShared"
 import { PrintBar } from "../PrintMenu"
 import Layer from "../OpLayer"
+import VendasCliente, { fiadoAbertoVenda } from "../VendasCliente"
 
 type Mov = { tipo: string; valor: number; motivo: string; hora: string; forma?: string; venda?: string; por?: string }
 const LIMITE_GAVETA = 1000
@@ -21,7 +22,7 @@ export default function Caixa() {
   const abertos = all.filter((i) => i.kind === "Caixa" && i.status === "Aberto")
   const caixa = abertos.find((i) => i.professional === operador)
   const outros = abertos.filter((i) => i.professional !== operador)
-  const [view, setView] = useState<"receber" | "extrato" | "historico">("receber")
+  const [view, setView] = useState<"receber" | "clientes" | "extrato" | "historico">("receber")
   const [toast, setToast] = useState("")
   const showToast = (t: string) => { setToast(t); window.setTimeout(() => setToast(""), 3200) }
 
@@ -67,7 +68,7 @@ export default function Caixa() {
   const fiadoAberto = useMemo(() => {
     if (!client) return 0
     let v = client.amountValue || 0
-    for (const s of sales) if (s.ownerId === client.id && s.status !== "Cancelada") for (const p of s.extra?.pagamentos || []) if (p.forma === "Fiado") v += p.valor
+    for (const s of sales) if (s.ownerId === client.id) v += fiadoAbertoVenda(s)
     return v
   }, [client, sales])
   const typed = parseMoney(valor) || rest
@@ -184,10 +185,24 @@ export default function Caixa() {
       if (s.extra?.pagamentos?.length) n++
       for (const p of (s.extra?.pagamentos || []) as Pay[]) { map.set(p.forma, (map.get(p.forma) || 0) + p.valor); trocos += p.troco || 0 }
     }
+    for (const m of (caixa?.extra?.movs || []) as Mov[]) {
+      if (m.tipo === "Recebimento de conta" && m.forma) map.set(m.forma, (map.get(m.forma) || 0) + m.valor)
+      if (m.tipo === "Estorno de conta" && m.forma) map.set(m.forma, (map.get(m.forma) || 0) - m.valor)
+    }
     return { porForma: FORMAS.map((f) => [f, map.get(f) || 0] as [string, number]), trocos, n }
   }, [sales, caixa])
   const dinheiroEsperado = (caixa?.amountValue || 0) + (resumo.porForma.find(([f]) => f === "Dinheiro")?.[1] || 0) + movs.reduce((a, m) => a + (m.tipo === "Sangria" ? -m.valor : m.tipo === "Suprimento" ? m.valor : 0), 0)
   const totalRecebido = resumo.porForma.reduce((a, [, v]) => a + v, 0)
+  /* recebimento de contas de clientes (fiado, duplicata, boleto) entra no caixa aberto */
+  const contaRecebida = (lista: { s: Item; forma: string; valor: number }[]) => {
+    if (!caixa) return
+    const novos: Mov[] = lista.map(({ s, forma, valor }) => ({ tipo: "Recebimento de conta", valor, forma, motivo: `${s.owner || "Cliente"} · ${forma}`, hora: nowTime(), venda: s.name, por: operador }))
+    updateItem("vendas", caixa.id, { extra: { ...caixa.extra, movs: [...movs, ...novos] } })
+  }
+  const contaEstornada = (s: Item, forma: string, valor: number, motivo: string) => {
+    if (!caixa) return
+    updateItem("vendas", caixa.id, { extra: { ...caixa.extra, movs: [...movs, { tipo: "Estorno de conta", valor, forma, motivo: `${motivo} · ${forma}`, hora: nowTime(), venda: s.name, por: operador }] } })
+  }
 
   const [abrirValor, setAbrirValor] = useState("200,00")
   const [mov, setMov] = useState<{ tipo: string; valor: string; motivo: string; senha?: string } | null>(null)
@@ -236,7 +251,7 @@ export default function Caixa() {
           title: "Movimento da gaveta (dinheiro)",
           head: ["Movimento", "Valor"],
           align: ["l", "r"],
-          rows: [["Troco inicial", brl(caixa?.amountValue || 0)], ...movs.map((m) => [`${m.tipo} · ${m.motivo} (${m.hora})`, `${m.tipo === "Sangria" || m.tipo === "Estorno" ? "−" : "+"} ${brl(m.valor)}`])],
+          rows: [["Troco inicial", brl(caixa?.amountValue || 0)], ...movs.filter((m) => !m.forma || m.forma === "Dinheiro").map((m) => [`${m.tipo} · ${m.motivo} (${m.hora})`, `${/sangria|estorno/i.test(m.tipo) ? "−" : "+"} ${brl(m.valor)}`])],
           total: ["Esperado na gaveta", brl(dinheiroEsperado)],
         },
       ],
@@ -264,7 +279,7 @@ export default function Caixa() {
       if (!pays.length) { rows.push({ hora: s.extra?.recebidoAs || s.time || "", tipo: "A cobrar na entrega", desc: `${s.name} · ${s.owner}`, valor: 0, sale: s, por: s.extra?.recebidoPor }); continue }
       rows.push({ hora: s.extra?.recebidoAs || s.time || "", tipo: "Recebimento", desc: `${s.name} · ${s.owner} · ${pays.map((p) => `${p.forma}${p.parcelas > 1 ? ` ${p.parcelas}x` : ""} ${brl(p.valor)}${p.troco ? ` (troco ${brl(p.troco)})` : ""}`).join(" + ")}`, valor: pays.reduce((a, p) => a + p.valor, 0), sale: s, por: s.extra?.recebidoPor })
     }
-    for (const m of movs) rows.push({ hora: m.hora, tipo: m.tipo, desc: `${m.venda ? `${m.venda} · ` : ""}${m.motivo}`, valor: m.tipo === "Sangria" ? -m.valor : m.tipo === "Estorno" ? -m.valor : m.valor, por: m.por })
+    for (const m of movs) rows.push({ hora: m.hora, tipo: m.tipo, desc: `${m.venda ? `${m.venda} · ` : ""}${m.motivo}`, valor: /sangria|estorno/i.test(m.tipo) ? -m.valor : m.valor, por: m.por })
     return rows.sort((a, b) => a.hora.localeCompare(b.hora))
   }, [caixa, sales, movs])
   const [estorno, setEstorno] = useState<Item | null>(null)
@@ -361,6 +376,10 @@ export default function Caixa() {
             </div>
           </div>
         )}
+        <div className="op-card vc-card" style={{ margin: "0 auto 16px" }}>
+          <div className="op-ch"><h2><Users /> Vendas por cliente · fiado (notinha), duplicata e boleto</h2><span className="muted" style={{ fontSize: 12 }}>com o caixa fechado, o recebimento não entra na gaveta</span></div>
+          <VendasCliente origem="Caixa" modo="completo" />
+        </div>
         {historicoCard}
         {toast && <Layer className="op-toast"><Check /> {toast}</Layer>}
       </div>
@@ -389,6 +408,7 @@ export default function Caixa() {
         <span className="grow" />
         <div className="op-tabs">
           <button className={view === "receber" ? "on" : ""} onClick={() => setView("receber")}><Banknote size={14} /> Recebimento {fila.length > 0 && <span className="cnt">{fila.length}</span>}</button>
+          <button className={view === "clientes" ? "on" : ""} onClick={() => setView("clientes")}><Users size={14} /> Vendas por cliente</button>
           <button className={view === "extrato" ? "on" : ""} onClick={() => setView("extrato")}><ListOrdered size={14} /> Extrato</button>
           <button className={view === "historico" ? "on" : ""} onClick={() => setView("historico")}><History size={14} /> Histórico</button>
         </div>
@@ -406,7 +426,7 @@ export default function Caixa() {
             {extrato.map((r, i) => (
               <div key={i} className="op-tr" style={{ gridTemplateColumns: "64px 150px minmax(0,1fr) 120px 120px 110px" }}>
                 <span className="num muted">{r.hora}</span>
-                <span><span className={`op-tag plain ${r.tipo === "Recebimento" ? "green" : r.tipo === "Sangria" || r.tipo === "Estorno" ? "red" : r.tipo === "Suprimento" || r.tipo === "Abertura" ? "blue" : "amber"}`}>{r.tipo}</span></span>
+                <span><span className={`op-tag plain ${r.tipo === "Recebimento" || r.tipo === "Recebimento de conta" ? "green" : /sangria|estorno/i.test(r.tipo) ? "red" : r.tipo === "Suprimento" || r.tipo === "Abertura" ? "blue" : "amber"}`}>{r.tipo}</span></span>
                 <span title={r.desc}>{r.desc}</span>
                 <span className="muted">{r.por || "—"}</span>
                 <b className="r num" style={{ color: r.valor < 0 ? "var(--red)" : undefined }}>{brl(r.valor)}</b>
@@ -418,6 +438,12 @@ export default function Caixa() {
         </div>
       )}
       {view === "historico" && historicoCard}
+      {view === "clientes" && (
+        <div className="op-card vc-card">
+          <div className="op-ch"><h2><Users /> Vendas por cliente · fiado (notinha), duplicata e boleto</h2><span className="muted" style={{ fontSize: 12 }}>dinheiro recebido aqui entra na gaveta do {caixa.name}</span></div>
+          <VendasCliente origem="Caixa" modo="completo" onRecebido={contaRecebida} onEstornado={contaEstornada} />
+        </div>
+      )}
       {view === "receber" && <div className="op-grid" style={{ gridTemplateColumns: "300px minmax(0,1fr) 270px" }}>
         {/* fila */}
         <div className="op-col">
@@ -573,7 +599,7 @@ export default function Caixa() {
             <div className="op-cb op-sum" style={{ fontSize: 12.5 }}>
               <div><span>Troco inicial ({caixa.time})</span><b>{brl(caixa.amountValue || 0)}</b></div>
               <div><span>Dinheiro recebido</span><b>{brl(resumo.porForma[0][1])}</b></div>
-              {movs.map((m, i) => <div key={i}><span>{m.tipo} · <span className="muted">{m.motivo} {m.hora}</span></span><b style={{ color: m.tipo === "Sangria" ? "var(--red)" : "var(--green)" }}>{m.tipo === "Sangria" ? "−" : "+"}{brl(m.valor)}</b></div>)}
+              {movs.filter((m) => !m.forma || m.forma === "Dinheiro").map((m, i) => { const neg = /sangria|estorno/i.test(m.tipo); return <div key={i}><span>{m.tipo}{m.venda ? ` ${m.venda}` : ""} · <span className="muted">{m.motivo} {m.hora}</span></span><b style={{ color: neg ? "var(--red)" : "var(--green)" }}>{neg ? "−" : "+"}{brl(m.valor)}</b></div> })}
               <div style={{ borderTop: "1px solid var(--line2)", paddingTop: 7 }}><span style={{ fontWeight: 700 }}>Esperado na gaveta</span><b>{brl(dinheiroEsperado)}</b></div>
             </div>
           </div>
