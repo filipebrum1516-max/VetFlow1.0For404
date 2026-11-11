@@ -683,13 +683,13 @@ export default function TutorsModule() {
             [TrendingUp, rows.filter((r) => novosIds.has(r.id)).length, "Novos este mês", "cadastrados no mês atual", "orange", "Todos os status", true],
           ] as [typeof Users, number, string, string, string, string, boolean][]).map(([MetricIcon, value, label, detail, tone, st, novos]) => {
             const ativo = novos ? novosMes : !novosMes && statusFilter === st
-            const marcado = ativo && st !== "Todos os status" || (novos && novosMes)
+            const marcado = ativo
             return (
               <article className={`tutor-metric lv-kpi-btn ${marcado ? "on" : ""}`} key={label}>
                 <button
                   type="button"
                   aria-pressed={ativo}
-                  title={marcado ? "Mostrar tudo" : `Filtrar: ${label}`}
+                  title={st === "Todos os status" && !novos ? "Mostrar todos" : marcado ? "Mostrar tudo" : `Filtrar: ${label}`}
                   onClick={() => {
                     if (novos) { setNovosMes(!novosMes); setStatusFilter("Todos os status") }
                     else { setNovosMes(false); setStatusFilter(ativo ? "Todos os status" : st) }

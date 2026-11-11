@@ -382,8 +382,8 @@ export default function AnimalsModule() {
         </picture>
         <div className="animals-glass-metrics">
           {indicators.map((item) => (
-            <article key={item.label} className={`lv-kpi-btn ${item.on && item.label !== "Total de animais" ? "on" : ""}`}>
-              <button type="button" aria-pressed={item.on} title={item.on && item.label !== "Total de animais" ? "Mostrar tudo" : `Filtrar: ${item.label}`} onClick={item.click}>
+            <article key={item.label} className={`lv-kpi-btn ${item.on ? "on" : ""}`}>
+              <button type="button" aria-pressed={item.on} title={item.label === "Total de animais" ? "Mostrar todos" : item.on ? "Mostrar tudo" : `Filtrar: ${item.label}`} onClick={item.click}>
                 <i className={item.tone}>{item.icon}</i>
                 <span>
                   <small>{item.label}</small>

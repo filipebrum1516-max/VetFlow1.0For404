@@ -2820,3 +2820,53 @@ body:has(.vf-agenda-overlay) .vx-drawer-layer:has(.cad-drawer) .cad-drawer { bac
 @media (max-width: 560px) { .pf-kpis { grid-template-columns: 1fr 1fr; } .pf-row { grid-template-columns: 1fr; gap: 2px; } }
 .cd-list .lv-tools .lv-search { flex: 1 1 100% !important; max-width: none !important; }
 @media (max-width: 720px) { .op-modal.vd-cli .op-cb { overflow-y: auto; } .vd-cli-table { max-height: 42vh; } }
+
+/* Agenda dia: colunas alargam quando há horários encostados; cartão mostra todo o texto */
+.app-main .ag-day .vf-professional-head, .app-main .ag-day .vf-time-row { grid-template-columns: var(--ag-tpl) !important; }
+.app-main .ag-day .vf-professional-head, .app-main .ag-day .vf-day-grid { min-width: var(--ag-min) !important; }
+@media (max-width: 900px) {
+  .app-main .ag-day .vf-professional-head, .app-main .ag-day .vf-time-row { grid-template-columns: 64px minmax(var(--ag-mob), 1fr) !important; }
+  .app-main .ag-day .vf-professional-head, .app-main .ag-day .vf-day-grid { min-width: calc(64px + var(--ag-mob)) !important; }
+}
+.app-main .ag-day .vf-time-cell { position: relative; overflow: visible; }
+.app-main .ag-day .vf-appointment.ag-ev { height: auto !important; overflow: visible !important; padding: 7px 10px !important; gap: 2px; }
+.app-main .ag-day .vf-appointment.ag-ev:hover { z-index: 5 !important; }
+.app-main .ag-day .ag-ev strong, .app-main .ag-day .ag-ev small { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; overflow-wrap: normal; word-break: normal; }
+.app-main .ag-day .ag-ev .ag-ev-st { white-space: nowrap; }
+.app-main .ag-day .ag-ev .ag-ev-owner { opacity: .85; }
+.app-main .ag-day .ag-ev .ag-ev-top { flex-wrap: wrap; row-gap: 0; }
+.app-main .ag-day .ag-ev .ag-ev-st { white-space: normal !important; overflow: visible; text-overflow: clip; text-align: right; }
+
+/* Nova consulta: iniciar por agendamento */
+.vx-origem { display: flex; gap: 6px; margin: 0 24px 4px; padding: 5px; border-radius: 999px; background: var(--vx-glass, rgba(0,0,0,.04)); border: 1px solid var(--vx-line, rgba(0,0,0,.06)); }
+.vx-origem button { flex: 1; height: 38px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 0; border-radius: 999px; background: transparent; color: var(--vx-muted); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+.vx-origem button svg { width: 16px; height: 16px; }
+.vx-origem button span { min-width: 22px; padding: 1px 7px; border-radius: 999px; background: rgba(0,0,0,.07); font-size: 11px; }
+.vx-origem button.on { background: var(--vf-btn, #e94f17) !important; color: #fff !important; box-shadow: 0 6px 16px -8px rgba(233,79,23,.7); }
+.vx-origem button.on span { background: rgba(255,255,255,.25); }
+.vx-ag-pick { display: flex; flex-direction: column; gap: 12px; }
+.vx-ag-hint { margin: 4px 0 0; color: var(--vx-muted); font-size: 13px; }
+.vx-ag-search { display: flex; align-items: center; gap: 10px; height: 46px; padding: 0 14px; border-radius: 14px; border: 1px solid var(--vx-line, #dde1e6); background: var(--vx-glass-strong, #fff); }
+.vx-ag-search svg { width: 18px; color: var(--vx-muted); }
+.vx-ag-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--vx-ink); font: inherit; font-size: 14px; }
+.vx-ag-list { display: flex; flex-direction: column; gap: 8px; }
+.vx-ag-item { display: grid; grid-template-columns: 62px minmax(0,1fr) minmax(0,1fr) auto; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--vx-line, #e3e6ea); border-left: 4px solid var(--vf-btn, #e94f17); background: var(--vx-glass-strong, #fff); color: var(--vx-ink); text-align: left; font: inherit; cursor: pointer; transition: transform .15s ease, box-shadow .15s ease; }
+.vx-ag-item:hover { transform: translateY(-1px); box-shadow: 0 10px 22px -14px rgba(20,20,40,.5); }
+.vx-ag-when b { display: block; font-size: 15px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.vx-ag-when small, .vx-ag-main small { display: block; color: var(--vx-muted); font-size: 12px; }
+.vx-ag-main { min-width: 0; }
+.vx-ag-main strong { display: block; font-size: 14px; }
+.vx-ag-main strong, .vx-ag-main small { overflow-wrap: anywhere; }
+.vx-ag-st { padding: 4px 10px; border-radius: 999px; background: rgba(30,158,79,.12); color: #1e7d43; font-size: 11.5px; font-weight: 700; white-space: nowrap; }
+.vx-ag-vazio { margin: 10px 0; color: var(--vx-muted); font-size: 13px; text-align: center; }
+.vx-ag-banner { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; padding: 11px 14px; border-radius: 14px; background: rgba(233,79,23,.08); border: 1px solid rgba(233,79,23,.22); color: var(--vx-ink); font-size: 13px; }
+.vx-ag-banner > svg { width: 18px; flex: none; color: var(--vf-btn, #e94f17); }
+.vx-ag-banner span { flex: 1; min-width: 0; }
+.vx-ag-banner button { flex: none; width: 28px; height: 28px; display: grid; place-items: center; border: 0; border-radius: 50%; background: transparent; color: var(--vx-muted); cursor: pointer; }
+.vx-ag-banner button svg { width: 15px; }
+@media (max-width: 560px) { .vx-origem { margin: 0 14px 4px; } .vx-ag-item { grid-template-columns: 54px minmax(0,1fr); } .vx-ag-item > :nth-child(3) { grid-column: 2; } .vx-ag-st { grid-column: 2; justify-self: start; } }
+.vx-ag-search, .vx-ag-hint, .vx-ag-item { flex: none; }
+.vx-origem button { white-space: nowrap; }
+@media (max-width: 560px) { .vx-origem button { font-size: 12.5px; gap: 5px; } .vx-origem button svg { display: none; } }
+.vx-ag-search input, .vx-ag-search input:focus { height: auto !important; min-height: 0 !important; padding: 0 !important; border: 0 !important; outline: 0 !important; box-shadow: none !important; background: transparent !important; }
+.vx-ag-search:focus-within { border-color: var(--vf-btn, #e94f17); box-shadow: 0 0 0 3px rgba(233,79,23,.12); }

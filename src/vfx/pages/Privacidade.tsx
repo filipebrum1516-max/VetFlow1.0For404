@@ -66,7 +66,7 @@ const PRIVACIDADE: [string, string[]][] = [
 
 const TERMOS: [string, string[]][] = [
   ["1. Aceite", ["Ao acessar o VetFlow, o usuário declara que leu e concorda com estes Termos de Uso e com a Política de Privacidade. Quem não concordar não deve utilizar o sistema."]],
-  ["2. O que é o VetFlow", ["O VetFlow é um sistema de gestão para clínicas e hospitais veterinários: agenda, prontuário, vendas, caixa, estoque, entregas, financeiro e relatórios. A \"Clínica exemplo\" contém apenas dados fictícios, para demonstração e treinamento. A \"Minha clínica\" é o ambiente real de trabalho."]],
+  ["2. O que é o VetFlow", ["O VetFlow é um sistema de gestão para clínicas e hospitais veterinários: agenda, prontuário, vendas, caixa, estoque, entregas, financeiro e relatórios. Os dados desta demonstração (Clínica exemplo, com três unidades) são fictícios."]],
   ["3. Contas e acessos", [
     "Cada colaborador recebe um acesso individual, criado pelo administrador da clínica, com perfil definido: Administrador, Vendedor, Caixa, Estoque, Veterinário ou Entregador.",
     "O usuário é responsável por manter sua senha em sigilo e por todas as ações feitas com o seu acesso. Em caso de suspeita de uso indevido, deve avisar o administrador imediatamente.",

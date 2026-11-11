@@ -142,7 +142,6 @@ const VxDocumentos = lazy(() => import("./vfx/pages/Documentos"))
 const VxOcorrencias = lazy(() => import("./vfx/pages/Ocorrencias"))
 const VxUsuarios = lazy(() => import("./vfx/pages/Usuarios"))
 const VxEquipe = lazy(() => import("./vfx/pages/Equipe"))
-const VxEscolha = lazy(() => import("./vfx/pages/EscolherClinica"))
 const VxPrivacidade = lazy(() => import("./vfx/pages/Privacidade"))
 const VxPerfil = lazy(() => import("./vfx/pages/Sistema").then((m) => ({ default: m.Perfil })))
 const VxConfig = lazy(() => import("./vfx/pages/Sistema").then((m) => ({ default: m.Configuracoes })))
@@ -393,10 +392,6 @@ function UnitSelector({
                 {unit.id === activeUnit.id && <Check size={16} />}
               </button>
             ))}
-            <button className="unit-switch-clinic" onClick={() => { setOpen(false); goTo("/escolher-clinica") }}>
-              <span className="clinic-avatar">⇄</span>
-              <span><strong>Trocar de clínica</strong><small>{clinic === "minha" ? "Ir para a Clínica exemplo" : "Ir para a Minha clínica"}</small></span>
-            </button>
           </div>
         </div>
       )}
@@ -832,10 +827,6 @@ function Header({ openMobile }: { openMobile: () => void }) {
                   {theme === "light" ? <Moon size={17} /> : <Sun size={17} />}
                   <span>Alternar tema</span>
                 </button>
-                <button onClick={() => goFromProfile("/escolher-clinica")}>
-                  <Building2 size={17} />
-                  <span>Trocar de clínica</span>
-                </button>
                 <button onClick={() => goFromProfile("/privacidade")}>
                   <ShieldCheck size={17} />
                   <span>Privacidade e LGPD</span>
@@ -944,7 +935,6 @@ function Shell() {
   const [mobileOpen, setMobileOpen] = useState(false)
   if (!authenticated) return <Navigate to="/login" replace />
   if (user?.mustChange) return <Navigate to="/login" replace />
-  if (!clinic) return <Navigate to="/escolher-clinica" replace />
   const area = location.pathname === "/" ? "dashboard" : location.pathname.split("/")[1]
   if (user && !canAccess(user.role, area, user.perms)) {
     const home = ROLE_HOME[user.role]
@@ -995,7 +985,7 @@ function Login() {
   const [np1, setNp1] = useState("")
   const [np2, setNp2] = useState("")
   const mustChange = authenticated && !!user?.mustChange
-  if (authenticated && !mustChange) return <Navigate to={clinic ? "/" : "/escolher-clinica"} replace />
+  if (authenticated && !mustChange) return <Navigate to="/" replace />
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -1024,7 +1014,7 @@ function Login() {
     const err = changePassword(user.id, null, np1)
     if (err) return setError(err)
     setError("")
-    navigate("/escolher-clinica")
+    navigate("/")
   }
   return (
     <div className="login-page">
@@ -2556,9 +2546,7 @@ const router = createBrowserRouter([
   {
     path: "/escolher-clinica",
     element: (
-      <Suspense fallback={<PageLoader />}>
-        <VxEscolha />
-      </Suspense>
+      <Navigate to="/" replace />
     ),
   },
   {

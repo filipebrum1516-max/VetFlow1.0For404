@@ -31,6 +31,7 @@ import { useNavigate } from "react-router"
 import { useVetFlow, type Item } from "./store"
 import { initialTutors } from "./TutorsModule"
 import { NovoAnimalCadastro } from "./AnimalsModule"
+import { Confirm } from "./vfx/ui"
 import { printHtml } from "./vfx/vendasShared"
 
 type ClientPet = {
@@ -455,6 +456,35 @@ export default function AgendaModule() {
       (professionalFilter === "Todos" ||
         item.professional === professionalFilter),
   )
+  /* dia: cartões lado a lado quando os horários se encostam (nada fica atrás do outro) */
+  const SLOT_PX = 54
+  const MIN_VIS = 50 // minutos mínimos que um cartão ocupa na tela, para caber todo o texto
+  const diaLayout = (() => {
+    const pos = new Map<string, { lane: number; lanes: number }>()
+    const lanesPorProf = new Map<string, number>()
+    const porProf = new Map<string, typeof dayAppointments>()
+    dayAppointments.forEach((item) => { const k = item.professional || ""; porProf.set(k, [...(porProf.get(k) || []), item]) })
+    porProf.forEach((lista, prof) => {
+      const ord = [...lista].sort((a, b) => minutesFromTime(a.time || "00:00") - minutesFromTime(b.time || "00:00"))
+      let grupo: { id: string; lane: number }[] = []
+      let fimGrupo = -1
+      let fins: number[] = []
+      let maxLanes = 1
+      const fechar = () => { const n = Math.max(1, fins.length); grupo.forEach((g) => pos.set(g.id, { lane: g.lane, lanes: n })); maxLanes = Math.max(maxLanes, n); grupo = []; fins = [] }
+      ord.forEach((item) => {
+        const ini = minutesFromTime(item.time || "00:00")
+        const fim = ini + Math.max(Number(item.duration || 30), MIN_VIS)
+        if (ini >= fimGrupo && grupo.length) fechar()
+        let lane = fins.findIndex((f) => f <= ini)
+        if (lane < 0) { lane = fins.length; fins.push(fim) } else fins[lane] = fim
+        grupo.push({ id: item.id, lane })
+        fimGrupo = Math.max(fimGrupo, fim)
+      })
+      if (grupo.length) fechar()
+      lanesPorProf.set(prof, maxLanes)
+    })
+    return { pos, lanesPorProf }
+  })()
   const weekStart = addDays(cursor, -((cursor.getDay() + 6) % 7))
   const weekDays = Array.from({ length: 7 }, (_, index) =>
     addDays(weekStart, index),
@@ -529,7 +559,19 @@ export default function AgendaModule() {
       </section>
 
       {view === "Dia" && (
-        <section className="vf-day-calendar" style={{ ["--vf-cols" as string]: professionalFilter === "Todos" ? Math.max(1, professionals.length) : 1 } as CSSProperties}>
+        <section
+          className="vf-day-calendar ag-day"
+          style={(() => {
+            const visiveis = professionals.filter((name) => professionalFilter === "Todos" || name === professionalFilter)
+            const larg = visiveis.map((name) => diaLayout.lanesPorProf.get(name) || 1)
+            return {
+              ["--vf-cols" as string]: Math.max(1, visiveis.length),
+              ["--ag-tpl" as string]: `70px ${larg.map((n) => `minmax(${Math.max(200, n * 170)}px, ${n}fr)`).join(" ")}`,
+              ["--ag-min" as string]: `${70 + larg.reduce((t, n) => t + Math.max(200, n * 170), 0)}px`,
+              ["--ag-mob" as string]: `${Math.max(230, (larg[0] || 1) * 165)}px`,
+            } as CSSProperties
+          })()}
+        >
           <p className="vf-mobile-hint">No celular aparece um veterinário por vez: escolha quem ver no seletor acima.</p>
           <div className="vf-professional-head">
             <span>HORÁRIO</span>
@@ -584,15 +626,19 @@ export default function AgendaModule() {
                             className={`vf-appointment ag-ev ag-${tomAgenda(item.status)} ${statusClass(item.status)}`}
                             key={item.id}
                             title={`${item.time} · ${item.duration || 30} min · ${item.animal || ""} · ${item.service || ""}`}
-                            style={{ position: "absolute", top: 3 + ((minutesFromTime(item.time || "00:00") - minutesFromTime(time)) / 30) * 54, left: `calc(${(index / events.length) * 100}% + 3px)`, width: `calc(${100 / events.length}% - 6px)`, height: Math.max(50, (Number(item.duration || 30) / 30) * 54 - 6), zIndex: 2 }}
+                            style={(() => {
+                              const lay = diaLayout.pos.get(item.id) || { lane: index, lanes: events.length }
+                              return { position: "absolute", top: 3 + ((minutesFromTime(item.time || "00:00") - minutesFromTime(time)) / 30) * SLOT_PX, left: `calc(${(lay.lane / lay.lanes) * 100}% + 3px)`, width: `calc(${100 / lay.lanes}% - 6px)`, minHeight: (Math.max(Number(item.duration || 30), MIN_VIS) / 30) * SLOT_PX - 6, zIndex: 2 } as CSSProperties
+                            })()}
                             onClick={(event) => {
                               event.stopPropagation()
                               openEdit(item)
                             }}
                           >
-                            <span className="ag-ev-top"><b>{item.time}</b><i className={`ag-dot ${tomAgenda(item.status)}`} />{item.status && <em className="ag-ev-st">{item.status}</em>}</span>
+                            <span className="ag-ev-top"><b>{item.time}</b><i className={`ag-dot ${tomAgenda(item.status)}`} /><em className="ag-ev-st">{item.status}</em></span>
                             <strong>{item.animal || item.name}</strong>
-                            <small>{[item.service, item.owner].filter(Boolean).join(" · ")}</small>
+                            {item.service && <small>{item.service}</small>}
+                            {item.owner && <small className="ag-ev-owner">{item.owner}</small>}
                           </span>
                         ))}
                       </button>
@@ -821,35 +867,6 @@ export default function AgendaModule() {
       {discardConfirm && <Confirm title="Descartar alterações?" text="Os dados preenchidos serão perdidos." cancel="Continuar editando" confirm="Descartar" onCancel={() => setDiscardConfirm(false)} onConfirm={() => { setDiscardConfirm(false); setDrawer(null) }} />}
       {deleteConfirm && <Confirm title="Excluir agendamento?" text={editing?.recurrenceId ? "Este agendamento faz parte de uma recorrência. A exclusão será aplicada somente a este compromisso." : "Esta ação não poderá ser desfeita."} cancel="Cancelar" confirm="Excluir" danger onCancel={() => setDeleteConfirm(false)} onConfirm={deleteAppointment} />}
       {toast && <div className="vf-agenda-toast"><Check size={17} />{toast}</div>}
-    </div>
-  )
-}
-
-function Confirm({
-  title,
-  text,
-  cancel,
-  confirm,
-  danger,
-  onCancel,
-  onConfirm,
-}: {
-  title: string
-  text: string
-  cancel: string
-  confirm: string
-  danger?: boolean
-  onCancel: () => void
-  onConfirm: () => void
-}) {
-  return (
-    <div className="vf-modal-layer">
-      <section className="vf-confirm">
-        <AlertCircle size={28} />
-        <h3>{title}</h3>
-        <p>{text}</p>
-        <div><button onClick={onCancel}>{cancel}</button><button className={danger ? "danger" : ""} onClick={onConfirm}>{confirm}</button></div>
-      </section>
     </div>
   )
 }

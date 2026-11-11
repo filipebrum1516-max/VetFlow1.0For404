@@ -8,6 +8,7 @@ import {
 } from "react"
 import {
   AlertTriangle,
+  CalendarDays,
   Paperclip,
   Plus,
   Search,
@@ -197,6 +198,46 @@ export default function FormDrawer({
   const [values, setValues] = useState<Values>(() => initialValues(def, item, prefill))
   const [valoresIniciais] = useState(() => JSON.stringify(initialValues(def, item, prefill)))
   const descartar = useDescartar(onClose, JSON.stringify(values) !== valoresIniciais)
+  /* Nova consulta: pode começar a partir de um agendamento já feito (tutor e animal vêm prontos) */
+  const porAgenda = def.slug === "consultas" && !item
+  const [abaOrigem, setAbaOrigem] = useState<"nova" | "agenda">("nova")
+  const [buscaAg, setBuscaAg] = useState("")
+  const [agendaEscolhida, setAgendaEscolhida] = useState<Item | null>(null)
+  const hojeIso = todayISO()
+  const agendamentos = useMemo(() => {
+    if (!porAgenda) return []
+    const q = normalize(buscaAg.trim())
+    const jaConsultados = new Set(ctx.data.consultas.map((c) => String(c.extra?.agendaId || "")).filter(Boolean))
+    return ctx.data.agendas
+      .filter((a) => (a.date || "") >= hojeIso && !/cancel|conclu|falt|em atendimento/i.test(a.status || "") && !jaConsultados.has(a.id))
+      .filter((a) => !q || normalize(`${a.animal || ""} ${a.owner || ""} ${a.service || a.name} ${a.professional || ""}`).includes(q))
+      .sort((a, b) => `${a.date}${a.time || ""}`.localeCompare(`${b.date}${b.time || ""}`))
+      .slice(0, 60)
+  }, [porAgenda, buscaAg, ctx.data.agendas, ctx.data.consultas, hojeIso])
+  const usarAgendamento = (ag: Item) => {
+    const campoServico = def.sections.flatMap((sec) => sec.fields).find((fd) => fd.k === "service")
+    const opcoes = typeof campoServico?.opts === "function" ? campoServico.opts(ctx, values) : campoServico?.opts || []
+    const nomes = (opcoes as (string | [string, string])[]).map((o) => (Array.isArray(o) ? o[0] : o))
+    const servico = ag.service || ag.name
+    const prof = ctx.data.profissionais.find((pr) => pr.name === ag.professional)
+    const pet = ctx.data.animais.find((an) => an.id === ag.animalId) || ctx.data.animais.find((an) => an.name === ag.animal && an.owner === ag.owner)
+    setValues((cur) => ({
+      ...cur,
+      animalId: pet?.id || cur.animalId,
+      responsavel: ag.owner || cur.responsavel,
+      service: nomes.includes(servico) ? servico : nomes.find((n) => /consulta cl/i.test(n)) || cur.service,
+      professionalId: prof?.id || cur.professionalId,
+      date: hojeIso,
+      time: (ag.date || "") === hojeIso && ag.time ? ag.time : cur.time,
+      origem: "Agendado",
+      resumo: cur.resumo || `${servico}${ag.notes ? ` — ${ag.notes}` : ""}`,
+      queixa: cur.queixa || ag.notes || "",
+      _agendaId: ag.id,
+    }))
+    setAgendaEscolhida(ag)
+    setAbaOrigem("nova")
+    window.setTimeout(() => bodyRef.current?.scrollTo({ top: 0 }), 0)
+  }
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [formError, setFormError] = useState("")
   const [step, setStep] = useState(0)
@@ -332,6 +373,10 @@ export default function FormDrawer({
     } else {
       saved = ctx.addItem(def.slug, patch)
     }
+    if (porAgenda && values._agendaId) {
+      ctx.updateItem(def.slug, saved.id, { extra: { ...(saved.extra || {}), agendaId: values._agendaId } })
+      ctx.updateItem("agendas", values._agendaId, { status: "Em atendimento" })
+    }
     def.after?.(saved, values, ctx, !item)
     onSaved?.(saved, !item)
     onClose()
@@ -357,7 +402,37 @@ export default function FormDrawer({
             <X />
           </button>
         </div>
-        <div className="vx-db" ref={bodyRef} onScroll={onScroll}>
+        {porAgenda && (
+          <div className="vx-origem" role="tablist" aria-label="Como iniciar a consulta">
+            <button type="button" role="tab" aria-selected={abaOrigem === "nova"} className={abaOrigem === "nova" ? "on" : ""} onClick={() => setAbaOrigem("nova")}><Plus /> Nova consulta</button>
+            <button type="button" role="tab" aria-selected={abaOrigem === "agenda"} className={abaOrigem === "agenda" ? "on" : ""} onClick={() => setAbaOrigem("agenda")}><CalendarDays /> Por agendamento <span>{agendamentos.length}</span></button>
+          </div>
+        )}
+        {porAgenda && abaOrigem === "agenda" && (
+          <div className="vx-db vx-ag-pick">
+            <p className="vx-ag-hint">Escolha um agendamento: paciente, tutor, veterinário e tipo de atendimento já entram preenchidos.</p>
+            <div className="vx-ag-search"><Search /><input autoFocus placeholder="Buscar animal, tutor ou serviço" value={buscaAg} onChange={(e) => setBuscaAg(e.target.value)} /></div>
+            <div className="vx-ag-list">
+              {agendamentos.map((ag) => (
+                <button type="button" key={ag.id} className="vx-ag-item" onClick={() => usarAgendamento(ag)}>
+                  <span className="vx-ag-when"><b>{ag.time || "--:--"}</b><small>{ag.date === hojeIso ? "Hoje" : (ag.date || "").split("-").reverse().slice(0, 2).join("/")}</small></span>
+                  <span className="vx-ag-main"><strong>{ag.animal || ag.name}</strong><small>{ag.owner || "Tutor não informado"}</small></span>
+                  <span className="vx-ag-main"><strong>{ag.service || ag.name}</strong><small>{ag.professional || "—"}</small></span>
+                  <span className="vx-ag-st">{ag.status}</span>
+                </button>
+              ))}
+              {!agendamentos.length && <p className="vx-ag-vazio">Nenhum agendamento de hoje em diante{buscaAg ? ` para “${buscaAg}”` : ""}.</p>}
+            </div>
+          </div>
+        )}
+        <div className="vx-db" ref={bodyRef} onScroll={onScroll} style={porAgenda && abaOrigem === "agenda" ? { display: "none" } : undefined}>
+          {agendaEscolhida && porAgenda && (
+            <div className="vx-ag-banner">
+              <CalendarDays />
+              <span>Consulta a partir do agendamento de <b>{agendaEscolhida.date === hojeIso ? "hoje" : (agendaEscolhida.date || "").split("-").reverse().join("/")} às {agendaEscolhida.time}</b> · {agendaEscolhida.animal} ({agendaEscolhida.owner})</span>
+              <button type="button" onClick={() => { setAgendaEscolhida(null); setValues((cur) => ({ ...cur, _agendaId: undefined })) }} aria-label="Desvincular agendamento"><X /></button>
+            </div>
+          )}
           {def.sections.map((section, index) => (
             <section
               className="vx-sec"
